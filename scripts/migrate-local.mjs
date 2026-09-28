@@ -1,0 +1,13 @@
+import {readFile,mkdir,writeFile} from 'node:fs/promises';
+import {spawnSync} from 'node:child_process';
+import path from 'node:path';
+const root=process.cwd();
+const config=JSON.parse(await readFile('dist/server/wrangler.json','utf8'));
+const db=config.d1_databases.find(d=>d.binding==='DB');
+if(!db)throw new Error('Build the studio with the DB binding before applying migrations.');
+await mkdir('.sites-runtime',{recursive:true});
+const file=path.join(root,'.sites-runtime/local-d1-migrations.json');
+await writeFile(file,JSON.stringify({name:config.name,compatibility_date:config.compatibility_date,d1_databases:[{...db,migrations_dir:path.join(root,'drizzle')}]}));
+const result=spawnSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','d1','migrations','apply','DB','--local','--config',file,'--persist-to',path.join(root,'.wrangler/state')],{cwd:root,input:'y\n',stdio:['pipe','inherit','inherit']});
+if(result.error)throw result.error;
+process.exitCode=result.status??1;

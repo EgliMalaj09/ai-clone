@@ -1,0 +1,294 @@
+{
+  "date": "2026-09-20T17:13:13.441Z",
+  "passed": 72,
+  "checks": [
+    {
+      "name": "18 seeded templates with fixed prices",
+      "passed": true
+    },
+    {
+      "name": "Public API hides prompts, providers, and costs",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /explore",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /template/formula-driver",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /template/wedding-cinematic",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /privacy",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /terms",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /login",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /register",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /creations",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /favorites",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /orders",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /account",
+      "passed": true
+    },
+    {
+      "name": "Route loads: /admin",
+      "passed": true
+    },
+    {
+      "name": "Missing templates and routes return 404",
+      "passed": true
+    },
+    {
+      "name": "Admin API rejects anonymous access",
+      "passed": true
+    },
+    {
+      "name": "Registration creates a secure session",
+      "passed": true
+    },
+    {
+      "name": "Regular user cannot access admin API",
+      "passed": true
+    },
+    {
+      "name": "Wrong password is rejected",
+      "passed": true
+    },
+    {
+      "name": "Email login works",
+      "passed": true
+    },
+    {
+      "name": "Unsupported file format rejected",
+      "passed": true
+    },
+    {
+      "name": "Forged image MIME rejected",
+      "passed": true
+    },
+    {
+      "name": "Oversized upload rejected",
+      "passed": true
+    },
+    {
+      "name": "Valid upload is stored",
+      "passed": true
+    },
+    {
+      "name": "Owner can view uploaded image",
+      "passed": true
+    },
+    {
+      "name": "Other users and anonymous visitors cannot read uploads",
+      "passed": true
+    },
+    {
+      "name": "Favorite persists server-side",
+      "passed": true
+    },
+    {
+      "name": "Favorite can be removed",
+      "passed": true
+    },
+    {
+      "name": "Checkout rejects someone else’s image",
+      "passed": true
+    },
+    {
+      "name": "Client cannot tamper with the price",
+      "passed": true
+    },
+    {
+      "name": "Checkout idempotency returns the same generation",
+      "passed": true
+    },
+    {
+      "name": "Generation waits for payment",
+      "passed": true
+    },
+    {
+      "name": "Queue cannot start unpaid work",
+      "passed": true
+    },
+    {
+      "name": "Payment confirmation enforces order ownership",
+      "passed": true
+    },
+    {
+      "name": "Declined payment does not start generation",
+      "passed": true
+    },
+    {
+      "name": "Payment retry and duplicate confirmation are safe",
+      "passed": true
+    },
+    {
+      "name": "Mock workflow completes asynchronously",
+      "passed": true
+    },
+    {
+      "name": "Generations retain their paid price",
+      "passed": true
+    },
+    {
+      "name": "Duplicate payment created one output only",
+      "passed": true
+    },
+    {
+      "name": "Download returns a real MP4 attachment",
+      "passed": true
+    },
+    {
+      "name": "Video byte ranges are supported",
+      "passed": true
+    },
+    {
+      "name": "Completed videos stay private",
+      "passed": true
+    },
+    {
+      "name": "Signed share link works without account login",
+      "passed": true
+    },
+    {
+      "name": "Tampered share link is rejected",
+      "passed": true
+    },
+    {
+      "name": "Administrator login succeeds",
+      "passed": true
+    },
+    {
+      "name": "Admin can read hidden workflow",
+      "passed": true
+    },
+    {
+      "name": "Admin creates a template draft",
+      "passed": true
+    },
+    {
+      "name": "Draft is hidden from catalog",
+      "passed": true
+    },
+    {
+      "name": "Published template appears immediately with chosen price",
+      "passed": true
+    },
+    {
+      "name": "Admin price update reaches the public catalog",
+      "passed": true
+    },
+    {
+      "name": "Price update does not rewrite paid orders",
+      "passed": true
+    },
+    {
+      "name": "Admin saves ordered multi-step workflow",
+      "passed": true
+    },
+    {
+      "name": "Existing checkout keeps the original workflow",
+      "passed": true
+    },
+    {
+      "name": "Image-to-video workflow completes",
+      "passed": true
+    },
+    {
+      "name": "Workflow steps execute in order",
+      "passed": true
+    },
+    {
+      "name": "Provider failure is recorded",
+      "passed": true
+    },
+    {
+      "name": "Failed generation is automatically refunded",
+      "passed": true
+    },
+    {
+      "name": "Admin metrics reflect real database activity",
+      "passed": true
+    },
+    {
+      "name": "Suspending a user revokes sessions",
+      "passed": true
+    },
+    {
+      "name": "Admin can reactivate users",
+      "passed": true
+    },
+    {
+      "name": "Account changes persist",
+      "passed": true
+    },
+    {
+      "name": "Cross-site mutation blocked",
+      "passed": true
+    },
+    {
+      "name": "Unsigned Stripe webhook rejected",
+      "passed": true
+    },
+    {
+      "name": "Signed Stripe webhook confirms payment and tolerates replay",
+      "passed": true
+    },
+    {
+      "name": "Webhook event persisted once",
+      "passed": true
+    },
+    {
+      "name": "Delete creation removes the video from object storage",
+      "passed": true
+    },
+    {
+      "name": "Delete upload removes stored bytes",
+      "passed": true
+    },
+    {
+      "name": "Admin duplicates a template as a draft",
+      "passed": true
+    },
+    {
+      "name": "Admin removes a template",
+      "passed": true
+    },
+    {
+      "name": "Account deletion removes the user and uploads",
+      "passed": true
+    },
+    {
+      "name": "Sign-out invalidates the session",
+      "passed": true
+    }
+  ]
+}

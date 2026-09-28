@@ -1,0 +1,127 @@
+{
+  "date": "2026-09-20T17:12:01.392Z",
+  "passed": 30,
+  "network": "All external responses use local fixtures. No actual live payments or AI generations were made.",
+  "checks": [
+    {
+      "name": "Production administrator login works without external services",
+      "passed": true
+    },
+    {
+      "name": "Anonymous access to connections is rejected",
+      "passed": true
+    },
+    {
+      "name": "Registration is explicitly closed until email is configured",
+      "passed": true
+    },
+    {
+      "name": "Production seed uses actual image and video endpoints",
+      "passed": true
+    },
+    {
+      "name": "Closed checkout is visible before an upload or payment",
+      "passed": true
+    },
+    {
+      "name": "Connection changes reject a cross-site origin",
+      "passed": true
+    },
+    {
+      "name": "Saving keys requires administrator password reauthentication",
+      "passed": true
+    },
+    {
+      "name": "Publishable payment keys are rejected",
+      "passed": true
+    },
+    {
+      "name": "Stored connections do not contain plaintext secrets",
+      "passed": true
+    },
+    {
+      "name": "Status returns presence, not keys or ciphertext",
+      "passed": true
+    },
+    {
+      "name": "Stripe test and live modes are distinguished",
+      "passed": true
+    },
+    {
+      "name": "Environment-managed keys cannot be overwritten from the dashboard",
+      "passed": true
+    },
+    {
+      "name": "Repeated saves use fresh authenticated-encryption nonces",
+      "passed": true
+    },
+    {
+      "name": "Configured production registration requires email verification",
+      "passed": true
+    },
+    {
+      "name": "Members cannot inspect connection configuration",
+      "passed": true
+    },
+    {
+      "name": "Members cannot write connections even with a supplied password",
+      "passed": true
+    },
+    {
+      "name": "Preset maps two reference photos and chains its generated image",
+      "passed": true
+    },
+    {
+      "name": "Missing service readiness blocks order creation before charging",
+      "passed": true
+    },
+    {
+      "name": "Enabled provider and external dispatcher complete configuration",
+      "passed": true
+    },
+    {
+      "name": "Ciphertext cannot be transplanted to another credential field",
+      "passed": true
+    },
+    {
+      "name": "An administrator can repair an unreadable saved connection",
+      "passed": true
+    },
+    {
+      "name": "Simulated payment cannot confirm a production order",
+      "passed": true
+    },
+    {
+      "name": "Encrypted connections power confirmed checkout and the actual preset adapters",
+      "passed": true
+    },
+    {
+      "name": "Hidden prompt and signed photos are supplied only to the provider",
+      "passed": true
+    },
+    {
+      "name": "Public template payload excludes private prompt, workflow, cost and keys",
+      "passed": true
+    },
+    {
+      "name": "Provider result is downloadable from private storage",
+      "passed": true
+    },
+    {
+      "name": "Old simulated orders cannot reopen checkout after a production switch",
+      "passed": true
+    },
+    {
+      "name": "A stale dispatcher closes new checkout",
+      "passed": true
+    },
+    {
+      "name": "Removing a connection actually deletes its encrypted record",
+      "passed": true
+    },
+    {
+      "name": "Audit records contain no passwords or provider keys",
+      "passed": true
+    }
+  ]
+}

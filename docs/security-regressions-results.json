@@ -1,0 +1,187 @@
+{
+  "date": "2026-09-20T17:11:54.520Z",
+  "passed": 45,
+  "network": "Stripe responses simulated locally; no external payments or messages sent",
+  "checks": [
+    {
+      "name": "Demo recovery never exposes a reset link or reveals account existence",
+      "passed": true
+    },
+    {
+      "name": "Demo reset request does not mint a usable token",
+      "passed": true
+    },
+    {
+      "name": "Session list identifies the current browser without token hashes",
+      "passed": true
+    },
+    {
+      "name": "Revoke other sessions preserves this session",
+      "passed": true
+    },
+    {
+      "name": "Changing password requires the current password",
+      "passed": true
+    },
+    {
+      "name": "Password change rotates the session and invalidates the old one",
+      "passed": true
+    },
+    {
+      "name": "Previous password no longer signs in",
+      "passed": true
+    },
+    {
+      "name": "Invalid reset payload does not consume the token",
+      "passed": true
+    },
+    {
+      "name": "A reset token can be consumed only once under concurrency",
+      "passed": true
+    },
+    {
+      "name": "Reset revokes previous sessions",
+      "passed": true
+    },
+    {
+      "name": "Authenticated mutation without an Origin is rejected",
+      "passed": true
+    },
+    {
+      "name": "Large JSON requests are rejected before parsing",
+      "passed": true
+    },
+    {
+      "name": "Operations and audit endpoints enforce the admin role",
+      "passed": true
+    },
+    {
+      "name": "Readiness shows absent live services without exposing secrets",
+      "passed": true
+    },
+    {
+      "name": "Admin records support server pagination",
+      "passed": true
+    },
+    {
+      "name": "Admin search filters on the server",
+      "passed": true
+    },
+    {
+      "name": "Pagination parameters are validated",
+      "passed": true
+    },
+    {
+      "name": "Public catalog search, category, tag, and sort API work",
+      "passed": true
+    },
+    {
+      "name": "Catalog rejects unknown sorting and missing detail IDs",
+      "passed": true
+    },
+    {
+      "name": "Malformed page routes return 404",
+      "passed": true
+    },
+    {
+      "name": "Workflow rejects forward references before charging customers",
+      "passed": true
+    },
+    {
+      "name": "Reserved workflow variable names are rejected",
+      "passed": true
+    },
+    {
+      "name": "Templates cannot publish broken bundled preview paths",
+      "passed": true
+    },
+    {
+      "name": "Admin preview fields cannot expose private user uploads",
+      "passed": true
+    },
+    {
+      "name": "Test payment only accepts explicit success or failure",
+      "passed": true
+    },
+    {
+      "name": "Expired checkout renews once even under concurrent retries",
+      "passed": true
+    },
+    {
+      "name": "Delayed expiry event cannot fail a newer checkout",
+      "passed": true
+    },
+    {
+      "name": "A pending asynchronous payment cannot open a second checkout",
+      "passed": true
+    },
+    {
+      "name": "Stripe webhook rejects amount tampering",
+      "passed": true
+    },
+    {
+      "name": "Signed confirmation is idempotent",
+      "passed": true
+    },
+    {
+      "name": "External refund stops active work and invalidates its lease",
+      "passed": true
+    },
+    {
+      "name": "External refund is retained for financial reconciliation",
+      "passed": true
+    },
+    {
+      "name": "Late payment event cannot restart a refunded generation",
+      "passed": true
+    },
+    {
+      "name": "Queue enforces the deadline",
+      "passed": true
+    },
+    {
+      "name": "Admin can disable automatic refunds even if the environment default is on",
+      "passed": true
+    },
+    {
+      "name": "External queue dispatch records an observable heartbeat",
+      "passed": true
+    },
+    {
+      "name": "Admin refund remains available with automatic refunds disabled",
+      "passed": true
+    },
+    {
+      "name": "Estimated cost of refunded jobs remains in financial reports",
+      "passed": true
+    },
+    {
+      "name": "Account export includes owned records without internal workflow or password data",
+      "passed": true
+    },
+    {
+      "name": "Security actions are recorded in the searchable audit log",
+      "passed": true
+    },
+    {
+      "name": "Deleting an account requires reauthentication",
+      "passed": true
+    },
+    {
+      "name": "Account deletion removes storage and identity",
+      "passed": true
+    },
+    {
+      "name": "Admin cannot accidentally suspend the administrator account",
+      "passed": true
+    },
+    {
+      "name": "Authenticated admin operations page renders",
+      "passed": true
+    },
+    {
+      "name": "Security response headers are present",
+      "passed": true
+    }
+  ]
+}

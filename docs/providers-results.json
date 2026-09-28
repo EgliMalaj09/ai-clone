@@ -1,0 +1,43 @@
+{
+  "date": "2026-09-20T17:12:13.163Z",
+  "passed": 9,
+  "network": "All Stripe, Fal, Replicate and media HTTP responses are local fixtures; no paid inference performed",
+  "checks": [
+    {
+      "name": "Live mode refuses templates that use the mock provider",
+      "passed": true
+    },
+    {
+      "name": "Live mode blocks the simulated payment endpoint",
+      "passed": true
+    },
+    {
+      "name": "Fal adapter completes an image-to-video workflow through the HTTP boundary",
+      "passed": true
+    },
+    {
+      "name": "Provider image MIME is detected from bytes instead of assumed PNG",
+      "passed": true
+    },
+    {
+      "name": "Known-length provider video streams into private R2",
+      "passed": true
+    },
+    {
+      "name": "Workflow passes a signed intermediate asset to the next provider step",
+      "passed": true
+    },
+    {
+      "name": "Workflow context persists stable asset IDs rather than expiring URLs",
+      "passed": true
+    },
+    {
+      "name": "Replicate adapter completes an asynchronous video prediction",
+      "passed": true
+    },
+    {
+      "name": "Unsafe provider output fails without fetching the private host",
+      "passed": true
+    }
+  ]
+}
