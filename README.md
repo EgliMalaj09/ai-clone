@@ -32,6 +32,8 @@ Tables are created by migrations. The first application request seeds the 18 tem
 
 ## Verification
 
+GitHub Actions (`.github/workflows/ci.yml`) runs typecheck, lint, build and all four test suites on every push and on pull requests from forks. Test result files are attached to each run.
+
 `pnpm typecheck` checks TypeScript. `pnpm build` builds the production Worker. `pnpm test:integration` runs against that compiled Worker in disposable D1/R2 bindings, applies real migrations, and exercises authentication, ownership, uploads, checkout, payment replay, asynchronous workflows, downloads, admin publishing/pricing, refunds and deletion. It creates its own random credentials and does not contact paid providers. Results are written to `test-results/integration.json`.
 
 `pnpm test:security` runs the regression suite for concurrent password reset, session rotation, request bounds, workflow validation, payment retries, webhook ordering, refunds, operational reporting, and data export. Stripe HTTP responses are intercepted in-process; no financial transaction is executed.

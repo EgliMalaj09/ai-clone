@@ -39,7 +39,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 | Google / social login | ❌ Not implemented | The `accounts` table is ready for it |
 | Albanian / multi-language UI | ❌ Not implemented | English only, though the `ALL` currency is supported |
 | PostgreSQL | ❌ Not implemented | D1 (SQLite) only |
-| CI pipeline | ❌ None | No `.github/workflows`, which is why lint failures went unnoticed |
+| CI pipeline | ✅ Added (F5) | GitHub Actions on every push |
 
 ## 3. Fixes (bugs and code problems)
 
@@ -48,7 +48,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 - [ ] **F2 — Abandoned uploads and unpaid orders are never cleaned up.** ➡️ *Handled in the credits work: uploads and generation will require credits (no unpaid orders exist then); add the 24 h unused-photo sweep there.* A user who uploads a photo and leaves the template page keeps that file forever. After 250 files or 512 MB, uploads are blocked (`lib/server/api.ts:64`). Unpaid `awaiting_payment` generations and orders also stay forever. Fix: add a cleanup to the hourly maintenance in `lib/server/queue.ts:66-67`: delete unreferenced uploads older than about 24 h and expire unpaid orders older than about 48 h.
 - [x] **F3 — Admin preview media uses the admin's personal photo quota.** ✅ *Fixed: previews moved to their own `template_media` table (migration 0002) with a 5 GB / 1000-file studio limit; previews a template stops using are deleted, never-saved uploads are swept after 24 h, and Admin → Media library lists and deletes files.* Both share the same 512 MB / 250-file limit, so about 17 uploads of 30 MB preview videos fills the admin quota (`lib/server/api.ts:64`). Fix: exclude `public=1` rows from the quota, or give admins a separate limit.
 - [x] **F4 — Lint fails (93 errors).** ✅ *Fixed: `pnpm lint` passes with 0 errors and 0 warnings. API responses are typed (`lib/api-types.ts`), the React hook issues are fixed, and unused code is removed. The `<a>`/`<img>` rules are turned off with a documented reason (full-page navigation by design; private media needs the session cookie).* Mostly `no-explicit-any` (43) and `<a>` used instead of `<Link>` (about 30). There are also 4 real `react-hooks/set-state-in-effect` issues (`components/shared.tsx`, `components/auth.tsx`, `components/admin.tsx`) and unused imports. Fix the real hook issues, then either fix or deliberately relax the style rules so `pnpm lint` passes.
-- [ ] **F5 — Add CI.** Add a GitHub Actions workflow that runs `typecheck`, `lint`, `build` and the four test suites on every push and PR.
+- [x] **F5 — Add CI.** ✅ *Added `.github/workflows/ci.yml`: typecheck, lint, build and all four test suites on every push and fork PR.* Add a GitHub Actions workflow that runs `typecheck`, `lint`, `build` and the four test suites on every push and PR.
 
 ### Medium priority
 - [ ] **F6 — Discovery sorting/filters.** In `components/discovery.tsx:16`, "Recommended" sorts only by `trending` and ignores `featured`. "Price: high to low" is missing even though the API supports it. Filter, search and sort are not kept in the URL, so filtered views can't be shared or bookmarked.
