@@ -7,6 +7,8 @@ import {demoVideos} from './demo-assets';
 import {sweepTemplateMedia} from './template-media';
 import {sweepPendingPurchases} from './credit-purchases';
 
+const extensions:Record<string,string>={'video/mp4':'mp4','video/webm':'webm','image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
+
 const active=['queued','preparing','generating','finalizing'];
 export async function failGeneration(g:Row,error:string){
  const result=await run("UPDATE generations SET status='failed',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",'Your video could not be completed. Your credits were returned.',error.slice(0,2000),now(),g.id,g.lease_token);
@@ -53,7 +55,7 @@ export async function tickGeneration(id:string){
   }
   const result=await p.getStatus(record.provider_job_id);if(result.status==='processing'){await run('UPDATE generations SET next_run_at=? WHERE id=? AND lease_token=?',now()+1500,id,token);return;}
   if(result.status==='failed'){await failGeneration(g,result.error||'Provider failed.');return;}
-  must(result.url,'The provider returned no output.');const assetId='asset_'+stepId;let mime=result.mime||'video/mp4';const key=`generated/${g.user_id}/${id}/${i}.${mime.startsWith('video')?'mp4':'png'}`;let size=0;
+  must(result.url,'The provider returned no output.');const assetId='asset_'+stepId;let mime=result.mime||'video/mp4';const key=`generated/${g.user_id}/${id}/${i}.${extensions[mime]||(mime.startsWith('video')?'mp4':'png')}`;let size=0;
   if(step.provider==='mock'){
     // Demo output is a bundled concept clip, never a claimed transformation of an upload.
     const b64=demoVideos[snapshot.slug]||demoVideos['formula-driver'];const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));size=bytes.length;

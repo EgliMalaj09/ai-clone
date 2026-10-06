@@ -3,10 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "PROJECT STUDIO — Your next main character moment",
-  description: "Choose a look. Upload a photo. Make your own AI video, with a clear price for every template.",
-  other: {
-    "codex-preview": "development",
-  },
+  description: "Choose a look. Upload a photo. Make your own AI video with credits, and pay only for videos that are delivered.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

@@ -56,7 +56,6 @@ export default defineConfig(async () => {
       ...(isCodexSeatbeltSandbox ? { watch: { useFsEvents: false, usePolling: true } } : {}),
     },
     plugins: [
-      {name:'studio-responsive-qa',configureServer(server: import("vite").ViteDevServer){server.middlewares.use('/__qa/responsive',(_req,res)=>{res.setHeader('Content-Type','text/html');res.end('<!doctype html><title>Responsive QA</title><style>body{display:flex;gap:20px;background:#ddd}iframe{height:850px;border:0}</style>'+[375,390,430].map(w=>'<iframe title="'+w+'px" style="width:'+w+'px" src="/explore"></iframe>').join(''));});}},
       vinext(),
       sites({ mockAuth: !managedLinux }),
       cloudflare({
