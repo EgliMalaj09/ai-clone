@@ -31,5 +31,39 @@ export class ReplicateProvider implements AIProvider{
  async getStatus(jobId:string):Promise<ProviderStatus>{must(/^[\w-]+$/.test(jobId),'Invalid provider job ID.');const r=await replicateFetch('predictions/'+jobId);if(['failed','canceled'].includes(r.status)){const error=String(r.error||'Provider cancelled the job');return {status:isRefusal(error)?'refused':'failed',error};}if(r.status!=='succeeded')return {status:'processing'};const output=Array.isArray(r.output)?r.output[0]:r.output;const url=typeof output==='string'?output:output?.url;return url?{status:'completed',url,mime:/\.(mp4|webm)(\?|$)/.test(url)?'video/mp4':'image/png'}:{status:'failed',error:'Unsupported provider output.'};}
  async cancelJob(id:string){must(/^[\w-]+$/.test(id),'Invalid job ID.');await replicateFetch(`predictions/${id}/cancel`,'POST');}
 }
-export const providers:Record<string,AIProvider>={mock:new MockAIProvider(),fal:new FalProvider(),replicate:new ReplicateProvider()};
+// Higgsfield (https://higgsfield.ai): POST /<model> queues a job; GET /requests/<id>/status reports
+// queued | in_progress | completed | failed | nsfw. A request refused as NSFW is not charged by Higgsfield.
+const HIGGSFIELD='https://api.higgsfield.ai';
+async function higgsfieldFetch(path:string,method='GET',body?:Row){
+ const c=await serviceConfig();must(c.higgsfieldKey&&c.higgsfieldSecret,'Higgsfield API key is not configured.',503);
+ const r=await fetch(HIGGSFIELD+path,{method,headers:{Authorization:`Key ${c.higgsfieldKey}:${c.higgsfieldSecret}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000),redirect:'manual'});
+ if(!r.ok){
+  const detail=(await r.text().catch(()=>'')).slice(0,300);
+  // 401: wrong key; 403: the Higgsfield account is out of credits. Both need the studio owner, not the customer.
+  const message=r.status===401?'Higgsfield rejected the API key.':r.status===403?'The Higgsfield account has run out of credits. Top up Higgsfield to continue.':`Higgsfield returned HTTP ${r.status}${detail?': '+detail:''}`;
+  if(r.status===401||r.status===403)console.error(message);
+  throw isRefusal(detail)?new ProviderRefusal(message):new Error(message);
+ }
+ return r.json() as Promise<Row>;
+}
+export class HiggsfieldProvider implements AIProvider{
+ async generateImage(r:AIRequest){return this.generateVideo(r)}
+ async generateVideo(r:AIRequest){
+  must(/^\/?[\w.-]+(\/[\w.-]+)*$/.test(r.step.model),'Invalid Higgsfield model endpoint.');
+  const d=await higgsfieldFetch('/'+r.step.model.replace(/^\//,''),'POST',r.input);
+  must(typeof d.request_id==='string'&&/^[\w-]+$/.test(d.request_id),'Higgsfield did not return a request ID.');
+  return d.request_id;
+ }
+ async getStatus(jobId:string):Promise<ProviderStatus>{
+  must(/^[\w-]+$/.test(jobId),'Invalid provider job ID.');
+  const s=await higgsfieldFetch('/requests/'+jobId+'/status');
+  if(s.status==='nsfw')return {status:'refused',error:'Higgsfield refused the content (NSFW).'};
+  if(s.status==='failed'||s.status==='canceled'||s.status==='cancelled'){const error=String(s.error||s.detail||'Higgsfield could not complete the request.');return {status:isRefusal(error)?'refused':'failed',error};}
+  if(s.status!=='completed')return {status:'processing'};
+  const video=s.video?.url,image=Array.isArray(s.images)?s.images[0]?.url:undefined;
+  return video?{status:'completed',url:video,mime:'video/mp4'}:image?{status:'completed',url:image,mime:'image/png'}:{status:'failed',error:'Higgsfield result did not contain a supported image or video.'};
+ }
+ async cancelJob(jobId:string){must(/^[\w-]+$/.test(jobId),'Invalid job ID.');await higgsfieldFetch('/requests/'+jobId+'/cancel','POST').catch(()=>{/* Requests already processing cannot be cancelled. */});}
+}
+export const providers:Record<string,AIProvider>={mock:new MockAIProvider(),fal:new FalProvider(),replicate:new ReplicateProvider(),higgsfield:new HiggsfieldProvider()};
 export const providerFor=(id:string)=>{const p=providers[id];must(p,'This provider adapter is not installed.',422);return p;};

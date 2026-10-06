@@ -2,6 +2,7 @@
 import {createRequire} from 'node:module';
 import {readFile,readdir,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
+import {fakeHiggsfield} from './fake-higgsfield.mjs';
 import {randomBytes,pbkdf2Sync,randomUUID} from 'node:crypto';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.resolve('wrangler/package.json'));
@@ -10,10 +11,11 @@ const server=path.resolve('dist/server');
 const modules=(await readdir(server,{recursive:true})).filter(f=>f.endsWith('.js')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:a.localeCompare(b)).map(f=>({type:'ESModule',path:path.join(server,f)}));
 const image=await readFile('public/media/formula-driver.webp'),video=await readFile('public/media/formula-driver.mp4');
 const password=randomBytes(20).toString('hex'),salt=randomBytes(32).toString('hex');
-const env={PUBLIC_SERVICE_ACCESS:'true',RESEND_API_KEY:'re_fixture',MAIL_FROM:'hello@studio.test',QUEUE_SECRET:randomBytes(32).toString('hex'),DEMO_MODE:'false',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(password,salt,100000,32,'sha256').toString('hex'),FAL_KEY:'fal_fixture',REPLICATE_API_TOKEN:'replicate_fixture'};
-const jobs=new Map();const inputs=[];let serial=0;const requests=[];
+const env={HIGGSFIELD_API_KEY:'hf_key_fixture',HIGGSFIELD_API_SECRET:'hf_secret_fixture',PUBLIC_SERVICE_ACCESS:'true',RESEND_API_KEY:'re_fixture',MAIL_FROM:'hello@studio.test',QUEUE_SECRET:randomBytes(32).toString('hex'),DEMO_MODE:'false',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(password,salt,100000,32,'sha256').toString('hex'),FAL_KEY:'fal_fixture',REPLICATE_API_TOKEN:'replicate_fixture'};
+const jobs=new Map();const higgsfield=fakeHiggsfield({keyId:'hf_key_fixture',keySecret:'hf_secret_fixture',Response:MFResponse,image,video});const inputs=[];let serial=0;const requests=[];
 const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:env,d1Databases:{DB:'providers-fixture'},r2Buckets:['BUCKET'],cf:false,outboundService:async req=>{
  const u=new URL(req.url);requests.push({host:u.hostname,path:u.pathname,method:req.method});
+ if(higgsfield.matches(u))return higgsfield.handle(req);
  if(u.hostname==='queue.fal.run'){
   if(req.method==='POST'){const input=await req.json();inputs.push(input);const id='fal_'+(++serial);jobs.set(id,input);return MFResponse.json({request_id:id,status_url:'https://queue.fal.run/status/'+id,response_url:'https://queue.fal.run/result/'+id,cancel_url:'https://queue.fal.run/cancel/'+id});}
   const input=jobs.get(u.pathname.split('/').at(-1));assert(input,'Unknown fal fixture');
@@ -33,14 +35,14 @@ const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15
 }});
 const checks=[];const ok=(name,value=true)=>{assert(value,name);checks.push({name,passed:true});console.log('PASS',name)};
 async function request(route,{method='GET',data,cookie,expected=200}={}){
- const r=await mf.dispatchFetch(env.APP_ORIGIN+route,{method,headers:{origin:env.APP_ORIGIN,...(cookie?{cookie}:{}),...(data?{'content-type':'application/json'}:{})},body:data?JSON.stringify(data):undefined});const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}assert.equal(r.status,expected,route+': '+text.slice(0,200));return {body,cookie:r.headers.get('set-cookie')?.split(';')[0]};
+ const r=await mf.dispatchFetch(env.APP_ORIGIN+route,{method,headers:{origin:env.APP_ORIGIN,...(cookie?{cookie}:{}),...(data?{'content-type':'application/json'}:{})},body:data?JSON.stringify(data):undefined});const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}if(expected!==null)assert.equal(r.status,expected,route+': '+text.slice(0,200));return {body,cookie:r.headers.get('set-cookie')?.split(';')[0]};
 }
-async function finish(cookie,id){const deadline=Date.now()+25000;while(Date.now()<deadline){await request('/api/queue/tick',{method:'POST',data:{},cookie});const g=(await request('/api/generations/'+id,{cookie})).body.generations[0];if(['completed','failed'].includes(g.status))return g;await new Promise(r=>setTimeout(r,600));}throw new Error('Provider workflow did not finish');}
+async function finish(cookie,id){const deadline=Date.now()+25000;while(Date.now()<deadline){await request('/api/queue/tick',{method:'POST',data:{},cookie,expected:null});const g=(await request('/api/generations/'+id,{cookie})).body.generations[0];if(['completed','failed','refused'].includes(g.status))return g;await new Promise(r=>setTimeout(r,900));}throw new Error('Provider workflow did not finish');}
 try{
  const db=await mf.getD1Database('DB');
  for(const file of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort())for(const sql of (await readFile('drizzle/'+file,'utf8')).split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await db.prepare(sql).run();
  const cookie=(await request('/api/auth/login',{method:'POST',data:{email:env.ADMIN_EMAIL,password}})).cookie;
- for(const provider of ['fal','replicate'])await request('/api/admin/providers/'+provider,{method:'PATCH',cookie,data:{enabled:true}});
+ for(const provider of ['fal','replicate','higgsfield'])await request('/api/admin/providers/'+provider,{method:'PATCH',cookie,data:{enabled:true}});
  await db.prepare("INSERT INTO app_settings (key,value) VALUES ('queue_dispatch_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(String(Date.now())).run();
  const template=(await request('/api/admin/templates/tpl_formula-driver',{cookie})).body.template;
  await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:[{...template.workflow[0],type:'video',provider:'mock',model:'studio-demo'}]}});
@@ -61,6 +63,24 @@ try{
  ok('Known-length provider video streams into private R2',assets[1].mime==='video/mp4'&&assets[1].size===video.length&&(await bucket.get(assets[1].storage_key)).size===video.length);
  ok('Workflow passes a signed intermediate asset to the next provider step',inputs[1].image_url.includes('/api/media/asset_')&&inputs[1].image_url.includes('signature='));
  const context=JSON.parse((await db.prepare('SELECT context FROM generations WHERE id=?').bind(order.generationId).first()).context);ok('Workflow context persists stable asset IDs rather than expiring URLs',context.previous_output.startsWith('asset_')&&!JSON.stringify(context).includes('signature='));
+ // Higgsfield: image edit then image-to-video, an NSFW refusal, a failed job and an empty Higgsfield account.
+ const hfImage={...first,id:'hf_image',provider:'higgsfield',model:'bytedance/seedream/v4/edit',inputs:{},settings:{image_urls:['{{user_image_1}}']}};
+ const hfVideo={...second,id:'hf_video',provider:'higgsfield',model:'kling-video/v3.0-turbo/image-to-video',inputs:{image_url:'{{prepared_image}}'},settings:{}};
+ await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:[hfImage,hfVideo]}});
+ const hfStart=(await balance()).available,hfOrder=(await start()).body,hfDone=await finish(cookie,hfOrder.generationId);
+ ok('Higgsfield adapter completes an image edit and image-to-video workflow',hfDone.status==='completed'&&higgsfield.submitted.length===2&&higgsfield.submitted[0].input.image_urls[0].includes('signature=')&&higgsfield.submitted[1].input.image_url.includes('/api/media/asset_'));
+ ok('Higgsfield results are downloaded into private storage and charged once',(await balance()).available===hfStart-template.creditCost&&(await db.prepare("SELECT COUNT(*) AS n FROM generated_assets WHERE generation_id=?").bind(hfOrder.generationId).first()).n===2);
+ higgsfield.outcome('kling-video/v3.0-turbo/image-to-video','nsfw');const nsfwStart=(await balance()).available;
+ const nsfw=await finish(cookie,(await start()).body.generationId);
+ ok('A Higgsfield NSFW answer marks the video refused, returns the credits and adds a strike',nsfw.status==='refused'&&(await balance()).available===nsfwStart&&(await request('/api/me',{cookie})).body.user.contentStrikes===1);
+ await request('/api/admin/users/'+owner,{method:'PATCH',cookie,data:{unblock:true}});
+ higgsfield.outcome('kling-video/v3.0-turbo/image-to-video','failed');
+ const failed=await finish(cookie,(await start()).body.generationId);
+ ok('A failed Higgsfield job fails the video and returns the credits without a strike',failed.status==='failed'&&(await balance()).available===nsfwStart&&(await request('/api/me',{cookie})).body.user.contentStrikes===0);
+ higgsfield.outcome('bytedance/seedream/v4/edit','no-credits');
+ const broke=await finish(cookie,(await start()).body.generationId);
+ ok('An empty Higgsfield account fails the video with a clear reason for the admin and returns the credits',broke.status==='failed'&&(await balance()).available===nsfwStart&&(await db.prepare('SELECT internal_error FROM generations WHERE id=?').bind(broke.id).first()).internal_error.includes('run out of credits'));
+ higgsfield.outcome('bytedance/seedream/v4/edit','completed');higgsfield.outcome('kling-video/v3.0-turbo/image-to-video','completed');
  const rep={...second,id:'rep_video',provider:'replicate',model:'studio/fixture',inputs:{image:'{{user_image_1}}'}};
  await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:[rep]}});const repOrder=(await start()).body;ok('Replicate adapter completes an asynchronous video prediction',(await finish(cookie,repOrder.generationId)).status==='completed');
  await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:[{...second,id:'unsafe_video',inputs:{image:'{{user_image_1}}'},settings:{unsafe:true}}]}});const before=(await balance()).available;const unsafe=(await start()).body;ok('Unsafe provider output fails without fetching the private host',(await finish(cookie,unsafe.generationId)).status==='failed'&&!requests.some(r=>r.host==='127.0.0.1'));ok('The failed provider job returns its credits',(await balance()).available===before);

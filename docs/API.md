@@ -103,7 +103,7 @@ Admin record lists accept `page` (1–100000), `limit` (1–100), `search`, `sta
 | Method | Route | Behavior |
 | --- | --- | --- |
 | GET | `/api/admin/connections` | Admin-only presence/source flags, sender address and setup readiness. No secret values. |
-| PATCH | `/api/admin/connections` | `{currentPassword,values:{FAL_KEY,...},remove:[]}`. Allowed fields: POK_KEY_ID, POK_KEY_SECRET, POK_MERCHANT_ID, POK_ENVIRONMENT (`staging` or `production`), FAL_KEY, REPLICATE_API_TOKEN, RESEND_API_KEY, MAIL_FROM. Authenticated encryption at rest; env bindings take precedence. |
+| PATCH | `/api/admin/connections` | `{currentPassword,values:{FAL_KEY,...},remove:[]}`. Allowed fields: POK_KEY_ID, POK_KEY_SECRET, POK_MERCHANT_ID, POK_ENVIRONMENT (`staging` or `production`), HIGGSFIELD_API_KEY, HIGGSFIELD_API_SECRET, FAL_KEY, REPLICATE_API_TOKEN, RESEND_API_KEY, MAIL_FROM. Authenticated encryption at rest; env bindings take precedence. |
 | POST | `/api/admin/workflows/preset` | Admin-only preset definition from name, slug, description, requiredImageCount, aspectRatio, duration (5 or 10), estimatedCost. Returns editable private workflow and hidden prompt; performs no inference. |
 
 In production, buying credits returns 503 until payments, email, an AI provider, the dispatcher and public access are ready; starting a creation returns 503 until an AI provider, the dispatcher and public access are ready. The test checkout and mock jobs are disabled with DEMO_MODE=false. The ordinary provider and payment adapters use either environment-managed keys or encrypted dashboard connections.

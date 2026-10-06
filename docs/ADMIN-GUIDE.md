@@ -10,7 +10,7 @@ Hap `/login?next=/admin` dhe përdor llogarinë e administratorit. Pas hyrjes, n
 2. Te **Template details**, vendos emrin, përshkrimin, kategorinë, numrin e fotove, kohëzgjatjen dhe formatin.
 3. Ngarko posterin dhe videon preview. Përdor një rezultat real të provuar si shembull për klientët. Të gjithë skedarët e preview-ve shfaqen te Admin → Media library, bashkë me template-t që i përdorin. Një skedar që nuk e përdor më asnjë template fshihet automatikisht; një skedar i ngarkuar por i paruajtur në template fshihet pas 24 orësh.
 4. Cakto **Credit cost**: sa kredite shpenzon klienti për një video. **Estimated AI cost** përdoret vetëm për llogaritjen tënde të fitimit; paneli **Credits & economics** tregon vlerën e një videoje sipas paketave aktive dhe marzhin.
-5. Hape skedën **AI workflow** dhe kliko **Use photo-to-video workflow**. Ky konfigurim kërkon fal.ai dhe mbështet video 5 ose 10 sekonda.
+5. Hape skedën **AI workflow** dhe kliko **Use photo-to-video workflow**. Ky konfigurim përdor Higgsfield (Seedream për foton, Kling 3.0 Turbo për videon) dhe mbështet video 5 ose 10 sekonda.
 6. Shkruaj **Your hidden prompt**. Hapi i parë e përdor për të krijuar skenën nga fotoja; hapi i dytë animon imazhin e dalë. Klienti nuk i sheh këto fusha.
 7. Ruaje draftin ose kliko **Publish template**. Ndryshimet e kostos në kredite vlejnë për videot e reja; videot që janë duke u krijuar ruajnë koston me të cilën nisën.
 
@@ -31,7 +31,7 @@ Butoni i konfigurimit të gatshëm lidh foton me modelin. Nuk duhet të shkruash
 Te **Admin → Connections** (`/admin/connections`):
 
 - POK key ID, key secret dhe merchant ID për pagesat. **POK environment** mbetet `staging` (pagesa test) derisa të kesh provuar gjithçka; pastaj zgjidh `production` për para reale.
-- fal.ai API key për workflow-n e gatshëm, ose Replicate për një workflow tjetër.
+- Higgsfield API key ID dhe key secret për workflow-n e gatshëm (fal.ai ose Replicate janë opsionale për workflow të tjera). Vendos edhe një limit shpenzimesh në Higgsfield.
 - Resend key dhe një adresë dërguesi me domain të verifikuar për emailin.
 
 Shkruaj fjalëkalimin e administratorit për të ruajtur. Çelësat ruhen të enkriptuar. Një fushë bosh ruan çelësin ekzistues; opsioni Remove e heq. Mos i dërgo çelësat në chat. Pastaj aktivizo ofruesin te **AI providers**.

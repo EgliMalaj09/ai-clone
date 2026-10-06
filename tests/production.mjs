@@ -5,6 +5,7 @@ import {readFile,readdir,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes,pbkdf2Sync,randomUUID} from 'node:crypto';
 import {fakePok} from './fake-pok.mjs';
+import {fakeHiggsfield} from './fake-higgsfield.mjs';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.resolve('wrangler/package.json'));
 const {Miniflare,Response:MFResponse}=require('miniflare');
@@ -12,28 +13,16 @@ const server=path.resolve('dist/server');
 const modules=(await readdir(server,{recursive:true})).filter(f=>f.endsWith('.js')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:a.localeCompare(b)).map(f=>({type:'ESModule',path:path.join(server,f)}));
 const password=randomBytes(20).toString('hex'),salt=randomBytes(32).toString('hex');
 const env={DEMO_MODE:'false',PUBLIC_SERVICE_ACCESS:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(password,salt,100000,32,'sha256').toString('hex'),REPLICATE_API_TOKEN:'replicate_environment_fixture'};
-const keys={POK_KEY_ID:'pokkey_'+randomBytes(10).toString('hex'),POK_KEY_SECRET:'poksecret_'+randomBytes(20).toString('hex'),POK_MERCHANT_ID:'merchant_'+randomBytes(8).toString('hex'),FAL_KEY:'fal_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test'};
+const keys={POK_KEY_ID:'pokkey_'+randomBytes(10).toString('hex'),POK_KEY_SECRET:'poksecret_'+randomBytes(20).toString('hex'),POK_MERCHANT_ID:'merchant_'+randomBytes(8).toString('hex'),HIGGSFIELD_API_KEY:'hfkey_'+randomBytes(10).toString('hex'),HIGGSFIELD_API_SECRET:'hfsecret_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test'};
 const image=await readFile('public/media/formula-driver.webp'),video=await readFile('public/media/formula-driver.mp4');
-const requests=[],jobs=new Map();let serial=0;
+const requests=[];
+const higgsfield=fakeHiggsfield({keyId:keys.HIGGSFIELD_API_KEY,keySecret:keys.HIGGSFIELD_API_SECRET,Response:MFResponse,image,video});
 const pok=fakePok({keyId:keys.POK_KEY_ID,keySecret:keys.POK_KEY_SECRET,merchantId:keys.POK_MERCHANT_ID,Response:MFResponse});
 const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:env,d1Databases:{DB:'production-fixture'},r2Buckets:['BUCKET'],cf:false,outboundService:async req=>{
   const u=new URL(req.url);requests.push({host:u.hostname,path:u.pathname});
   if(u.hostname==='api.resend.com'){assert.equal(req.headers.get('authorization'),'Bearer '+keys.RESEND_API_KEY);return MFResponse.json({id:'local_mail_fixture'});}
   if(pok.matches(u)){assert.equal(u.hostname,'api-staging.pokpay.io','Staging is the default POK environment');return pok.handle(req);}
-  if(u.hostname==='queue.fal.run'){
-    assert.equal(req.headers.get('authorization'),'Key '+keys.FAL_KEY);
-    if(req.method==='POST'){
-      const id='job_'+(++serial),input=await req.json();jobs.set(id,{input,image:u.pathname.endsWith('/edit')});
-      return MFResponse.json({request_id:id,status_url:'https://queue.fal.run/status/'+id,response_url:'https://queue.fal.run/result/'+id,cancel_url:'https://queue.fal.run/cancel/'+id});
-    }
-    if(u.pathname.startsWith('/status/'))return MFResponse.json({status:'COMPLETED'});
-    const job=jobs.get(u.pathname.split('/').at(-1));assert(job);
-    return MFResponse.json(job.image?{images:[{url:'https://storage.googleapis.com/falserverless/fixture.webp'}]}:{video:{url:'https://v3.fal.media/fixture.mp4'}});
-  }
-  if(u.hostname==='storage.googleapis.com'||u.hostname==='v3.fal.media'){
-    const bytes=u.pathname.endsWith('.webp')?image:video;
-    return new MFResponse(bytes,{headers:{'Content-Length':String(bytes.length)}});
-  }
+  if(higgsfield.matches(u))return higgsfield.handle(req);
   throw new Error('Unexpected external request');
 }});
 const checks=[];
@@ -52,7 +41,7 @@ try{
   await request('/api/auth/register',{method:'POST',data:{name:'Member',email:'member@studio.test',password:'Member-password-123'},expected:503});
   ok('Registration is explicitly closed until email is configured',!(await db.prepare("SELECT id FROM users WHERE email='member@studio.test'").first()));
   const template=(await request('/api/admin/templates/tpl_formula-driver',{cookie:admin})).body.template;
-  ok('Production seed uses actual image and video endpoints',template.workflow.length===2&&template.workflow.every(s=>s.provider==='fal')&&template.workflow[1].model==='fal-ai/kling-video/v2.6/pro/image-to-video');
+  ok('Production seed uses the Higgsfield image and video workflow',template.workflow.length===2&&template.workflow.every(s=>s.provider==='higgsfield')&&template.workflow[1].model==='kling-video/v3.0-turbo/image-to-video');
   const page=await request('/template/formula-driver');
   ok('Closed creation is visible before an upload',page.text.includes('Creation is currently closed.')&&!page.text.includes('Demo studio'));
   const save=(values,extra={})=>request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values,...extra}});
@@ -61,20 +50,20 @@ try{
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{POK_ENVIRONMENT:'live'}},expected:400});ok('The POK environment accepts only staging or production');
   await save(keys);
   const stored=(await db.prepare("SELECT key,value FROM app_settings WHERE key LIKE 'connection.%'").all()).results;
-  ok('Stored connections do not contain plaintext secrets',stored.length===6&&Object.values(keys).every(secret=>!JSON.stringify(stored).includes(secret)));
+  ok('Stored connections do not contain plaintext secrets',stored.length===7&&Object.values(keys).every(secret=>!JSON.stringify(stored).includes(secret)));
   let status=await request('/api/admin/connections',{cookie:admin});
-  ok('Status returns presence, not keys or ciphertext',status.body.fields.FAL_KEY.configured&&Object.values(keys).filter(k=>k!==keys.MAIL_FROM&&k!==keys.POK_MERCHANT_ID).every(k=>!status.text.includes(k))&&!status.text.includes('"iv"'));
+  ok('Status returns presence, not keys or ciphertext',status.body.fields.HIGGSFIELD_API_KEY.configured&&Object.values(keys).filter(k=>k!==keys.MAIL_FROM&&k!==keys.POK_MERCHANT_ID).every(k=>!status.text.includes(k))&&!status.text.includes('"iv"'));
   ok('POK staging is reported as test payments',status.body.readiness.paymentMode==='test'&&status.body.fields.POK_ENVIRONMENT.value==='staging');
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{REPLICATE_API_TOKEN:'replacement_token_not_allowed'}},expected:409});ok('Environment-managed keys cannot be overwritten from the dashboard');
-  const original=stored.find(r=>r.key==='connection.FAL_KEY').value;
-  await save({FAL_KEY:keys.FAL_KEY});
-  ok('Repeated saves use fresh authenticated-encryption nonces',(await db.prepare("SELECT value FROM app_settings WHERE key='connection.FAL_KEY'").first()).value!==original);
+  const original=stored.find(r=>r.key==='connection.HIGGSFIELD_API_KEY').value;
+  await save({HIGGSFIELD_API_KEY:keys.HIGGSFIELD_API_KEY});
+  ok('Repeated saves use fresh authenticated-encryption nonces',(await db.prepare("SELECT value FROM app_settings WHERE key='connection.HIGGSFIELD_API_KEY'").first()).value!==original);
   const member=(await request('/api/auth/register',{method:'POST',data:{name:'Member',email:'member@studio.test',password:'Member-password-123'},expected:201}));
   ok('Configured production registration requires email verification',member.body.verificationRequired&&!member.body.user.emailVerified&&requests.some(r=>r.host==='api.resend.com'));
   await request('/api/admin/connections',{cookie:member.cookie,expected:403});ok('Members cannot inspect connection configuration');
-  await request('/api/admin/connections',{method:'PATCH',cookie:member.cookie,data:{currentPassword:password,values:{FAL_KEY:keys.FAL_KEY}},expected:403});ok('Members cannot write connections even with a supplied password');
+  await request('/api/admin/connections',{method:'PATCH',cookie:member.cookie,data:{currentPassword:password,values:{HIGGSFIELD_API_KEY:keys.HIGGSFIELD_API_KEY}},expected:403});ok('Members cannot write connections even with a supplied password');
   const preset=(await request('/api/admin/workflows/preset',{method:'POST',cookie:admin,data:{...template,requiredImageCount:2}})).body;
-  ok('Preset maps two reference photos and chains its generated image',preset.workflow[0].settings.image_urls.length===2&&preset.workflow[1].inputs.start_image_url==='{{prepared_image}}'&&preset.workflow[0].prompt==='');
+  ok('Preset maps two reference photos and chains its generated image',preset.workflow[0].settings.image_urls.length===2&&preset.workflow[1].inputs.image_url==='{{prepared_image}}'&&preset.workflow.every(s=>s.provider==='higgsfield')&&preset.workflow[0].prompt==='');
   const owner=(await request('/api/me',{cookie:admin})).body.user.id;
   await bucket.put('uploads/fixture',image);
   await db.prepare('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,created_at) VALUES (?,?,?,?,?,?,?)').bind('up_fixture',owner,'uploads/fixture','image/webp',image.length,'photo.webp',Date.now()).run();
@@ -83,14 +72,14 @@ try{
   const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Launch pack',credits:1000,prices:{EUR:999},active:true},expected:201})).body.package;
   await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:503});
   ok('Missing service readiness blocks generation and credit sales before anything is charged',(await db.prepare('SELECT COUNT(*) AS n FROM credit_holds').first()).n===0&&(await db.prepare('SELECT COUNT(*) AS n FROM credit_purchases').first()).n===0&&!requests.some(r=>pok.matches(new URL('https://'+r.host))));
-  await request('/api/admin/providers/fal',{method:'PATCH',cookie:admin,data:{enabled:true}});
+  await request('/api/admin/providers/higgsfield',{method:'PATCH',cookie:admin,data:{enabled:true}});
   await mf.dispatchFetch(env.APP_ORIGIN+'/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+env.QUEUE_SECRET}});
   ok('Enabled provider and external dispatcher complete configuration',(await request('/api/admin/connections',{cookie:admin})).body.readiness.ready);
   const mailCipher=(await db.prepare("SELECT value FROM app_settings WHERE key='connection.RESEND_API_KEY'").first()).value;
-  await db.prepare("UPDATE app_settings SET value=? WHERE key='connection.FAL_KEY'").bind(mailCipher).run();
+  await db.prepare("UPDATE app_settings SET value=? WHERE key='connection.HIGGSFIELD_API_KEY'").bind(mailCipher).run();
   status=await request('/api/admin/connections',{cookie:admin});
-  ok('Ciphertext cannot be transplanted to another credential field',!status.body.fields.FAL_KEY.configured&&!status.body.readiness.ready);
-  await save({FAL_KEY:keys.FAL_KEY});ok('An administrator can repair an unreadable saved connection',(await request('/api/admin/connections',{cookie:admin})).body.fields.FAL_KEY.configured);
+  ok('Ciphertext cannot be transplanted to another credential field',!status.body.fields.HIGGSFIELD_API_KEY.configured&&!status.body.readiness.ready);
+  await save({HIGGSFIELD_API_KEY:keys.HIGGSFIELD_API_KEY});ok('An administrator can repair an unreadable saved connection',(await request('/api/admin/connections',{cookie:admin})).body.fields.HIGGSFIELD_API_KEY.configured);
   const bought=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
   const pokOrder=pok.last();
   ok('Production credit sales open a POK order',bought.url===pokOrder.self.confirmUrl&&pokOrder.merchantCustomReference===bought.purchaseId);
@@ -103,8 +92,8 @@ try{
   while(Date.now()<until){await request('/api/queue/tick',{method:'POST',cookie:admin,data:{},expected:null});generation=(await request('/api/generations/'+order.generationId,{cookie:admin})).body.generations[0];if(['completed','failed'].includes(generation.status))break;await new Promise(r=>setTimeout(r,700));}
   ok('Encrypted connections power a paid credit pack and the actual preset adapters',generation.status==='completed');
   ok('The delivered video spends the template credits',(await request('/api/credits',{cookie:admin})).body.available===1000-template.creditCost);
-  const submitted=[...jobs.values()];
-  ok('Hidden prompt and signed photos are supplied only to the provider',submitted[0].input.prompt===template.hiddenPrompt&&submitted[0].input.image_urls[0].includes('signature=')&&submitted[1].input.start_image_url.includes('/api/media/asset_'));
+  const submitted=higgsfield.submitted.map(j=>j);
+  ok('Hidden prompt and signed photos are supplied only to the provider',submitted[0].input.prompt===template.hiddenPrompt&&submitted[0].input.image_urls[0].includes('signature=')&&submitted[1].input.image_url.includes('/api/media/asset_')&&submitted[0].model==='bytedance/seedream/v4/edit'&&submitted[1].model==='kling-video/v3.0-turbo/image-to-video');
   const catalog=await request('/api/templates/formula-driver');
   ok('Public template payload excludes private prompt, workflow, cost and keys',!catalog.text.includes(template.hiddenPrompt)&&!catalog.text.includes('workflow')&&!catalog.text.includes('estimatedCost')&&Object.values(keys).every(k=>!catalog.text.includes(k)));
   const download=await mf.dispatchFetch(env.APP_ORIGIN+'/api/media/'+generation.assetId+'?download=1',{headers:{cookie:admin}});
@@ -115,8 +104,8 @@ try{
   await db.prepare("UPDATE app_settings SET value='1' WHERE key='queue_dispatch_heartbeat'").run();
   ok('A stale dispatcher closes new credit sales',(await request('/api/admin/connections',{cookie:admin})).body.readiness.ready===false);
   await request('/api/generations',{method:'POST',cookie:admin,data:{...creation,idempotencyKey:randomUUID()},expected:503});ok('A stale dispatcher also closes new generations');
-  await save({}, {remove:['FAL_KEY']});
-  ok('Removing a connection actually deletes its encrypted record',!(await db.prepare("SELECT key FROM app_settings WHERE key='connection.FAL_KEY'").first()));
+  await save({}, {remove:['HIGGSFIELD_API_KEY']});
+  ok('Removing a connection actually deletes its encrypted record',!(await db.prepare("SELECT key FROM app_settings WHERE key='connection.HIGGSFIELD_API_KEY'").first()));
   const audit=(await db.prepare('SELECT * FROM audit_logs').all()).results;
   ok('Audit records contain no passwords or provider keys',![password,...Object.values(keys)].some(k=>JSON.stringify(audit).includes(k)));
   await mkdir('test-results',{recursive:true});await writeFile('test-results/production.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,network:'All external responses use local fixtures. No actual live payments or AI generations were made.',checks},null,2));

@@ -9,7 +9,7 @@ export const now=()=>Date.now();
 export const uid=(prefix='')=>prefix+crypto.randomUUID().replace(/-/g,'');
 // Text variables and secrets. Bindings such as DB and BUCKET are only checked for presence through this view.
 export const runtime=()=>env as unknown as Record<string,string|undefined>;
-export function config(){const e=runtime();const demo=e.DEMO_MODE==='true';return {demo,origin:e.APP_ORIGIN||'http://terminal.local:4173',secret:e.APP_SECRET||'',pokKeyId:e.POK_KEY_ID||'',pokKeySecret:e.POK_KEY_SECRET||'',pokMerchantId:e.POK_MERCHANT_ID||'',pokEnvironment:e.POK_ENVIRONMENT||'',falKey:e.FAL_KEY||'',replicateKey:e.REPLICATE_API_TOKEN||'',mailKey:e.RESEND_API_KEY||'',mailFrom:e.MAIL_FROM||'',cronSecret:e.QUEUE_SECRET||''};}
+export function config(){const e=runtime();const demo=e.DEMO_MODE==='true';return {demo,origin:e.APP_ORIGIN||'http://terminal.local:4173',secret:e.APP_SECRET||'',pokKeyId:e.POK_KEY_ID||'',pokKeySecret:e.POK_KEY_SECRET||'',pokMerchantId:e.POK_MERCHANT_ID||'',pokEnvironment:e.POK_ENVIRONMENT||'',falKey:e.FAL_KEY||'',higgsfieldKey:e.HIGGSFIELD_API_KEY||'',higgsfieldSecret:e.HIGGSFIELD_API_SECRET||'',replicateKey:e.REPLICATE_API_TOKEN||'',mailKey:e.RESEND_API_KEY||'',mailFrom:e.MAIL_FROM||'',cronSecret:e.QUEUE_SECRET||''};}
 export function db():D1Database{if(!env.DB)throw new Error('Database unavailable');return env.DB;}
 export const stmt=(sql:string,...args:unknown[])=>db().prepare(sql).bind(...args);
 export const one=async(sql:string,...args:unknown[]):Promise<Row|null>=>stmt(sql,...args).first<Row>();
@@ -33,7 +33,7 @@ let seeded=false;
 export async function ensureSeed(){if(seeded)return;const marker=await one("SELECT value FROM app_settings WHERE key='seed_v1'");if(!marker){
  // Seed DML only. Schema is exclusively owned by checked-in Drizzle migrations.
  const data=seedTemplates();for(const t of data)if(!await one('SELECT id FROM templates WHERE id=?',t.id))await batch(templateStatements(t));
- await batch([stmt("INSERT OR IGNORE INTO app_settings (key,value) VALUES ('seed_v1','true')"),stmt("INSERT OR IGNORE INTO app_settings (key,value) VALUES ('auto_refund','true')"),...['mock','fal','replicate'].map(id=>stmt('INSERT OR IGNORE INTO provider_configurations (id,name,enabled,settings,updated_at) VALUES (?,?,?,?,?)',id,id==='mock'?'Development simulator':id==='fal'?'fal.ai':'Replicate',id==='mock'?1:0,'{}',now()))]);
+ await batch([stmt("INSERT OR IGNORE INTO app_settings (key,value) VALUES ('seed_v1','true')"),stmt("INSERT OR IGNORE INTO app_settings (key,value) VALUES ('auto_refund','true')"),...['mock','higgsfield','fal','replicate'].map(id=>stmt('INSERT OR IGNORE INTO provider_configurations (id,name,enabled,settings,updated_at) VALUES (?,?,?,?,?)',id,id==='mock'?'Development simulator':id==='higgsfield'?'Higgsfield':id==='fal'?'fal.ai':'Replicate',id==='mock'?1:0,'{}',now()))]);
  }
  if(!config().demo&&!await one("SELECT value FROM app_settings WHERE key='live_workflows_v1'")){
   // Upgrade only untouched starter workflows. Preserve custom templates, prices and edited prompts.

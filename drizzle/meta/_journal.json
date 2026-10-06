@@ -43,6 +43,13 @@
       "when": 1791296723683,
       "tag": "0005_slippery_thaddeus_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791302611062,
+      "tag": "0006_higgsfield_provider",
+      "breakpoints": true
     }
   ]
 }

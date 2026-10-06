@@ -7,7 +7,7 @@ import {api,useAPI,Busy,ErrorBox,Loading,Field} from './shared';
 
 const groups=[
   {name:'Payments',description:'Sell credit packs through POK. Copy the SDK key and merchant ID from your POK merchant account.',href:'https://pokpay.io',link:'Open POK',fields:[['POK_KEY_ID','POK key ID','Paste your key ID'],['POK_KEY_SECRET','POK key secret','Paste your key secret'],['POK_MERCHANT_ID','POK merchant ID','Paste your merchant ID'],['POK_ENVIRONMENT','POK environment','staging']]},
-  {name:'AI generation',description:'The ready-made photo-to-video workflow uses fal.ai. Replicate is available for custom workflows.',href:'https://fal.ai/dashboard/keys',link:'Open fal.ai',fields:[['FAL_KEY','fal.ai API key','Paste your complete API key'],['REPLICATE_API_TOKEN','Replicate API token · optional','Paste your token']]},
+  {name:'AI generation',description:'The ready-made photo-to-video workflow uses Higgsfield. fal.ai and Replicate are available for custom workflows.',href:'https://cloud.higgsfield.ai',link:'Open Higgsfield',fields:[['HIGGSFIELD_API_KEY','Higgsfield API key ID','Paste your key ID'],['HIGGSFIELD_API_SECRET','Higgsfield API key secret','Paste your key secret'],['FAL_KEY','fal.ai API key · optional','Paste your complete API key'],['REPLICATE_API_TOKEN','Replicate API token · optional','Paste your token']]},
   {name:'Account email',description:'Send account verification and password reset links. Use a sending domain you have verified in Resend.',href:'https://resend.com/api-keys',link:'Open Resend',fields:[['RESEND_API_KEY','Resend sending API key','re_…'],['MAIL_FROM','Verified sender address','hello@mail.yourdomain.com']]},
 ];
 export default function Connections(){
@@ -36,7 +36,7 @@ export default function Connections(){
     <section className="panel"><div className="panel-heading"><h2>Before opening credit sales</h2><a className="text-link" href="/admin/operations">Open operations<ArrowUpRight size={15}/></a></div>{[
       ['POK payments',readiness.payments,'Save the POK key ID, key secret and merchant ID.'],
       ['Email sender',readiness.email,'Connect Resend with an address on a verified domain.'],
-      ['AI provider',readiness.ai,'Save a fal.ai key, then enable fal.ai under AI providers.'],
+      ['AI provider',readiness.ai,'Save the Higgsfield key ID and secret, then enable Higgsfield under AI providers.'],
       ['Background processing',readiness.dispatcher,'Run the queue dispatcher continuously. Operations shows its last heartbeat.'],
       ['Public service access',readiness.publicAccess,'The hosting owner must enable public access so POK and AI providers can reach the app. After that, set PUBLIC_SERVICE_ACCESS=true in the hosting environment.'],
     ].map(([label,ready,note])=><div className="service-check" key={String(label)}>{ready?<CheckCircle2 size={19} className="profit-positive"/>:<AlertCircle size={19} className="readiness-warning"/>}<div><strong>{label}</strong><small>{note}</small></div></div>)}<p className="panel-note">Configuration checks do not verify account balances, model quality, or successful provider calls.</p></section>

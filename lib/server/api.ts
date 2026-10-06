@@ -1,5 +1,5 @@
 import {liveWorkflow} from './workflow-presets';
-import {assertGeneratable,connectionStatus,publicAvailability,serviceConfig,updateConnections} from './connections';
+import {assertGeneratable,connectionStatus,providerConfigured,publicAvailability,serviceConfig,updateConnections} from './connections';
 import {ZodError,z} from 'zod';
 import {jsonBody,pageQuery,readUploadedFile} from './http';
 import {cleanImage} from './image-clean';
@@ -244,8 +244,8 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='DELETE'){const u=await one('SELECT * FROM users WHERE id=?',p[2]);must(u,'User not found.',404);await deleteAccount(safeUser(u));await audit(user.id,'user.delete',p[2]);return json({ok:true});}
  }
  if(p[1]==='providers'){
-  if(method==='GET'){const list=await all('SELECT * FROM provider_configurations');const c=await serviceConfig();return json({providers:list.map(p=>({...p,configured:p.id==='mock'?c.demo:p.id==='fal'?!!c.falKey:!!c.replicateKey})),demo:c.demo});}
-  if(method==='PATCH'){const b=await body(req);const enabled=z.boolean().parse(b.enabled);must(['mock','fal','replicate'].includes(p[2]),'Unknown provider.');await run('UPDATE provider_configurations SET enabled=?,updated_at=? WHERE id=?',Number(enabled),now(),p[2]);await audit(user.id,'provider.update',p[2]);return json({ok:true});}
+  if(method==='GET'){const list=await all('SELECT * FROM provider_configurations');const c=await serviceConfig();return json({providers:list.map(p=>({...p,configured:providerConfigured(p.id,c)})),demo:c.demo});}
+  if(method==='PATCH'){const b=await body(req);const enabled=z.boolean().parse(b.enabled);must(['mock','higgsfield','fal','replicate'].includes(p[2]),'Unknown provider.');await run('UPDATE provider_configurations SET enabled=?,updated_at=? WHERE id=?',Number(enabled),now(),p[2]);await audit(user.id,'provider.update',p[2]);return json({ok:true});}
  }
  if(p[1]==='settings'){
   if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret});}

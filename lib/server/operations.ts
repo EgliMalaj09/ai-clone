@@ -107,7 +107,7 @@ export async function operationsSummary(){
     {name:'Application signing key',ready:c.secret.length>=32,detail:c.secret.length>=32?'Configured':'Missing'},
     {name:'Payments',ready:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,detail:c.demo?'Test credit checkout active':c.pokKeyId&&c.pokKeySecret&&c.pokMerchantId?`POK keys configured (${c.pokEnvironment==='production'?'real payments':'staging test payments'}); verify a purchase end to end`:'POK key ID, key secret or merchant ID missing'},
     {name:'Transactional email',ready:!!c.mailKey&&!!c.mailFrom,detail:c.mailKey&&c.mailFrom?'Sender configured; verify delivery with your email service':'Email credentials or sender missing'},
-    {name:'AI generation',ready:!!c.falKey||!!c.replicateKey,detail:c.demo?'Sample video simulator active':c.falKey||c.replicateKey?'Provider credentials configured':'Provider credentials missing'},
+    {name:'AI generation',ready:!!(c.higgsfieldKey&&c.higgsfieldSecret)||!!c.falKey||!!c.replicateKey,detail:c.demo?'Sample video simulator active':c.higgsfieldKey&&c.higgsfieldSecret?'Higgsfield credentials configured; watch your Higgsfield credit balance':c.falKey||c.replicateKey?'Provider credentials configured':'Higgsfield key ID and secret missing'},
     {name:'Credit ledger',ready:ledger.ok,detail:ledger.ok?(ledger.negative.length?ledger.negative.length+' account(s) below zero after a reversed payment':'Balances match the ledger'):'Ledger mismatch: review Admin → Credits'},
     {name:'External queue dispatcher',ready:!!c.cronSecret&&Number(dispatch?.value)>now()-180000,detail:dispatch?.value?'Last external tick: '+new Date(Number(dispatch.value)).toISOString():'No external dispatcher call recorded'},
   ];

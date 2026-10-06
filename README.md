@@ -38,7 +38,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs typecheck, lint, build and all 
 
 `pnpm test:security` runs the regression suite for concurrent password reset, session rotation, request bounds, workflow validation, credit pack checkout retries, webhook ordering, payment reversals, the generation deadline, operational reporting and data export. POK HTTP responses come from a local fake POK; no financial transaction is executed.
 
-`pnpm test:providers` verifies the Fal and Replicate adapters, private R2 ingestion, multi-step signed inputs, unsafe-output blocking and credit charging/returns using local HTTP fixtures.
+`pnpm test:providers` verifies the Higgsfield, Fal and Replicate adapters (including Higgsfield NSFW refusals and an empty Higgsfield account), private R2 ingestion, multi-step signed inputs, unsafe-output blocking and credit charging/returns using local HTTP fixtures.
 
 `pnpm test:credits` checks the credits ledger and packs: welcome credits, admin adjustments, idempotency, simultaneous spending, reconciliation, the demo checkout, and (in production mode with a fake POK) forged and duplicate webhooks, partial captures, wrong amounts, admin reversals, expired orders and the background check for lost webhooks.
 
