@@ -17,7 +17,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased">{children}</body>
+      {/* Browser extensions (e.g. ColorZilla) add attributes to <body> before React loads; ignore those differences. */}
+      <body className="antialiased" suppressHydrationWarning>{children}</body>
     </html>
   );
 }
