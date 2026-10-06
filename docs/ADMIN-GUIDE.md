@@ -8,7 +8,7 @@ Hap `/login?next=/admin` dhe përdor llogarinë e administratorit. Pas hyrjes, n
 
 1. Hap **Admin → Templates → New template** (`/admin/templates/new`).
 2. Te **Template details**, vendos emrin, përshkrimin, kategorinë, numrin e fotove, kohëzgjatjen dhe formatin.
-3. Ngarko posterin dhe videon preview. Përdor një rezultat real të provuar si shembull për klientët.
+3. Ngarko posterin dhe videon preview. Përdor një rezultat real të provuar si shembull për klientët. Të gjithë skedarët e preview-ve shfaqen te Admin → Media library, bashkë me template-t që i përdorin. Një skedar që nuk e përdor më asnjë template fshihet automatikisht; një skedar i ngarkuar por i paruajtur në template fshihet pas 24 orësh.
 4. Cakto **Selling price**. **Estimated AI cost** përdoret vetëm për llogaritjen tënde të fitimit.
 5. Hape skedën **AI workflow** dhe kliko **Use photo-to-video workflow**. Ky konfigurim kërkon fal.ai dhe mbështet video 5 ose 10 sekonda.
 6. Shkruaj **Your hidden prompt**. Hapi i parë e përdor për të krijuar skenën nga fotoja; hapi i dytë animon imazhin e dalë. Klienti nuk i sheh këto fusha.

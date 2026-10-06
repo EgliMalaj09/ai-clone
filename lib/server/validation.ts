@@ -21,7 +21,7 @@ export const templateSchema=z.object({id:z.string().optional(),name:z.string().t
 export const authSchema=z.object({email:z.string().trim().email().max(254).transform(s=>s.toLowerCase()),password:z.string().min(10,'Use at least 10 characters.').max(128),name:z.string().trim().min(2).max(80).optional()});
 export const checkoutSchema=z.object({templateId:z.string().max(150),uploadIds:z.array(z.string().max(100)).min(1).max(4),idempotencyKey:z.string().uuid(),expectedPrice:z.number().int(),consent:z.literal(true)});
 
-/** Preview assets are deliberately public. Personal uploads cannot be published by path. */
+/** Preview assets are deliberately public. Only studio media can be published; personal uploads are never reachable here. */
 export async function validateTemplateMedia(t:{thumbnail:string;previewVideo:string;previewImages:string[]}){
  const bundled=new Set(seedTemplates().flatMap(x=>[x.thumbnail,x.previewVideo,...x.previewImages]));
  for(const [url,kind] of [[t.thumbnail,'image'],[t.previewVideo,'video'],...t.previewImages.map(u=>[u,'image'])]){
@@ -30,8 +30,8 @@ export async function validateTemplateMedia(t:{thumbnail:string;previewVideo:str
    must(bundled.has(url),'This bundled preview does not exist. Upload a preview file.');
    must(kind==='video'?url.endsWith('.mp4'):!url.endsWith('.mp4'),'Choose the correct preview media type.');
   }else{
-   const asset=await one('SELECT mime,public FROM user_uploads WHERE id=?',url.split('/').at(-1));
-   must(asset?.public===1,'Only publicly uploaded admin preview media can be used.');
+   const asset=await one('SELECT mime FROM template_media WHERE id=?',url.split('/').at(-1));
+   must(asset,'Only media uploaded for templates can be used. Upload a preview file.');
    must(asset.mime.startsWith(kind+'/'),'Choose the correct preview media type.');
   }
  }

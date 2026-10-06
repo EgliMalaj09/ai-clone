@@ -74,7 +74,7 @@ try{
  await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:admin,data:{...formula,workflow:[{...formula.workflow[0],output:'__proto__'}]},expected:400});ok('Reserved workflow variable names are rejected');
  await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:admin,data:{...formula,thumbnail:'/media/not-a-real-preview.webp'},expected:400});ok('Templates cannot publish broken bundled preview paths');
  const uploadId='up_security_fixture',storageKey='uploads/security-test/photo';const bytes=await readFile('public/media/formula-driver.webp');await bucket.put(storageKey,bytes);
- await db.prepare('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,public,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(uploadId,user.body.user.id,storageKey,'image/webp',bytes.length,'photo.webp',0,Date.now()).run();
+ await db.prepare('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,created_at) VALUES (?,?,?,?,?,?,?)').bind(uploadId,user.body.user.id,storageKey,'image/webp',bytes.length,'photo.webp',Date.now()).run();
  await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:admin,data:{...formula,thumbnail:'/api/media/'+uploadId},expected:400});ok('Admin preview fields cannot expose private user uploads');
  const key=randomUUID();const checkout=await request('/api/checkout',{method:'POST',cookie,data:{templateId:formula.id,expectedPrice:299,uploadIds:[uploadId],consent:true,idempotencyKey:key},expected:201});
  const {orderId,generationId}=checkout.body;const pay=await db.prepare('SELECT * FROM payments WHERE order_id=?').bind(orderId).first();

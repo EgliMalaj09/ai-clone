@@ -38,7 +38,7 @@ export async function accountSecurity(req:Request,path:string[],user:StudioUser)
   if(path[1]==='export'&&req.method==='GET'){
     await rateLimit('account-export:'+user.id,3,3600000);
     const [uploads,generations,orders,favorites]=await Promise.all([
-      all('SELECT id,name,mime,size,created_at FROM user_uploads WHERE user_id=? AND public=0',user.id),
+      all('SELECT id,name,mime,size,created_at FROM user_uploads WHERE user_id=?',user.id),
       all('SELECT id,template_name,status,price,currency,created_at,completed_at FROM generations WHERE user_id=? AND deleted_at IS NULL',user.id),
       all('SELECT id,template_name,amount,currency,status,created_at FROM orders WHERE user_id=?',user.id),
       all('SELECT template_id,created_at FROM favorites WHERE user_id=?',user.id),
@@ -102,7 +102,7 @@ export async function operationsSummary(){
     one("SELECT COUNT(*) AS count FROM orders WHERE status IN ('pending','failed')"),
     one("SELECT value FROM app_settings WHERE key='queue_heartbeat'"),
     one("SELECT value FROM app_settings WHERE key='queue_dispatch_heartbeat'"),
-    one('SELECT (SELECT COALESCE(SUM(size),0) FROM user_uploads)+(SELECT COALESCE(SUM(size),0) FROM generated_assets) AS bytes,(SELECT COUNT(*) FROM user_uploads) AS uploads,(SELECT COUNT(*) FROM generated_assets) AS assets'),
+    one('SELECT (SELECT COALESCE(SUM(size),0) FROM user_uploads)+(SELECT COALESCE(SUM(size),0) FROM generated_assets)+(SELECT COALESCE(SUM(size),0) FROM template_media) AS bytes,(SELECT COUNT(*) FROM user_uploads) AS uploads,(SELECT COUNT(*) FROM generated_assets) AS assets,(SELECT COUNT(*) FROM template_media) AS previews'),
     all('SELECT name,COUNT(*) AS count FROM analytics_events WHERE created_at>=? GROUP BY name ORDER BY count DESC',now()-30*86400000),
     all("SELECT g.id,g.template_name,g.error,g.internal_error,g.completed_at,o.status AS payment_status FROM generations g JOIN orders o ON o.generation_id=g.id WHERE g.status='failed' AND g.deleted_at IS NULL ORDER BY g.completed_at DESC LIMIT 10"),
   ]);

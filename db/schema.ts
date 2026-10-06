@@ -31,8 +31,12 @@ export const templateWorkflowSteps=sqliteTable('template_workflow_steps',{
  id:text('id').primaryKey(),workflowId:text('workflow_id').notNull().references(()=>templateWorkflows.id,{onDelete:'cascade'}),stepOrder:integer('step_order').notNull(),definition:text('definition').notNull(),
 },t=>[uniqueIndex('idx_workflow_step_order').on(t.workflowId,t.stepOrder)]);
 export const uploads=sqliteTable('user_uploads',{
- id:text('id').primaryKey(),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),storageKey:text('storage_key').notNull().unique(),mime:text('mime').notNull(),size:integer('size').notNull(),name:text('name').notNull(),public:integer('public').notNull().default(0),createdAt:integer('created_at').notNull(),
+ id:text('id').primaryKey(),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),storageKey:text('storage_key').notNull().unique(),mime:text('mime').notNull(),size:integer('size').notNull(),name:text('name').notNull(),createdAt:integer('created_at').notNull(),
 },t=>[index('idx_uploads_user').on(t.userId)]);
+// Studio-owned public preview media for templates. Kept apart from customer photos so quotas, privacy and account deletion never mix them.
+export const templateMedia=sqliteTable('template_media',{
+ id:text('id').primaryKey(),storageKey:text('storage_key').notNull().unique(),mime:text('mime').notNull(),size:integer('size').notNull(),name:text('name').notNull(),uploadedBy:text('uploaded_by').references(()=>users.id,{onDelete:'set null'}),createdAt:integer('created_at').notNull(),
+});
 export const generations=sqliteTable('generations',{
  id:text('id').primaryKey(),userId:text('user_id').references(()=>users.id,{onDelete:'set null'}),templateId:text('template_id').references(()=>templates.id,{onDelete:'set null'}),
  templateName:text('template_name').notNull(),templateSlug:text('template_slug').notNull(),thumbnail:text('thumbnail').notNull(),
@@ -40,7 +44,7 @@ export const generations=sqliteTable('generations',{
  workflowSnapshot:text('workflow_snapshot').notNull(),inputIds:text('input_ids').notNull(),context:text('context').notNull().default('{}'),currentStep:integer('current_step').notNull().default(0),
  leaseToken:text('lease_token'),leaseUntil:integer('lease_until').notNull().default(0),nextRunAt:integer('next_run_at').notNull().default(0),attempts:integer('attempts').notNull().default(0),error:text('error'),internalError:text('internal_error'),
  createdAt:integer('created_at').notNull(),startedAt:integer('started_at'),completedAt:integer('completed_at'),deletedAt:integer('deleted_at'),
-},t=>[index('idx_generations_user_date').on(t.userId,t.createdAt),index('idx_generation_queue').on(t.status,t.nextRunAt,t.leaseUntil)]);
+},t=>[index('idx_generations_user_date').on(t.userId,t.createdAt),index('idx_generation_queue').on(t.status,t.nextRunAt,t.leaseUntil),index('idx_generations_thumbnail').on(t.thumbnail)]);
 export const generationSteps=sqliteTable('generation_steps',{
  id:text('id').primaryKey(),generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),stepOrder:integer('step_order').notNull(),type:text('type').notNull(),provider:text('provider').notNull(),model:text('model').notNull(),status:text('status').notNull(),providerJobId:text('provider_job_id'),result:text('result'),error:text('error'),startedAt:integer('started_at').notNull(),completedAt:integer('completed_at'),
 },t=>[uniqueIndex('idx_generation_step_order').on(t.generationId,t.stepOrder)]);

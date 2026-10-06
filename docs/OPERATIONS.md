@@ -45,7 +45,7 @@ Before public launch, replace draft legal pages with your business identity, jur
 
 Migration 0001 adds checkout attempt tracking and revokes older reset links and sessions after recovery hardening. Existing accounts and orders remain intact; sign in again after upgrading. Bootstrap configuration does not reset a password already changed in Account.
 
-Expired auth/session/rate-limit records are cleaned during queue maintenance, at most once per hour. Active uploads are limited to 250 files / 512 MB per account. Large provider results stream to R2 using a known content length; responses without a length are limited to 24 MB. Intermediate asset identities are persisted and signed links are renewed on every workflow submission, including an administrator retry.
+Expired auth/session/rate-limit records are cleaned during queue maintenance, at most once per hour. Active uploads are limited to 250 files / 512 MB per account. Template preview media is stored separately (`template_media`) under a studio-wide limit of 5 GB / 1000 files. A preview is deleted when the last template using it is changed or removed, unless a past creation still uses it as its poster; uploads never saved to a template are swept by the hourly maintenance after 24 hours. Admin → Media library lists every file and where it is used. Large provider results stream to R2 using a known content length; responses without a length are limited to 24 MB. Intermediate asset identities are persisted and signed links are renewed on every workflow submission, including an administrator retry.
 
 
 ## Production setup through the dashboard

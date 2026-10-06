@@ -2,7 +2,7 @@
 
 ## Data and boundaries
 
-The schema in db/schema.ts defines users, external account extension points, sessions, authentication tokens, templates and ordered workflows, uploads, generations and execution steps, output assets, favorites, orders, payments, refunds, provider configuration, application settings, events, rate limits and audit logs. Checked-in Drizzle SQL files are the schema history. Demo content is seeded as runtime DML after migration.
+The schema in db/schema.ts defines users, external account extension points, sessions, authentication tokens, templates and ordered workflows, customer uploads, studio-owned template preview media, generations and execution steps, output assets, favorites, orders, payments, refunds, provider configuration, application settings, events, rate limits and audit logs. Checked-in Drizzle SQL files are the schema history. Demo content is seeded as runtime DML after migration.
 
 Public template responses are explicitly whitelisted: prompts, models, provider settings and internal economics are omitted. Admin authorization is checked on the server for each operation. The immutable generation snapshot protects in-flight purchases from later admin edits. Order idempotency keys, one payment per order, unique generation-step identities and persisted webhook IDs prevent ordinary replay duplication.
 

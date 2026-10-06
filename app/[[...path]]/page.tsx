@@ -15,7 +15,7 @@ export async function generateMetadata({params}:{params:Promise<{path?:string[]}
 export default async function Page({params,searchParams}:{params:Promise<{path?:string[]}>;searchParams:Promise<Record<string,string|undefined>>}){
  const {path=[]}=await params;const query=await searchParams;
  const single=['explore','creations','favorites','orders','account','login','register','forgot-password','reset-password','verify','privacy','terms'];
- const adminSections=['templates','generations','users','orders','payments','providers','settings','operations','activity','connections'];
+ const adminSections=['templates','media','generations','users','orders','payments','providers','settings','operations','activity','connections'];
  const valid=!path.length||path.length===1&&single.includes(path[0])||path.length===2&&['template','checkout'].includes(path[0])||path[0]==='admin'&&(path.length===1||path.length===2&&adminSections.includes(path[1])||path.length===3&&path[1]==='templates');
  if(!valid)notFound();
  const data=await loadPage(path,await headers());
