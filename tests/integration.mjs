@@ -16,7 +16,7 @@ async function request(route,{method='GET',data,cookie,headers={},expected=200}=
 async function upload(cookie,name='photo.webp',bytes){const form=new FormData();form.append('file',new File([bytes||await readFile('public/media/formula-driver.webp')],name,{type:name.endsWith('.txt')?'text/plain':'image/webp'}));return request('/api/uploads',{method:'POST',data:form,cookie,expected:name.endsWith('.txt')?415:201})}
 async function generate(cookie,template,uploadIds,{cost=template.creditCost,key=randomUUID(),expected=201}={}){const payload={templateId:template.id,uploadIds,idempotencyKey:key,expectedCost:cost,consent:true};const r=await request('/api/generations',{method:'POST',cookie,data:payload,expected});return {...r,payload};}
 const balance=async cookie=>(await request('/api/credits',{cookie})).body;
-async function waitDone(cookie,id){const until=Date.now()+26000;const statuses=[];while(Date.now()<until){await request('/api/queue/tick',{method:'POST',cookie,data:{},expected:null});const r=await request('/api/generations/'+id,{cookie});const g=r.body.generations[0];statuses.push(g.status);if(['completed','failed'].includes(g.status))return {g,statuses};await new Promise(r=>setTimeout(r,1100));}throw new Error('Generation did not finish within 26s');}
+async function waitDone(cookie,id){const until=Date.now()+26000;const statuses=[];while(Date.now()<until){await request('/api/queue/tick',{method:'POST',cookie,data:{},expected:null});const r=await request('/api/generations/'+id,{cookie});const g=r.body.generations[0];statuses.push(g.status);if(['completed','failed','refused'].includes(g.status))return {g,statuses};await new Promise(r=>setTimeout(r,1100));}throw new Error('Generation did not finish within 26s');}
 try{
  const db=await mf.getD1Database('DB');const bucket=await mf.getR2Bucket('BUCKET');
  for(const f of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort()){for(const s of (await readFile('drizzle/'+f,'utf8')).split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await db.prepare(s).run();}
@@ -103,6 +103,31 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('Admin renames a customer',(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body.user.name==='Renamed Customer');
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{role:'admin'},expected:400});ok('Customer updates reject unknown fields such as role',true);
  ok('Customer purchases are listed per customer',Array.isArray((await request('/api/admin/users/'+second.body.user.id+'/purchases',{cookie:adminCookie})).body.purchases));
+ // Content refusals (C2): each refusal returns the credits and adds a strike; the third blocks the account until an admin unblocks it.
+ const refuser=await request('/api/auth/register',{method:'POST',data:{name:'Refusal Tester',email:'refusals@studio.test',password:'Test-password-123'},expected:201});const rc=refuser.cookie;
+ await grant(refuser.body.user.id,3000);
+ const traveler=templates.find(t=>t.slug==='time-traveler');
+ const travelerAdmin=(await request('/api/admin/templates/'+traveler.id,{cookie:adminCookie})).body.template;
+ await request('/api/admin/templates/'+traveler.id,{method:'PATCH',cookie:adminCookie,data:{...travelerAdmin,workflow:travelerAdmin.workflow.map(st=>({...st,settings:{...st.settings,simulateRefusal:true}}))}});
+ const refPhoto=new FormData();refPhoto.append('file',new File([await readFile('public/media/formula-driver.webp')],'me.webp',{type:'image/webp'}));
+ const refUpload=(await request('/api/uploads',{method:'POST',cookie:rc,data:refPhoto,expected:201})).body.id;
+ const refuserMe=async()=>(await request('/api/me',{cookie:rc})).body.user;
+ for(let n=1;n<=3;n++){
+  const started=await generate(rc,traveler,[refUpload]);const done=await waitDone(rc,started.body.generationId);
+  ok(`Refusal ${n}: the video is marked refused and its credits are returned`,done.g.status==='refused'&&done.g.creditStatus==='released'&&(await balance(rc)).available===3000);
+  const u=await refuserMe();ok(`Refusal ${n}: the account has ${n} of 3 strikes`,u.contentStrikes===n&&u.blocked===(n===3));
+ }
+ const blockedUpload=new FormData();blockedUpload.append('file',new File([await readFile('public/media/formula-driver.webp')],'me.webp',{type:'image/webp'}));
+ await request('/api/uploads',{method:'POST',cookie:rc,data:blockedUpload,expected:403});
+ await generate(rc,formula,[refUpload],{expected:403});
+ await request('/api/credits/checkout',{method:'POST',cookie:rc,data:{packageId:'pack_any',currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:403});
+ ok('A blocked account cannot upload, create videos or buy credits',true);
+ const refDetail=(await request('/api/admin/users/'+refuser.body.user.id,{cookie:adminCookie})).body;
+ ok('The customer page shows the block, the refused videos and their photos',refDetail.user.blocked_at&&refDetail.user.content_strikes===3&&refDetail.refusals.length===3&&refDetail.refusals[0].photos[0]==='/api/media/'+refUpload&&refDetail.activity.some(a=>a.action==='user.blocked'));
+ await request('/api/admin/users/'+refuser.body.user.id,{method:'PATCH',cookie:adminCookie,data:{unblock:true}});
+ const unblocked=await refuserMe();const again=new FormData();again.append('file',new File([await readFile('public/media/formula-driver.webp')],'me.webp',{type:'image/webp'}));
+ ok('Unblocking resets the strikes and the customer can upload again',unblocked.contentStrikes===0&&!unblocked.blocked&&(await request('/api/uploads',{method:'POST',cookie:rc,data:again,expected:201})).body.id);
+ await request('/api/admin/templates/'+traveler.id,{method:'PATCH',cookie:adminCookie,data:travelerAdmin});
  await request('/api/account',{method:'PATCH',cookie:userCookie,data:{name:'Updated QA'}});ok('Account changes persist',(await request('/api/me',{cookie:userCookie})).body.user.name==='Updated QA');
  await request('/api/account',{method:'PATCH',cookie:userCookie,headers:{origin:'https://evil.test','sec-fetch-site':'cross-site'},data:{name:'Evil'},expected:403});ok('Cross-site mutation blocked',true);
  await request('/api/webhooks/pok?purchase=cp_forged&sig=00',{method:'POST',data:{id:'forged'},expected:400});ok('POK webhook without the studio signature rejected',true);

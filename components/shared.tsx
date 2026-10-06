@@ -30,4 +30,11 @@ export function Pick({value,onChange,options,label}:{value:string;onChange:(v:st
 export function Field({label,hint,children}:{label:string;hint?:string;children:ReactNode}){return <label className="field"><span>{label}</span>{children}{hint&&<small>{hint}</small>}</label>}
 export const date=(n:number)=>new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric'}).format(n);
 export function AccountNav({route}:{route:string}){return <nav className="account-nav">{[['/creations','My creations'],['/favorites','Favorites'],['/credits','Credits'],['/account','Account']].map(([url,name])=><a className={route===url?'active':''} key={url} href={url}>{name}</a>)}</nav>}
+/** Warns about content refusals (C2): a count after the 1st and 2nd, a blocked message after the 3rd. */
+export function ContentStrikeNotice({user}:{user:{contentStrikes:number;blocked:boolean}|null}){
+ if(!user||(!user.blocked&&!user.contentStrikes))return null;
+ return user.blocked
+  ?<div className="error-box" role="alert"><AlertCircle size={19}/><span>Your account can no longer upload photos or create videos because content was refused 3 times. If you think this is a mistake, contact support. <a href="/terms#photos">Photo rules</a></span></div>
+  :<div className="subtle-note readiness-warning" role="status"><strong>Content refused: {user.contentStrikes} of 3.</strong><p>The AI refused content in {user.contentStrikes===1?'one of your videos':'two of your videos'}. After 3 refusals your account can no longer create videos. Follow the <a href="/terms#photos">photo rules</a>.</p></div>;
+}
 export const safeNext=(value?:string)=>value&&value.startsWith('/')&&!value.startsWith('//')&&!value.includes('\\')?value:'/creations';
