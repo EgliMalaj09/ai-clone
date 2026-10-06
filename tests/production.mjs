@@ -3,7 +3,8 @@
 import {createRequire} from 'node:module';
 import {readFile,readdir,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
-import {randomBytes,pbkdf2Sync,createHmac,randomUUID} from 'node:crypto';
+import {randomBytes,pbkdf2Sync,randomUUID} from 'node:crypto';
+import {fakePok} from './fake-pok.mjs';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.resolve('wrangler/package.json'));
 const {Miniflare,Response:MFResponse}=require('miniflare');
@@ -11,19 +12,14 @@ const server=path.resolve('dist/server');
 const modules=(await readdir(server,{recursive:true})).filter(f=>f.endsWith('.js')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:a.localeCompare(b)).map(f=>({type:'ESModule',path:path.join(server,f)}));
 const password=randomBytes(20).toString('hex'),salt=randomBytes(32).toString('hex');
 const env={DEMO_MODE:'false',PUBLIC_SERVICE_ACCESS:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(password,salt,100000,32,'sha256').toString('hex'),REPLICATE_API_TOKEN:'replicate_environment_fixture'};
-const keys={STRIPE_SECRET_KEY:'sk_test_'+randomBytes(20).toString('hex'),STRIPE_WEBHOOK_SECRET:'whsec_'+randomBytes(20).toString('hex'),FAL_KEY:'fal_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test'};
+const keys={POK_KEY_ID:'pokkey_'+randomBytes(10).toString('hex'),POK_KEY_SECRET:'poksecret_'+randomBytes(20).toString('hex'),POK_MERCHANT_ID:'merchant_'+randomBytes(8).toString('hex'),FAL_KEY:'fal_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test'};
 const image=await readFile('public/media/formula-driver.webp'),video=await readFile('public/media/formula-driver.mp4');
-const requests=[],jobs=new Map(),sessions=new Map();let serial=0;
+const requests=[],jobs=new Map();let serial=0;
+const pok=fakePok({keyId:keys.POK_KEY_ID,keySecret:keys.POK_KEY_SECRET,merchantId:keys.POK_MERCHANT_ID,Response:MFResponse});
 const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:env,d1Databases:{DB:'production-fixture'},r2Buckets:['BUCKET'],cf:false,outboundService:async req=>{
   const u=new URL(req.url);requests.push({host:u.hostname,path:u.pathname});
   if(u.hostname==='api.resend.com'){assert.equal(req.headers.get('authorization'),'Bearer '+keys.RESEND_API_KEY);return MFResponse.json({id:'local_mail_fixture'});}
-  if(u.hostname==='api.stripe.com'){
-    assert.equal(req.headers.get('authorization'),'Bearer '+keys.STRIPE_SECRET_KEY);
-    assert.equal(u.pathname,'/v1/checkout/sessions');
-    const form=new URLSearchParams(await req.text()),id='cs_'+(++serial);
-    const session={id,url:'https://checkout.stripe.com/c/'+id,amount_total:Number(form.get('line_items[0][price_data][unit_amount]')),currency:form.get('line_items[0][price_data][currency]'),metadata:{purchase_id:form.get('metadata[purchase_id]')}};
-    sessions.set(id,session);return MFResponse.json(session);
-  }
+  if(pok.matches(u)){assert.equal(u.hostname,'api-staging.pokpay.io','Staging is the default POK environment');return pok.handle(req);}
   if(u.hostname==='queue.fal.run'){
     assert.equal(req.headers.get('authorization'),'Key '+keys.FAL_KEY);
     if(req.method==='POST'){
@@ -62,13 +58,13 @@ try{
   const save=(values,extra={})=>request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values,...extra}});
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,origin:'https://attacker.test',data:{currentPassword:password,values:keys},expected:403});ok('Connection changes reject a cross-site origin');
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:'incorrect-password',values:keys},expected:403});ok('Saving keys requires administrator password reauthentication');
-  await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{STRIPE_SECRET_KEY:'pk_live_invalid'}},expected:400});ok('Publishable payment keys are rejected');
+  await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{POK_ENVIRONMENT:'live'}},expected:400});ok('The POK environment accepts only staging or production');
   await save(keys);
   const stored=(await db.prepare("SELECT key,value FROM app_settings WHERE key LIKE 'connection.%'").all()).results;
-  ok('Stored connections do not contain plaintext secrets',stored.length===5&&Object.values(keys).every(secret=>!JSON.stringify(stored).includes(secret)));
+  ok('Stored connections do not contain plaintext secrets',stored.length===6&&Object.values(keys).every(secret=>!JSON.stringify(stored).includes(secret)));
   let status=await request('/api/admin/connections',{cookie:admin});
-  ok('Status returns presence, not keys or ciphertext',status.body.fields.FAL_KEY.configured&&Object.values(keys).filter(k=>k!==keys.MAIL_FROM).every(k=>!status.text.includes(k))&&!status.text.includes('"iv"'));
-  ok('Stripe test and live modes are distinguished',status.body.readiness.paymentMode==='test');
+  ok('Status returns presence, not keys or ciphertext',status.body.fields.FAL_KEY.configured&&Object.values(keys).filter(k=>k!==keys.MAIL_FROM&&k!==keys.POK_MERCHANT_ID).every(k=>!status.text.includes(k))&&!status.text.includes('"iv"'));
+  ok('POK staging is reported as test payments',status.body.readiness.paymentMode==='test'&&status.body.fields.POK_ENVIRONMENT.value==='staging');
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{REPLICATE_API_TOKEN:'replacement_token_not_allowed'}},expected:409});ok('Environment-managed keys cannot be overwritten from the dashboard');
   const original=stored.find(r=>r.key==='connection.FAL_KEY').value;
   await save({FAL_KEY:keys.FAL_KEY});
@@ -84,9 +80,9 @@ try{
   await db.prepare('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,created_at) VALUES (?,?,?,?,?,?,?)').bind('up_fixture',owner,'uploads/fixture','image/webp',image.length,'photo.webp',Date.now()).run();
   const creation={templateId:template.id,expectedCost:template.creditCost,uploadIds:['up_fixture'],idempotencyKey:randomUUID(),consent:true};
   await request('/api/generations',{method:'POST',cookie:admin,data:creation,expected:503});
-  const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Launch pack',credits:1000,prices:{USD:999},active:true},expected:201})).body.package;
-  await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'USD',idempotencyKey:randomUUID(),consent:true},expected:503});
-  ok('Missing service readiness blocks generation and credit sales before anything is charged',(await db.prepare('SELECT COUNT(*) AS n FROM credit_holds').first()).n===0&&(await db.prepare('SELECT COUNT(*) AS n FROM credit_purchases').first()).n===0&&!requests.some(r=>r.host==='api.stripe.com'));
+  const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Launch pack',credits:1000,prices:{EUR:999},active:true},expected:201})).body.package;
+  await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:503});
+  ok('Missing service readiness blocks generation and credit sales before anything is charged',(await db.prepare('SELECT COUNT(*) AS n FROM credit_holds').first()).n===0&&(await db.prepare('SELECT COUNT(*) AS n FROM credit_purchases').first()).n===0&&!requests.some(r=>pok.matches(new URL('https://'+r.host))));
   await request('/api/admin/providers/fal',{method:'PATCH',cookie:admin,data:{enabled:true}});
   await mf.dispatchFetch(env.APP_ORIGIN+'/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+env.QUEUE_SECRET}});
   ok('Enabled provider and external dispatcher complete configuration',(await request('/api/admin/connections',{cookie:admin})).body.readiness.ready);
@@ -95,15 +91,12 @@ try{
   status=await request('/api/admin/connections',{cookie:admin});
   ok('Ciphertext cannot be transplanted to another credential field',!status.body.fields.FAL_KEY.configured&&!status.body.readiness.ready);
   await save({FAL_KEY:keys.FAL_KEY});ok('An administrator can repair an unreadable saved connection',(await request('/api/admin/connections',{cookie:admin})).body.fields.FAL_KEY.configured);
-  const bought=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'USD',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
-  const session=[...sessions.values()].find(x=>x.metadata.purchase_id===bought.purchaseId);
-  ok('Production credit sales open a Stripe checkout',bought.url===session.url);
+  const bought=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
+  const pokOrder=pok.last();
+  ok('Production credit sales open a POK order',bought.url===pokOrder.self.confirmUrl&&pokOrder.merchantCustomReference===bought.purchaseId);
   await request('/api/credits/purchases/'+bought.purchaseId+'/pay',{method:'POST',cookie:admin,data:{result:'success'},expected:403});ok('Simulated payment cannot confirm a production purchase');
-  const e={id:'evt_production_fixture',type:'checkout.session.completed',data:{object:{...session,payment_status:'paid',payment_intent:'pi_fixture'}}};
-  const t=Math.floor(Date.now()/1000),raw=JSON.stringify(e);
-  const paid=await mf.dispatchFetch(env.APP_ORIGIN+'/api/webhooks/stripe',{method:'POST',headers:{'stripe-signature':'t='+t+',v1='+createHmac('sha256',keys.STRIPE_WEBHOOK_SECRET).update(t+'.'+raw).digest('hex')},body:raw});
-  assert.equal(paid.status,200,await paid.text());
-  ok('The signed payment grants the pack credits',(await request('/api/credits',{cookie:admin})).body.available===1000);
+  pok.pay(pokOrder.id);await request('/api/credits/purchases/'+bought.purchaseId+'/verify',{method:'POST',cookie:admin,data:{}});
+  ok('A payment confirmed by POK grants the pack credits',(await request('/api/credits',{cookie:admin})).body.available===1000);
   const order=(await request('/api/generations',{method:'POST',cookie:admin,data:creation,expected:201})).body;
   let generation;
   const until=Date.now()+30000;
@@ -116,7 +109,7 @@ try{
   ok('Public template payload excludes private prompt, workflow, cost and keys',!catalog.text.includes(template.hiddenPrompt)&&!catalog.text.includes('workflow')&&!catalog.text.includes('estimatedCost')&&Object.values(keys).every(k=>!catalog.text.includes(k)));
   const download=await mf.dispatchFetch(env.APP_ORIGIN+'/api/media/'+generation.assetId+'?download=1',{headers:{cookie:admin}});
   ok('Provider result is downloadable from private storage',download.status===200&&download.headers.get('content-disposition').includes('attachment')&&(await download.arrayBuffer()).byteLength===video.length);
-  const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'USD',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
+  const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
   await db.prepare("UPDATE credit_purchases SET provider='mock',status='pending' WHERE id=?").bind(stale.purchaseId).run();
   await request('/api/credits/purchases/'+stale.purchaseId+'/retry',{method:'POST',cookie:admin,data:{},expected:403});ok('A test purchase cannot reopen checkout after a production switch');
   await db.prepare("UPDATE app_settings SET value='1' WHERE key='queue_dispatch_heartbeat'").run();

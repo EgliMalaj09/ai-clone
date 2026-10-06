@@ -8,7 +8,7 @@ const {Miniflare}=require('miniflare');
 const server=path.resolve('dist/server');
 const moduleFiles=(await readdir(server,{recursive:true})).filter(f=>f.endsWith('.js')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:a.localeCompare(b));
 const adminPassword=randomBytes(20).toString('hex');const salt=randomBytes(32).toString('hex');
-const config={DEMO_MODE:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(adminPassword,salt,100000,32,'sha256').toString('hex'),STRIPE_WEBHOOK_SECRET:'whsec_disposable_fixture'};
+const config={DEMO_MODE:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(adminPassword,salt,100000,32,'sha256').toString('hex')};
 const options={modules:moduleFiles.map(f=>({type:'ESModule',path:path.join(server,f)})),modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:config,d1Databases:{DB:'studio-integration'},r2Buckets:['BUCKET'],cf:false};
 const mf=new Miniflare(options);const checks=[];
 function ok(name,value){assert(value,name);checks.push({name,passed:true});console.log('PASS',name)}
@@ -80,13 +80,16 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
  await request('/api/account',{method:'PATCH',cookie:userCookie,data:{name:'Updated QA'}});ok('Account changes persist',(await request('/api/me',{cookie:userCookie})).body.user.name==='Updated QA');
  await request('/api/account',{method:'PATCH',cookie:userCookie,headers:{origin:'https://evil.test','sec-fetch-site':'cross-site'},data:{name:'Evil'},expected:403});ok('Cross-site mutation blocked',true);
- await request('/api/webhooks/stripe',{method:'POST',data:{id:'forged'},expected:400});ok('Unsigned Stripe webhook rejected',true);
- // Exercise real HMAC verification and replay handling for a credit pack without contacting Stripe.
- const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:adminCookie,data:{name:'QA pack',credits:300,prices:{USD:299},active:true},expected:201})).body.package;
- const purchase=(await request('/api/credits/checkout',{method:'POST',cookie:userCookie,data:{packageId:pack.id,currency:'USD',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
- const sp=await db.prepare('SELECT * FROM credit_purchases WHERE id=?').bind(purchase.purchaseId).first();const beforePack=(await balance(userCookie)).available;
- const e={id:'evt_fixture_1',type:'checkout.session.completed',data:{object:{id:sp.provider_session_id,payment_status:'paid',payment_intent:'pi_fixture',amount_total:sp.amount,currency:sp.currency.toLowerCase(),metadata:{purchase_id:sp.id}}}};const timestamp=Math.floor(Date.now()/1000);const signature=createHmac('sha256',config.STRIPE_WEBHOOK_SECRET).update(timestamp+'.'+JSON.stringify(e)).digest('hex');
- for(let i=0;i<2;i++)await request('/api/webhooks/stripe',{method:'POST',data:e,headers:{'stripe-signature':`t=${timestamp},v1=${signature}`}});ok('Signed Stripe webhook grants pack credits once and tolerates replay',(await balance(userCookie)).available===beforePack+300);ok('Webhook event persisted once',(await db.prepare("SELECT COUNT(*) AS n FROM webhook_events WHERE id='evt_fixture_1'").first()).n===1);
+ await request('/api/webhooks/pok?purchase=cp_forged&sig=00',{method:'POST',data:{id:'forged'},expected:400});ok('POK webhook without the studio signature rejected',true);
+ // Credit pack bought through the demo checkout; a signed POK webhook for a non-POK purchase changes nothing.
+ const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:adminCookie,data:{name:'QA pack',credits:300,prices:{EUR:299},active:true},expected:201})).body.package;
+ const purchase=(await request('/api/credits/checkout',{method:'POST',cookie:userCookie,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
+ const beforePack=(await balance(userCookie)).available;
+ const sig=createHmac('sha256',config.APP_SECRET).update('pok-webhook:'+purchase.purchaseId).digest('hex');
+ await request(`/api/webhooks/pok?purchase=${purchase.purchaseId}&sig=${sig}`,{method:'POST',data:{data:{sdkOrder:{id:'ord_fake',capturedAmount:2.99}}}});
+ ok('A signed POK webhook cannot pay a purchase by itself',(await balance(userCookie)).available===beforePack);
+ for(let i=0;i<2;i++)await request(`/api/credits/purchases/${purchase.purchaseId}/pay`,{method:'POST',cookie:userCookie,data:{result:'success'}});
+ ok('Test checkout grants pack credits once and tolerates replay',(await balance(userCookie)).available===beforePack+300);
  // Creation/file deletion proves bytes are removed, rather than merely hidden.
  const assetKey=outputs.results[0].storage_key;await request('/api/generations/'+generationId,{method:'DELETE',cookie:userCookie});ok('Delete creation removes the video from object storage',await bucket.get(assetKey)===null);await request('/api/media/'+result.g.assetId,{cookie:userCookie,expected:404});
  const orphan=await upload(userCookie);const orphanDb=await db.prepare('SELECT storage_key FROM user_uploads WHERE id=?').bind(orphan.body.id).first();await request('/api/uploads/'+orphan.body.id,{method:'DELETE',cookie:userCookie});ok('Delete upload removes stored bytes',await bucket.get(orphanDb.storage_key)===null);

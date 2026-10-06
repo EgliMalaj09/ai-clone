@@ -157,3 +157,4 @@
 .credit-summary{display:flex;gap:28px;flex-wrap:wrap;align-items:baseline}
 .credit-summary strong{font-size:34px;letter-spacing:-.04em}
 .credit-summary .eyebrow{display:block;margin-bottom:6px}
+.connection-field select{width:100%;border:1px solid #dfe3e9;border-radius:9px;background:white;padding:11px 13px;color:var(--ink);font-size:14px}

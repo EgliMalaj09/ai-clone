@@ -41,5 +41,5 @@ export type AdminGeneration={id:string;user_id:string|null;template_name:string;
 export type GenerationStep={id:string;step_order:number;type:string;provider:string;model:string;status:string;error:string|null};
 export type AdminUser={id:string;email:string;name:string;role:string;status:string;email_verified:number;created_at:number;generation_count:number;purchase_count:number;credits:number;spending:{currency:string;amount:number}[]};
 export type Provider={id:string;name:string;enabled:number;configured:boolean};
-export type StudioSettings={welcomeCredits:number;demo:boolean;stripeConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean};
+export type StudioSettings={welcomeCredits:number;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean};
 export type TemplateResult={template:AdminTemplate};

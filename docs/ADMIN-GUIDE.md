@@ -30,7 +30,7 @@ Butoni i konfigurimit të gatshëm lidh foton me modelin. Nuk duhet të shkruash
 
 Te **Admin → Connections** (`/admin/connections`):
 
-- Stripe secret key dhe webhook signing secret për pagesat.
+- POK key ID, key secret dhe merchant ID për pagesat. **POK environment** mbetet `staging` (pagesa test) derisa të kesh provuar gjithçka; pastaj zgjidh `production` për para reale.
 - fal.ai API key për workflow-n e gatshëm, ose Replicate për një workflow tjetër.
 - Resend key dhe një adresë dërguesi me domain të verifikuar për emailin.
 
@@ -42,15 +42,15 @@ Klienti blen më parë një paketë kreditesh te **Credits** (`/credits`); pa kr
 
 ## Paketat e krediteve
 
-Te **Admin → Credit packs** (`/admin/credit-packs`) krijo paketat: emri, numri i krediteve, kreditet bonus dhe çmimi për çdo monedhë. Vetëm paketat aktive shfaqen te klientët. Kreditet nuk skadojnë dhe paketat nuk rimbursohen pasi blihen.
+Te **Admin → Credit packs** (`/admin/credit-packs`) krijo paketat: emri, numri i krediteve, kreditet bonus dhe çmimi në ALL dhe/ose EUR (POK pranon vetëm këto; çmimet në ALL janë në lekë të plota). Vetëm paketat aktive shfaqen te klientët. Kreditet nuk skadojnë dhe paketat nuk rimbursohen pasi blihen.
 
-- **Admin → Credit purchases**: të gjitha blerjet dhe statusi i tyre (Paid, Failed, Reversed). Një rimbursim ose chargeback në Stripe i heq kreditet automatikisht, edhe nëse bilanci del negativ.
+- **Admin → Credit purchases**: të gjitha blerjet dhe statusi i tyre (Paid, Failed, Reversed). POK nuk e njofton aplikacionin për rimbursimet: pasi t'i kthesh paratë klientit në POK, kliko **Reverse** te blerja (me fjalëkalimin e administratorit). Kreditet e paketës hiqen, edhe nëse bilanci del negativ.
 - **Admin → Credit ledger**: çdo lëvizje kreditesh, me kontrollin që bilancet përputhen me librin.
 - **Admin → Users → Adjust credits**: shto ose hiq kredite me arsye dhe fjalëkalimin e administratorit.
 - **Admin → Settings → Credits per new account**: kreditet falas për çdo llogari të re (0 si parazgjedhje).
 
 ## Çfarë kërkohet për shitje reale
 
-Çelësat e llogarive të tua, një dërgues emaili i verifikuar, ofruesi AI aktiv, ekzekutimi i vazhdueshëm i radhës dhe adresat e arritshme nga Stripe/AI duhet të jenë konfiguruar. Connections tregon çfarë mungon. Çelësat Stripe test nuk marrin para reale.
+Çelësat e llogarive të tua, një dërgues emaili i verifikuar, ofruesi AI aktiv, ekzekutimi i vazhdueshëm i radhës dhe adresat e arritshme nga POK/AI duhet të jenë konfiguruar. Connections tregon çfarë mungon. POK në `staging` nuk merr para reale.
 
 Faqja private mund të shfletohet dhe administrohet nga pronari. Për klientë dhe webhook-e reale duhet aktivizuar qasja publike nga pronari i hosting-ut. Gjendja Production nuk do të thotë se çelësat janë testuar ose shërbimet janë paguar. Deri në plotësimin e konfigurimit, blerja qëndron e mbyllur.

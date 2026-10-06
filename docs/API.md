@@ -20,7 +20,7 @@ Videos are paid with **credits** (whole numbers). Credit packs are bought with m
 | POST | `/auth/reset` | `{token,password}`; consumes a one-use token and revokes sessions |
 | POST | `/auth/verify` | `{token}`; verifies the email and grants welcome credits if configured |
 | POST | `/auth/resend` | Signed-in account; sends another verification email |
-| POST | `/webhooks/stripe` | Raw signed Stripe event for credit pack purchases; signature, time, session, amount and currency validated |
+| POST | `/webhooks/pok?purchase=…&sig=…` | POK order notification. The `sig` HMAC of the purchase ID must match; the server then reads the order from POK and grants credits only if the captured amount, currency and reference match. The body is never trusted |
 
 ## Customer
 
@@ -34,10 +34,10 @@ Videos are paid with **credits** (whole numbers). Credit packs are bought with m
 | GET / POST | `/favorites` | List IDs / toggle `{templateId}` |
 | GET | `/credits` | `{available,held}` balance; `held` is reserved by running creations |
 | GET | `/credits/history` | Paginated credit transactions with the change and resulting balance |
-| POST | `/credits/checkout` | `{packageId,currency,idempotencyKey,consent:true}`; returns `{purchaseId,url}` (test checkout in demo, Stripe in production) |
+| POST | `/credits/checkout` | `{packageId,currency,idempotencyKey,consent:true}`; returns `{purchaseId,url}` (test checkout in demo, POK order page in production) |
 | GET | `/credits/purchases`, `/credits/purchases/:id` | Owned pack purchases |
-| POST | `/credits/purchases/:id/verify` | Server retrieves the Stripe session after a return; the return URL alone grants nothing |
-| POST | `/credits/purchases/:id/retry` | Reuses an open checkout or safely renews an expired Stripe session |
+| POST | `/credits/purchases/:id/verify` | Server reads the POK order after a return; the return URL alone grants nothing |
+| POST | `/credits/purchases/:id/retry` | Reuses an open POK order or safely replaces an expired one |
 | POST | `/credits/purchases/:id/pay` | Demo only: `{result:"success"}` or `{result:"fail"}` |
 | POST | `/generations` | `{templateId,uploadIds,expectedCost,idempotencyKey,consent:true}`; reserves the credit cost and queues the creation. 402 when the balance is too low |
 | GET | `/generations` | Paginated creations with `creditCost` and `creditStatus` (pending/captured/released); `status=all/processing/completed/failed` |
@@ -75,6 +75,7 @@ Every route below revalidates the current server-side role and account status.
 | GET / POST | `/admin/credit-packages` | All packs / create `{name,credits,bonusCredits,prices:{EUR:499},active,sortOrder}` |
 | PATCH / DELETE | `/admin/credit-packages/:id` | Update / remove a pack (past purchases keep their snapshot) |
 | GET | `/admin/credits/purchases` | Paginated pack purchases with customer email |
+| POST | `/admin/credits/purchases/:id/reverse` | `{reason:"Payment refunded"|"Payment disputed",currentPassword}`; records a refund or chargeback made in POK and removes the pack's credits, even below zero. Paid purchases only |
 | GET | `/admin/credits/ledger` | Paginated credit transactions; `search` (email, transaction or reference ID), `kind` |
 | GET | `/admin/credits/reconciliation` | Ledger invariant check: zero-sum entries, balances equal to entries, negative balances |
 | GET / POST | `/admin/users/:id/credits` | Balance and history / adjustment `{amount,reason,currentPassword,idempotencyKey}` (audited; never below zero) |
@@ -102,7 +103,7 @@ Admin record lists accept `page` (1–100000), `limit` (1–100), `search`, `sta
 | Method | Route | Behavior |
 | --- | --- | --- |
 | GET | `/api/admin/connections` | Admin-only presence/source flags, sender address and setup readiness. No secret values. |
-| PATCH | `/api/admin/connections` | `{currentPassword,values:{FAL_KEY,...},remove:[]}`. Allowed fields: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, FAL_KEY, REPLICATE_API_TOKEN, RESEND_API_KEY, MAIL_FROM. Authenticated encryption at rest; env bindings take precedence. |
+| PATCH | `/api/admin/connections` | `{currentPassword,values:{FAL_KEY,...},remove:[]}`. Allowed fields: POK_KEY_ID, POK_KEY_SECRET, POK_MERCHANT_ID, POK_ENVIRONMENT (`staging` or `production`), FAL_KEY, REPLICATE_API_TOKEN, RESEND_API_KEY, MAIL_FROM. Authenticated encryption at rest; env bindings take precedence. |
 | POST | `/api/admin/workflows/preset` | Admin-only preset definition from name, slug, description, requiredImageCount, aspectRatio, duration (5 or 10), estimatedCost. Returns editable private workflow and hidden prompt; performs no inference. |
 
 In production, buying credits returns 503 until payments, email, an AI provider, the dispatcher and public access are ready; starting a creation returns 503 until an AI provider, the dispatcher and public access are ready. The test checkout and mock jobs are disabled with DEMO_MODE=false. The ordinary provider and payment adapters use either environment-managed keys or encrypted dashboard connections.

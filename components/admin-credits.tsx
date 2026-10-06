@@ -10,7 +10,8 @@ import {Pager,RecordSearch} from './admin-operations';
 import {credits,money,statusLabel} from '@/lib/contracts';
 import type {CreditHistory,CreditPackage,CreditPurchase,Pagination} from '@/lib/api-types';
 
-const currencies=['EUR','USD','GBP','ALL'];
+// POK charges in these currencies only.
+const currencies=['ALL','EUR'];
 const kinds:[string,string][]=[['all','All types'],['purchase','Purchases'],['hold','Reserved'],['capture','Spent'],['release','Returned'],['adjust','Adjustments'],['welcome','Welcome'],['reversal','Reversals']];
 const kindLabel=(k:string)=>kinds.find(([v])=>v===k)?.[1].replace(/s$/,'')||k;
 function Heading({title,description,children}:{title:string;description:string;children?:React.ReactNode}){return <div className="admin-heading"><div><span className="eyebrow">CREDITS</span><h1>{title}</h1><p>{description}</p></div>{children}</div>;}
@@ -46,10 +47,10 @@ export function CreditPacks(){
 
 export function PurchaseManager(){
  const [page,setPage]=useState(1);const {data,error,loading,refresh}=useAPI<{purchases:CreditPurchase[];pagination:Pagination}>('admin/credits/purchases?page='+page);
- return <><Heading title="Credit purchases" description="Every pack bought, with its payment status. A reversed purchase is a chargeback or a refund made in the payment provider."/>
-  {loading?<Loading/>:error||!data?<ErrorBox message={error} retry={refresh}/>:<div className="table-panel"><Table><TableHeader><TableRow><TableHead>Customer</TableHead><TableHead>Pack</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead></TableRow></TableHeader><TableBody>{data.purchases.map(p=><TableRow key={p.id}>
+ return <><Heading title="Credit purchases" description="Every pack bought, with its payment status. A reversed purchase is a refund or chargeback made in POK. POK does not report these, so record each one with Reverse."/>
+  {loading?<Loading/>:error||!data?<ErrorBox message={error} retry={refresh}/>:<div className="table-panel"><Table><TableHeader><TableRow><TableHead>Customer</TableHead><TableHead>Pack</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader><TableBody>{data.purchases.map(p=><TableRow key={p.id}>
    <TableCell>{p.email||'Deleted account'}<small className="block mono">{p.id.slice(-10)}</small></TableCell><TableCell>{p.packageName}<small className="block">{credits(p.credits)}</small></TableCell>
-   <TableCell>{money(p.amount,p.currency)}<small className="block">{p.provider==='mock'?'Test checkout':'Stripe'}</small></TableCell><TableCell><span className={'status '+(p.status==='paid'?'completed':p.status==='reversed'?'failed':'pending')}>{statusLabel(p.status)}</span></TableCell><TableCell>{date(p.createdAt)}</TableCell>
+   <TableCell>{money(p.amount,p.currency)}<small className="block">{p.provider==='mock'?'Test checkout':p.provider==='pok'?'POK':p.provider}</small></TableCell><TableCell><span className={'status '+(p.status==='paid'?'completed':p.status==='reversed'?'failed':'pending')}>{statusLabel(p.status)}</span></TableCell><TableCell>{date(p.createdAt)}</TableCell><TableCell>{p.status==='paid'&&<ReversePurchase purchase={p} onDone={refresh}/>}</TableCell>
   </TableRow>)}</TableBody></Table>{!data.purchases.length&&<div className="small-empty"><p>No purchases yet.</p></div>}</div>}<Pager pagination={data?.pagination} onPage={setPage}/></>;
 }
 
@@ -65,6 +66,19 @@ export function CreditLedger({initialSearch=''}:{initialSearch?:string}){
    <TableCell className={t.available_change>0?'profit-positive':t.available_change<0?'profit-negative':''}>{t.available_change?signed(t.available_change):t.held_change<0?credits(-t.held_change)+' charged':'—'}</TableCell>
    <TableCell>{t.available_after===null?'—':credits(t.available_after)}</TableCell><TableCell>{t.reason||t.reference_id||''}</TableCell>
   </TableRow>)}</TableBody></Table>{!data.transactions.length&&<div className="small-empty"><p>No matching transactions.</p></div>}</div>}<Pager pagination={data?.pagination} onPage={setPage}/></>;
+}
+
+/** Records a refund or chargeback made in POK: removes the pack's credits, even below zero. Requires the administrator password. */
+function ReversePurchase({purchase,onDone}:{purchase:CreditPurchase;onDone:()=>void}){
+ const [open,setOpen]=useState(false),[reason,setReason]=useState('Payment refunded'),[password,setPassword]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{
+  await api(`admin/credits/purchases/${purchase.id}/reverse`,'POST',{reason,currentPassword:password});
+  toast.success('Purchase reversed. Its credits were removed.');setOpen(false);setPassword('');onDone();
+ }catch(e){setError((e as Error).message)}finally{setBusy(false)}}
+ return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><button className="text-link">Reverse</button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Reverse this purchase?</DialogTitle><DialogDescription>Do this only after refunding {purchase.email||'the customer'} in POK, or when POK reports a chargeback. {credits(purchase.credits)} will be removed from their balance, even if it goes below zero. This cannot be undone.</DialogDescription></DialogHeader>
+  <form onSubmit={submit}><Field label="Reason"><Pick label="Reason" value={reason} onChange={setReason} options={[{value:'Payment refunded',label:'Refunded in POK'},{value:'Payment disputed',label:'Chargeback or dispute'}]}/></Field><Field label="Your administrator password"><input type="password" autoComplete="current-password" required value={password} onChange={e=>setPassword(e.target.value)}/></Field>
+   {error&&<ErrorBox message={error}/>}<button className="button primary small" disabled={busy||!password}>{busy?<Busy/>:'Reverse purchase'}</button></form>
+ </DialogContent></Dialog>;
 }
 
 /** Add or remove credits for one customer. Requires a reason and the administrator password; recorded in the ledger and audit log. */

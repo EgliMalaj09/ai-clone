@@ -5,7 +5,7 @@ import {checkPassword,rateLimit} from './security';
 import type {AdminTemplate,StudioUser} from '../contracts';
 
 const fields={
-  STRIPE_SECRET_KEY:'stripeKey',STRIPE_WEBHOOK_SECRET:'webhookSecret',
+  POK_KEY_ID:'pokKeyId',POK_KEY_SECRET:'pokKeySecret',POK_MERCHANT_ID:'pokMerchantId',POK_ENVIRONMENT:'pokEnvironment',
   FAL_KEY:'falKey',REPLICATE_API_TOKEN:'replicateKey',
   RESEND_API_KEY:'mailKey',MAIL_FROM:'mailFrom',
 } as const;
@@ -49,14 +49,14 @@ export async function purchaseReadiness(){
     one("SELECT value FROM app_settings WHERE key='queue_dispatch_heartbeat'"),
     all('SELECT id FROM provider_configurations WHERE enabled=1'),
   ]);
-  const payments=!!c.stripeKey&&!!c.webhookSecret;
+  const payments=!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId;
   const email=!!c.mailKey&&!!c.mailFrom;
   const ai=enabled.some(p=>p.id==='fal'?!!c.falKey:p.id==='replicate'?!!c.replicateKey:false);
   const dispatcher=!!c.cronSecret&&Number(heartbeat?.value)>now()-180000;
   const publicAccess=runtime().PUBLIC_SERVICE_ACCESS==='true';
   return {demo:c.demo,ready:c.demo||payments&&email&&ai&&dispatcher&&publicAccess,
     registrationAvailable:c.demo||email,payments,email,ai,dispatcher,publicAccess,
-    paymentMode:c.stripeKey.startsWith('sk_live_')||c.stripeKey.startsWith('rk_live_')?'live':c.stripeKey?'test':'missing',
+    paymentMode:!payments?'missing':c.pokEnvironment==='production'?'live':'test',
     enabledProviders:enabled.filter(p=>p.id==='fal'?!!c.falKey:p.id==='replicate'?!!c.replicateKey:c.demo).map(p=>p.id as string),
   };
 }
@@ -79,14 +79,14 @@ export async function publicAvailability(template?:AdminTemplate|null){
 export async function connectionStatus(){
   const c=await serviceConfig(true),readiness=await purchaseReadiness();
   const saved=await all("SELECT key FROM app_settings WHERE key LIKE 'connection.%'");
-  return {readiness,webhookUrl:config().origin+'/api/webhooks/stripe',
-    fields:Object.fromEntries(names.map(name=>[name,{configured:!!c[fields[name]],source:runtime()[name]?'environment':saved.some(r=>r.key==='connection.'+name)?'encrypted':'missing',...(name==='MAIL_FROM'?{value:c.mailFrom}:{})}])),
+  return {readiness,webhookUrl:config().origin+'/api/webhooks/pok',
+    fields:Object.fromEntries(names.map(name=>[name,{configured:!!c[fields[name]],source:runtime()[name]?'environment':saved.some(r=>r.key==='connection.'+name)?'encrypted':'missing',...(name==='MAIL_FROM'?{value:c.mailFrom}:name==='POK_ENVIRONMENT'?{value:c.pokEnvironment||'staging'}:name==='POK_MERCHANT_ID'?{value:c.pokMerchantId}:{})}])),
   };
 }
-const keySchema=z.enum(['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','FAL_KEY','REPLICATE_API_TOKEN','RESEND_API_KEY','MAIL_FROM']);
+const keySchema=z.enum(['POK_KEY_ID','POK_KEY_SECRET','POK_MERCHANT_ID','POK_ENVIRONMENT','FAL_KEY','REPLICATE_API_TOKEN','RESEND_API_KEY','MAIL_FROM']);
 export async function updateConnections(req:Request,user:StudioUser){
   await rateLimit('connections:'+user.id,8,900000);
-  const body=z.object({currentPassword:z.string().min(1).max(128),values:z.record(keySchema,z.string().trim().min(1).max(1024)).default({}),remove:z.array(keySchema).max(6).default([])}).strict().parse(await jsonBody(req));
+  const body=z.object({currentPassword:z.string().min(1).max(128),values:z.record(keySchema,z.string().trim().min(1).max(1024)).default({}),remove:z.array(keySchema).max(8).default([])}).strict().parse(await jsonBody(req));
   const account=await one('SELECT password_hash FROM users WHERE id=?',user.id);
   must(account&&await checkPassword(body.currentPassword,account.password_hash),'Your administrator password is incorrect.',403);
   const entries=Object.entries(body.values) as [Field,string][];
@@ -95,8 +95,8 @@ export async function updateConnections(req:Request,user:StudioUser){
   for(const name of changed)must(!runtime()[name],'This connection is managed in the hosting environment: '+name,409);
   for(const [name,value] of entries){
     must(!/[\r\n\u0000]/.test(value),'Connection values cannot contain control characters.');
-    if(name==='STRIPE_SECRET_KEY')must(/^(sk|rk)_(test|live)_[A-Za-z0-9]{12,}$/.test(value),'Use a Stripe server API key. A publishable key cannot accept payments.');
-    if(name==='STRIPE_WEBHOOK_SECRET')must(/^whsec_[A-Za-z0-9]{12,}$/.test(value),'Use the signing secret from your Stripe webhook endpoint.');
+    if(name==='POK_KEY_ID'||name==='POK_KEY_SECRET'||name==='POK_MERCHANT_ID')must(value.length>=6&&!/\s/.test(value),'Use the complete value from your POK merchant dashboard.');
+    if(name==='POK_ENVIRONMENT')must(value==='staging'||value==='production','Choose staging (test payments) or production (real payments).');
     if(name==='RESEND_API_KEY')must(/^re_[A-Za-z0-9_-]{12,}$/.test(value),'Use a valid Resend API key.');
     if(name==='FAL_KEY'||name==='REPLICATE_API_TOKEN')must(value.length>=16&&!/\s/.test(value),'Use the complete provider API key.');
     if(name==='MAIL_FROM')must(z.string().email().safeParse(value).success,'Use an email address on your verified sending domain.');

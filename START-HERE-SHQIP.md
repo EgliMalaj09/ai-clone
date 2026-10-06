@@ -32,7 +32,7 @@ pnpm dev
 
 ## 3. Puna me AI dhe pagesa reale
 
-Në .env vendos DEMO_MODE=false. Lidh llogaritë e tua te /admin/connections, aktivizo ofruesin AI te /admin/providers dhe lexo docs/OPERATIONS.md për Stripe webhooks, adresat publike dhe punët në sfond. localhost nuk arrihet drejtpërdrejt nga Stripe ose ofruesi AI. Mos aktivizo PUBLIC_SERVICE_ACCESS=true pa adresat dhe shërbimet realisht të arritshme.
+Në .env vendos DEMO_MODE=false. Lidh llogaritë e tua te /admin/connections, aktivizo ofruesin AI te /admin/providers dhe lexo docs/OPERATIONS.md për pagesat me POK, adresat publike dhe punët në sfond. localhost nuk arrihet drejtpërdrejt nga POK ose ofruesi AI. Mos aktivizo PUBLIC_SERVICE_ACCESS=true pa adresat dhe shërbimet realisht të arritshme.
 
 Skripti setup:demo nevojitet vetëm për konfigurimin fillestar lokal; mund të ndryshosh modalitetin pas tij. Çelësat e shërbimeve online nuk përfshihen në këtë arkiv.
 

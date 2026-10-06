@@ -28,7 +28,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 | Password change, session revoke, account export, account delete | ✅ Works | The export holds metadata only, not the photo/video files |
 | Photo uploads (JPG/PNG/WEBP, 8 MB, private R2) | ✅ Works | Uploads require credits; unused photos are deleted after 24 h |
 | Checkout: demo mock payment | ✅ Works | |
-| Credit packs: Stripe | ⚠️ Built, **never tested live** | Full refunds and disputes reverse credits; partial refunds are ignored. Provider still to be decided |
+| Credit packs: POK | ⚠️ Built, **never tested live** | Payments confirmed by reading the order from POK. Refunds are recorded by the admin with Reverse (POK does not report them). ALL and EUR only |
 | Generation queue (multi-step workflows, leases, retries, 30-min deadline) | ✅ Works in demo | Production needs an external dispatcher (see L2) |
 | AI providers: fal.ai (Nano Banana → Kling 2.6) | ⚠️ Built, **never tested live** | |
 | AI providers: Replicate | ⚠️ Partial | Only `owner/model` official models; versioned community models aren't supported |
@@ -76,10 +76,10 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 
 ## 4. Not implemented, needed before a public launch
 
-- [ ] **L1 — Live service testing.** Run real Stripe test-mode checkouts (success, decline, webhook replay, full refund), real fal.ai generations, and real Resend emails.
+- [ ] **L1 — Live service testing.** Run real POK staging payments (success, cancel, expiry, webhook, refund + Reverse), real fal.ai generations, and real Resend emails.
 - [ ] **L2 — Queue dispatcher in production.** Schedule `/api/queue/dispatch` every minute (cron trigger or `pnpm queue:worker`) and add alerting when it stops.
 - [ ] **L3 — Content safety.** Add moderation of uploaded photos and outputs (NSFW, minors, celebrity/impersonation). Add antivirus scanning or image re-encoding. Add a face/quality check before payment.
-- [ ] **L4 — Disputes and partial refunds.** ✅ Disputes (`charge.dispute.created`) and full refunds now reverse the pack's credits. Still open: decide what a partial refund should do (currently ignored).
+- [ ] **L4 — Refunds and partial refunds.** ✅ The admin records a refund or chargeback made in POK with Reverse, which removes the pack's credits. Still open: decide what a partial refund should do (Reverse removes all of the pack's credits).
 - [ ] **L5 — Admin MFA**, or a managed identity provider.
 - [ ] **L6 — Edge rate limiting and load tests.** The current limits are per-user/IP rows in D1.
 - [ ] **L7 — Backups.** Set up D1 backups, R2 lifecycle/retention rules, and a separate backup of `APP_SECRET`, which encrypts the saved connections.
@@ -116,4 +116,5 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
   - [x] Step 1: database, credits ledger service, balance/history API, admin adjustments, welcome-credits setting, reconciliation (`pnpm test:credits`)
   - [x] Step 2: credit packs and pack checkout (test checkout in demo, Stripe adapter), chargebacks
   - [x] Step 3: generation spends credits (holds), all customer and admin screens; the per-video purchase system was removed (migration 0004)
-  - [ ] Decide pack contents and the payment provider (Stripe is not available to Albanian businesses; see the architecture doc)
+  - [x] Payment provider: POK (replaces Stripe)
+  - [ ] Decide pack contents and prices

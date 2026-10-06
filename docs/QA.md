@@ -1,5 +1,7 @@
 # Verification record
 
+6 October 2026 (POK): POK replaced Stripe as the payment provider. TypeScript, lint and the build passed, and all suites passed against the compiled Worker: 93 integration, 46 security, 11 provider, 34 production and 59 credit checks (243). POK responses came from a local fake built from the models in POK's PHP SDK; no real POK payment was made. To confirm against the real POK staging API: the Authorization header format, the webhook body, and that `capturedAmount` reaches the order amount once a payment completes.
+
 6 October 2026 (credits): credits replaced the per-video purchase system. TypeScript, lint and the production Worker build passed. All 237 executable checks passed against the compiled Worker with disposable D1/R2 bindings and the checked-in migrations, including 0003 (credit ledger) and 0004 (removal of orders, payments and refunds).
 
 | Suite | Checks | Coverage |

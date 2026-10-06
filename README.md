@@ -6,7 +6,7 @@ A working template-based video creation MVP. Customers buy credit packs, choose 
 
 18 original templates and playable concept previews; search, categories, sorting and favorites; email/password accounts; secure uploads; credit packs with checkout and a double-entry credit ledger; asynchronous multi-step workflows; private video playback, downloads, expiring share links and deletion; protected administration for templates, credit costs, workflows, users and credit adjustments, credit packs, purchases, the credit ledger, provider switches, encrypted connection management, a photo-to-video workflow preset and metrics; operations/readiness dashboard, activity log, paginated administration, password changes, session revocation and account exports.
 
-**Demo mode uses a test checkout for credits and bundled sample videos. It does not transform the uploaded person's identity.** Live payments and generation require your own Stripe and AI service credentials.
+**Demo mode uses a test checkout for credits and bundled sample videos. It does not transform the uploaded person's identity.** Live payments and generation require your own POK and AI service credentials.
 
 ## Stack
 
@@ -36,12 +36,12 @@ GitHub Actions (`.github/workflows/ci.yml`) runs typecheck, lint, build and all 
 
 `pnpm typecheck` checks TypeScript. `pnpm build` builds the production Worker. `pnpm test:integration` runs against that compiled Worker in disposable D1/R2 bindings, applies real migrations, and exercises authentication, ownership, uploads, credit-based generation (reserve, charge on delivery, return on failure, admin retry), downloads, admin publishing and credit costs, media management, a signed pack webhook and deletion. It creates its own random credentials and does not contact paid providers. Results are written to `test-results/integration.json`.
 
-`pnpm test:security` runs the regression suite for concurrent password reset, session rotation, request bounds, workflow validation, credit pack checkout retries, webhook ordering, payment reversals, the generation deadline, operational reporting and data export. Stripe HTTP responses are intercepted in-process; no financial transaction is executed.
+`pnpm test:security` runs the regression suite for concurrent password reset, session rotation, request bounds, workflow validation, credit pack checkout retries, webhook ordering, payment reversals, the generation deadline, operational reporting and data export. POK HTTP responses come from a local fake POK; no financial transaction is executed.
 
 `pnpm test:providers` verifies the Fal and Replicate adapters, private R2 ingestion, multi-step signed inputs, unsafe-output blocking and credit charging/returns using local HTTP fixtures.
 
-`pnpm test:credits` checks the credits ledger and packs: welcome credits, admin adjustments, idempotency, simultaneous spending, reconciliation, the demo checkout, and (in production mode with a fake Stripe) signed webhooks, duplicates, wrong amounts, chargebacks and expired sessions.
+`pnpm test:credits` checks the credits ledger and packs: welcome credits, admin adjustments, idempotency, simultaneous spending, reconciliation, the demo checkout, and (in production mode with a fake POK) forged and duplicate webhooks, partial captures, wrong amounts, admin reversals, expired orders and the background check for lost webhooks.
 
-`pnpm test:production` checks encrypted credentials, production readiness, the ready-made workflow, and an end-to-end production run: a pack bought through a fake Stripe pays for a real-workflow generation.
+`pnpm test:production` checks encrypted credentials, production readiness, the ready-made workflow, and an end-to-end production run: a pack bought through a fake POK pays for a real-workflow generation.
 
-See [API reference](docs/API.md) for routes, [security review](docs/SECURITY.md) for findings and remaining limits, [operations](docs/OPERATIONS.md) for deployment, Stripe, AI integration and queue scheduling; [architecture](docs/ARCHITECTURE.md) for data, security and extension points. Before going live, work through the [launch checklist](docs/LAUNCH-CHECKLIST.md).
+See [API reference](docs/API.md) for routes, [security review](docs/SECURITY.md) for findings and remaining limits, [operations](docs/OPERATIONS.md) for deployment, POK payments, AI integration and queue scheduling; [architecture](docs/ARCHITECTURE.md) for data, security and extension points. Before going live, work through the [launch checklist](docs/LAUNCH-CHECKLIST.md).

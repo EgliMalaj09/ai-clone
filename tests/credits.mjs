@@ -1,10 +1,11 @@
 // Credits suite: balances, welcome credits, admin adjustments, idempotency, concurrency, ledger invariants,
-// credit packs, the demo test checkout and (in production mode with a fake Stripe) webhooks and chargebacks.
+// credit packs, the demo test checkout and (in production mode with a fake POK) payment confirmation and reversals.
 // Runs against the compiled Worker with disposable D1/R2 bindings, like the other suites.
 import {createRequire} from 'node:module';
 import {readFile,readdir,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
-import {randomBytes,pbkdf2Sync,randomUUID,createHmac} from 'node:crypto';
+import {randomBytes,pbkdf2Sync,randomUUID} from 'node:crypto';
+import {fakePok} from './fake-pok.mjs';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.resolve('wrangler/package.json'));
 const {Miniflare}=require('miniflare');
@@ -18,21 +19,20 @@ function ok(name,value){assert(value,name);checks.push({name,passed:true});conso
 async function request(route,{method='GET',data,cookie,expected=200}={}){const headers={origin:config.APP_ORIGIN,...(cookie?{cookie}:{}),...(data?{'content-type':'application/json'}:{})};const response=await mf.dispatchFetch(config.APP_ORIGIN+route,{method,headers,body:data!==undefined?JSON.stringify(data):undefined});const text=await response.text();let body;try{body=JSON.parse(text)}catch{body=text}if(expected!==null)assert.equal(response.status,expected,`${method} ${route}: ${text.slice(0,350)}`);return {response,body,cookie:response.headers.get('set-cookie')?.split(';')[0]};}
 const register=async(email)=>request('/api/auth/register',{method:'POST',data:{name:'Credit Tester',email,password:'Test-password-123'},expected:201});
 
-// Production mode with a fake Stripe: signed webhooks, wrong amounts, duplicates, chargebacks and expired sessions.
+// Production mode with a fake POK: payments confirmed only by reading the order, forged and duplicate webhooks,
+// wrong amounts, manual reversals and expired orders.
 async function liveChecks(){
  const {Response:MFResponse}=require('miniflare');
- const keys={STRIPE_SECRET_KEY:'sk_test_'+randomBytes(20).toString('hex'),STRIPE_WEBHOOK_SECRET:'whsec_'+randomBytes(20).toString('hex'),FAL_KEY:'fal_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test'};
+ const keys={POK_KEY_ID:'key_'+randomBytes(10).toString('hex'),POK_KEY_SECRET:'secret_'+randomBytes(20).toString('hex'),POK_MERCHANT_ID:'merchant_'+randomBytes(6).toString('hex'),FAL_KEY:'fal_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test'};
  const env={...config,DEMO_MODE:'false',PUBLIC_SERVICE_ACCESS:'true',...keys};
- const sessions=new Map(),calls=[];let serial=0;
+ const pok=fakePok({keyId:keys.POK_KEY_ID,keySecret:keys.POK_KEY_SECRET,merchantId:keys.POK_MERCHANT_ID,Response:MFResponse});
  const live=new Miniflare({modules:moduleFiles.map(f=>({type:'ESModule',path:path.join(server,f)})),modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:env,d1Databases:{DB:'studio-credits-live'},r2Buckets:['BUCKET'],cf:false,
   outboundService:async req=>{const url=new URL(req.url);
    if(url.hostname==='api.resend.com')return MFResponse.json({id:'email_fixture'});
-   assert.equal(url.hostname,'api.stripe.com','Unexpected external call: '+url.hostname);
-   if(url.pathname==='/v1/checkout/sessions'&&req.method==='POST'){const form=new URLSearchParams(await req.text());calls.push(form);const id='cs_live_'+(++serial);const session={id,url:'https://checkout.stripe.com/c/'+id,status:'open',payment_status:'unpaid',amount_total:Number(form.get('line_items[0][price_data][unit_amount]')),currency:form.get('line_items[0][price_data][currency]'),payment_intent:'pi_'+id,metadata:{purchase_id:form.get('metadata[purchase_id]')}};sessions.set(id,session);return MFResponse.json(session);}
-   if(url.pathname.startsWith('/v1/checkout/sessions/')&&req.method==='GET')return MFResponse.json(sessions.get(url.pathname.split('/').at(-1)));
-   throw new Error('Unexpected Stripe call: '+url.pathname);}});
+   assert(pok.matches(url),'Unexpected external call: '+url.hostname);
+   return pok.handle(req);}});
  const call=async(route,{method='GET',data,cookie,headers={},expected=200}={})=>{const r=await live.dispatchFetch(env.APP_ORIGIN+route,{method,headers:{origin:env.APP_ORIGIN,...(cookie?{cookie}:{}),...(data!==undefined?{'content-type':'application/json'}:{}),...headers},body:data!==undefined?JSON.stringify(data):undefined});const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}if(expected!==null)assert.equal(r.status,expected,`${method} ${route}: ${text.slice(0,300)}`);return {body,cookie:r.headers.get('set-cookie')?.split(';')[0]};};
- const webhook=(type,object,expected=200)=>{const event={id:'evt_'+randomUUID(),type,data:{object}};const raw=JSON.stringify(event);const t=Math.floor(Date.now()/1000);return live.dispatchFetch(env.APP_ORIGIN+'/api/webhooks/stripe',{method:'POST',headers:{'content-type':'application/json','stripe-signature':'t='+t+',v1='+createHmac('sha256',keys.STRIPE_WEBHOOK_SECRET).update(t+'.'+raw).digest('hex')},body:raw}).then(async r=>{assert.equal(r.status,expected,type+': '+await r.text());return r;});};
+ const notify=(id,o)=>pok.notify(id,(u,i)=>live.dispatchFetch(u,i),o);
  try{
   const db=await live.getD1Database('DB');
   for(const f of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort()){for(const st of (await readFile('drizzle/'+f,'utf8')).split('--> statement-breakpoint').map(x=>x.trim()).filter(Boolean))await db.prepare(st).run();}
@@ -40,41 +40,57 @@ async function liveChecks(){
   const admin=(await call('/api/auth/login',{method:'POST',data:{email:'admin@studio.test',password:adminPassword}})).cookie;
   await call('/api/admin/providers/fal',{method:'PATCH',cookie:admin,data:{enabled:true}});
   await live.dispatchFetch(env.APP_ORIGIN+'/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+env.QUEUE_SECRET}});
-  const pack=(await call('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Starter',credits:500,prices:{EUR:499},active:true},expected:201})).body.package;
+  await call('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Dollar pack',credits:10,prices:{USD:499},active:true},expected:400});
+  await call('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Odd lek',credits:10,prices:{ALL:49950},active:true},expected:400});
+  ok('Packs are priced in currencies POK accepts, and ALL in whole lek',true);
+  const pack=(await call('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Starter',credits:500,prices:{EUR:499,ALL:50000},active:true},expected:201})).body.package;
   const reg=await call('/api/auth/register',{method:'POST',data:{name:'Live Buyer',email:'live@credits.test',password:'Test-password-123'},expected:201});
   await call('/api/credits/checkout',{method:'POST',cookie:reg.cookie,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:403});
   ok('Live checkout requires a verified email',true);
   await db.prepare('UPDATE users SET email_verified=1 WHERE id=?').bind(reg.body.user.id).run();
   const buyer=reg.cookie,balance=async()=>(await call('/api/credits',{cookie:buyer})).body.available;
   const started=(await call('/api/credits/checkout',{method:'POST',cookie:buyer,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
-  const form=calls.at(-1),session=[...sessions.values()].at(-1);
-  ok('Stripe checkout uses the server price and routes the webhook by purchase',started.url===session.url&&form.get('metadata[purchase_id]')===started.purchaseId&&form.get('line_items[0][price_data][unit_amount]')==='499'&&form.get('line_items[0][price_data][currency]')==='eur'&&form.get('success_url').includes('/credits?purchase='+started.purchaseId));
-  await webhook('checkout.session.completed',{...session,payment_status:'paid',status:'complete',amount_total:1},400);
-  ok('A webhook with the wrong amount grants nothing',await balance()===0);
-  const paidSession={...session,payment_status:'paid',status:'complete'};
-  await Promise.all([webhook('checkout.session.completed',paidSession),webhook('checkout.session.completed',paidSession)]);
-  await webhook('checkout.session.async_payment_succeeded',paidSession);
-  ok('Duplicate and concurrent payment webhooks grant the pack once',await balance()===500);
-  sessions.set(session.id,paidSession);await call(`/api/credits/purchases/${started.purchaseId}/verify`,{method:'POST',cookie:buyer,data:{}});
+  const order=pok.last(),sent=pok.created.at(-1);
+  ok('POK checkout uses the server price in major units and points back to the purchase',started.url===order.self.confirmUrl&&sent.amount==='4.99'&&sent.currencyCode==='EUR'&&sent.autoCapture===true&&sent.merchantCustomReference===started.purchaseId&&sent.redirectUrl.includes('/credits?purchase='+started.purchaseId)&&sent.webhookUrl.startsWith(env.APP_ORIGIN+'/api/webhooks/pok?purchase='+started.purchaseId+'&sig='));
+  await notify(order.id);
+  ok('A webhook for an unpaid order grants nothing',await balance()===0);
+  const forged=new URL(order.webhookUrl);forged.searchParams.set('sig','0'.repeat(64));
+  await notify(order.id,{url:forged.toString(),expected:400});
+  ok('A webhook without the studio signature is rejected',await balance()===0);
+  pok.pay(order.id,1);await notify(order.id);
+  ok('A partly captured order grants nothing',await balance()===0);
+  pok.pay(order.id);
+  await Promise.all([notify(order.id),notify(order.id)]);await notify(order.id);
+  ok('Duplicate and concurrent webhooks grant the pack once, after reading the order from POK',await balance()===500&&(await call('/api/credits/purchases/'+started.purchaseId,{cookie:buyer})).body.purchase.status==='paid');
+  await call(`/api/credits/purchases/${started.purchaseId}/verify`,{method:'POST',cookie:buyer,data:{}});
   ok('Verifying a returned checkout after the webhook changes nothing',await balance()===500);
   await call(`/api/admin/users/${reg.body.user.id}/credits`,{method:'POST',cookie:admin,data:{amount:-200,reason:'Simulated spending',currentPassword:adminPassword,idempotencyKey:randomUUID()}});
-  await webhook('charge.dispute.created',{id:'dp_1',payment_intent:paidSession.payment_intent});
-  await webhook('charge.dispute.created',{id:'dp_1',payment_intent:paidSession.payment_intent});
-  ok('A chargeback removes the purchased credits once, even below zero',await balance()===-200&&(await call('/api/credits/purchases/'+started.purchaseId,{cookie:buyer})).body.purchase.status==='reversed');
-  await webhook('checkout.session.completed',paidSession);
+  await call(`/api/admin/credits/purchases/${started.purchaseId}/reverse`,{method:'POST',cookie:buyer,data:{reason:'Payment refunded',currentPassword:'Test-password-123'},expected:403});
+  await call(`/api/admin/credits/purchases/${started.purchaseId}/reverse`,{method:'POST',cookie:admin,data:{reason:'Payment refunded',currentPassword:'wrong-password'},expected:403});
+  ok('Only an administrator with their password can reverse a purchase',await balance()===300);
+  await call(`/api/admin/credits/purchases/${started.purchaseId}/reverse`,{method:'POST',cookie:admin,data:{reason:'Payment disputed',currentPassword:adminPassword}});
+  await call(`/api/admin/credits/purchases/${started.purchaseId}/reverse`,{method:'POST',cookie:admin,data:{reason:'Payment disputed',currentPassword:adminPassword},expected:409});
+  ok('Reversing a purchase removes its credits once, even below zero',await balance()===-200&&(await call('/api/credits/purchases/'+started.purchaseId,{cookie:buyer})).body.purchase.status==='reversed');
+  await notify(order.id);
   ok('A late payment webhook cannot grant a reversed purchase again',await balance()===-200);
   const rec=(await call('/api/admin/credits/reconciliation',{cookie:admin})).body;
   ok('The ledger still reconciles and lists the negative balance',rec.ok&&rec.negative.length===1);
   ok('Operations reports the account below zero',(await call('/api/admin/operations',{cookie:admin})).body.checks.some(c=>c.name==='Credit ledger'&&c.detail.includes('below zero')));
-  // An expired session is replaced on retry.
-  const second=(await call('/api/credits/checkout',{method:'POST',cookie:buyer,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
-  const old=[...sessions.values()].at(-1);
-  await webhook('checkout.session.expired',{...old,status:'expired'});sessions.set(old.id,{...old,status:'expired'});
-  ok('An expired checkout marks the purchase failed',(await call('/api/credits/purchases/'+second.purchaseId,{cookie:buyer})).body.purchase.status==='failed');
+  // An order that was never paid expires; retrying opens a new one.
+  const second=(await call('/api/credits/checkout',{method:'POST',cookie:buyer,data:{packageId:pack.id,currency:'ALL',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
+  const old=pok.last();
+  ok('Prices in ALL are sent to POK in whole lek',pok.created.at(-1).amount==='500'&&pok.created.at(-1).currencyCode==='ALL');
+  pok.expire(old.id);await notify(old.id);
+  ok('An expired order marks the purchase failed',(await call('/api/credits/purchases/'+second.purchaseId,{cookie:buyer})).body.purchase.status==='failed');
   const retried=(await call(`/api/credits/purchases/${second.purchaseId}/retry`,{method:'POST',cookie:buyer,data:{}})).body;
-  ok('Retrying an expired checkout opens a new Stripe session',retried.url!==old.url&&retried.url===[...sessions.values()].at(-1).url&&(await call('/api/credits/purchases/'+second.purchaseId,{cookie:buyer})).body.purchase.status==='pending');
+  ok('Retrying an expired order opens a new POK order',retried.url!==old.self.confirmUrl&&retried.url===pok.last().self.confirmUrl&&(await call('/api/credits/purchases/'+second.purchaseId,{cookie:buyer})).body.purchase.status==='pending');
+  // A payment whose webhook never arrives is found by the maintenance sweep.
+  pok.pay(pok.last().id);await db.prepare('UPDATE credit_purchases SET created_at=created_at-120000 WHERE id=?').bind(second.purchaseId).run();
+  await db.prepare("DELETE FROM app_settings WHERE key='last_maintenance'").run();
+  await live.dispatchFetch(env.APP_ORIGIN+'/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+env.QUEUE_SECRET}});
+  ok('A paid order whose webhook was lost is confirmed by the background check',(await call('/api/credits/purchases/'+second.purchaseId,{cookie:buyer})).body.purchase.status==='paid'&&await balance()===300);
   await call(`/api/credits/purchases/${second.purchaseId}/pay`,{method:'POST',cookie:buyer,data:{result:'success'},expected:403});
-  ok('The test payment endpoint is disabled in production',await balance()===-200);
+  ok('The test payment endpoint is disabled in production',await balance()===300);
  }finally{await live.dispose()}
 }
 try{
@@ -143,7 +159,7 @@ try{
  const pack=(data,expected=201,cookie=admin)=>request('/api/admin/credit-packages',{method:'POST',cookie,data,expected});
  await pack({name:'No price',credits:100,prices:{},active:true},400);ok('A pack needs at least one price',true);
  await pack({name:'Sneaky',credits:100,prices:{EUR:99},active:true},403,user);ok('Customers cannot create packs',true);
- const starter=(await pack({name:'Starter',credits:500,bonusCredits:0,prices:{EUR:499,USD:549},active:true,sortOrder:1})).body.package;
+ const starter=(await pack({name:'Starter',credits:500,bonusCredits:0,prices:{EUR:499,ALL:50000},active:true,sortOrder:1})).body.package;
  const value=(await pack({name:'Value',credits:1000,bonusCredits:100,prices:{EUR:999},active:true,sortOrder:2})).body.package;
  const hidden=(await pack({name:'Hidden',credits:50,prices:{EUR:99},active:false})).body.package;
  const shop=(await request('/api/credit-packages')).body.packages;
@@ -153,7 +169,7 @@ try{
  ok('Admin edits and removes packs',!(await request('/api/admin/credit-packages',{cookie:admin})).body.packages.some(p=>p.id===hidden.id));
  const buyer=await register('buyer@credits.test');const buy=(data,expected=201)=>request('/api/credits/checkout',{method:'POST',cookie:buyer.cookie,data,expected});
  await buy({packageId:value.id,currency:'EUR',idempotencyKey:randomUUID()},400);ok('Checkout requires consent to immediate delivery',true);
- await buy({packageId:value.id,currency:'USD',idempotencyKey:randomUUID(),consent:true},400);ok('A pack is sold only in its configured currencies',true);
+ await buy({packageId:value.id,currency:'ALL',idempotencyKey:randomUUID(),consent:true},400);ok('A pack is sold only in its configured currencies',true);
  await buy({packageId:hidden.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},404);ok('Removed packs cannot be bought',true);
  const buyKey=randomUUID();const started=(await buy({packageId:value.id,currency:'EUR',idempotencyKey:buyKey,consent:true})).body;
  ok('Demo checkout opens the test payment page',started.url==='/credits/checkout/'+started.purchaseId);

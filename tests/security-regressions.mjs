@@ -2,29 +2,17 @@ import {createRequire} from 'node:module';
 import {readFile,readdir,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes,pbkdf2Sync,createHash,createHmac,randomUUID} from 'node:crypto';
+import {fakePok} from './fake-pok.mjs';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.resolve('wrangler/package.json'));
 const {Miniflare,Response:MFResponse}=require('miniflare');
 const server=path.resolve('dist/server');
 const modules=(await readdir(server,{recursive:true})).filter(f=>f.endsWith('.js')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:a.localeCompare(b)).map(f=>({type:'ESModule',path:path.join(server,f)}));
 const adminPassword=randomBytes(18).toString('hex'),salt=randomBytes(32).toString('hex');
-const config={DEMO_MODE:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(adminPassword,salt,100000,32,'sha256').toString('hex'),STRIPE_WEBHOOK_SECRET:'whsec_disposable',STRIPE_SECRET_KEY:'sk_test_fixture_only',AUTO_REFUND:'true'};
-const sessions=new Map(),idempotency=new Map();let stripeSessions=0;
+const config={DEMO_MODE:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(adminPassword,salt,100000,32,'sha256').toString('hex'),POK_KEY_ID:'pok_key_fixture',POK_KEY_SECRET:'pok_secret_fixture',POK_MERCHANT_ID:'merchant_fixture'};
+const pok=fakePok({keyId:config.POK_KEY_ID,keySecret:config.POK_KEY_SECRET,merchantId:config.POK_MERCHANT_ID,Response:MFResponse});
 const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:config,d1Databases:{DB:'security-tests'},r2Buckets:['BUCKET'],cf:false,
- outboundService:async req=>{
-  const url=new URL(req.url);
-  assert.equal(url.hostname,'api.stripe.com','External network is blocked in this suite');
-  if(url.pathname==='/v1/checkout/sessions'&&req.method==='POST'){
-   const key=req.headers.get('idempotency-key');if(idempotency.has(key))return MFResponse.json(idempotency.get(key));
-   const form=new URLSearchParams(await req.text());const id='cs_fixture_'+(++stripeSessions);
-   const session={id,url:'https://checkout.stripe.com/c/test/'+id,status:'open',payment_status:'unpaid',amount_total:Number(form.get('line_items[0][price_data][unit_amount]')),currency:form.get('line_items[0][price_data][currency]')};
-   sessions.set(id,session);idempotency.set(key,session);return MFResponse.json(session);
-  }
-  if(url.pathname.startsWith('/v1/checkout/sessions/')&&req.method==='GET'){
-   const s=sessions.get(url.pathname.split('/').at(-1));assert(s,'Unknown fixture checkout');return MFResponse.json(s);
-  }
-  throw new Error('Unexpected provider call: '+url.pathname);
- }
+ outboundService:async req=>{const url=new URL(req.url);assert(pok.matches(url),'External network is blocked in this suite');return pok.handle(req);}
 });
 const checks=[];const hash=s=>createHash('sha256').update(s).digest('hex');
 const ok=(name,value=true)=>{assert(value,name);checks.push({name,passed:true});console.log('PASS',name)};
@@ -34,7 +22,7 @@ async function request(route,{method='GET',data,cookie,headers={},expected=200,o
  if(expected!==null)assert.equal(r.status,expected,method+' '+route+': '+text.slice(0,250));
  return {body,text,response:r,cookie:r.headers.get('set-cookie')?.split(';')[0]};
 }
-async function webhook(event,expected=200){const t=Math.floor(Date.now()/1000);return request('/api/webhooks/stripe',{method:'POST',data:event,headers:{'stripe-signature':'t='+t+',v1='+createHmac('sha256',config.STRIPE_WEBHOOK_SECRET).update(t+'.'+JSON.stringify(event)).digest('hex')},expected});}
+const notify=(id,o)=>pok.notify(id,(u,i)=>mf.dispatchFetch(u,i),o);
 try{
  const db=await mf.getD1Database('DB'),bucket=await mf.getR2Bucket('BUCKET');
  for(const file of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort())for(const s of (await readFile('drizzle/'+file,'utf8')).split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await db.prepare(s).run();
@@ -61,7 +49,7 @@ try{
  await request('/api/account',{method:'PATCH',cookie,origin:false,data:{name:'Cross-site'},expected:403});ok('Authenticated mutation without an Origin is rejected');
  await request('/api/account',{method:'PATCH',cookie,data:{name:'X'.repeat(1_000_001)},expected:413});ok('Large JSON requests are rejected before parsing');
  await request('/api/admin/operations',{cookie,expected:403});await request('/api/admin/activity',{expected:401});ok('Operations and audit endpoints enforce the admin role');
- const ops=await request('/api/admin/operations',{cookie:admin});ok('Readiness shows absent live services without exposing secrets',ops.body.checks.length===8&&ops.body.checks.some(c=>c.name==='Credit ledger')&&!ops.text.includes(config.APP_SECRET)&&!ops.text.includes(config.STRIPE_SECRET_KEY));
+ const ops=await request('/api/admin/operations',{cookie:admin});ok('Readiness shows absent live services without exposing secrets',ops.body.checks.length===8&&ops.body.checks.some(c=>c.name==='Credit ledger')&&!ops.text.includes(config.APP_SECRET)&&!ops.text.includes(config.POK_KEY_SECRET));
  const page=await request('/api/admin/users?limit=1&page=2',{cookie:admin});ok('Admin records support server pagination',page.body.users.length===1&&page.body.pagination.total===2&&page.body.pagination.page===2);
  const search=await request('/api/admin/users?search=qa%40studio.test',{cookie:admin});ok('Admin search filters on the server',search.body.users.length===1&&search.body.users[0].email==='qa@studio.test');
  await request('/api/admin/users?page=-1',{cookie:admin,expected:400});ok('Pagination parameters are validated');
@@ -76,25 +64,29 @@ try{
  const uploadId='up_security_fixture',storageKey='uploads/security-test/photo';const bytes=await readFile('public/media/formula-driver.webp');await bucket.put(storageKey,bytes);
  await db.prepare('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,created_at) VALUES (?,?,?,?,?,?,?)').bind(uploadId,user.body.user.id,storageKey,'image/webp',bytes.length,'photo.webp',Date.now()).run();
  await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:admin,data:{...formula,thumbnail:'/api/media/'+uploadId},expected:400});ok('Admin preview fields cannot expose private user uploads');
- // Credit pack purchases: test payments, expired Stripe sessions, webhook ordering and reversals.
- const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Security pack',credits:600,prices:{USD:299},active:true},expected:201})).body.package;
- const purchase=(await request('/api/credits/checkout',{method:'POST',cookie,data:{packageId:pack.id,currency:'USD',idempotencyKey:randomUUID(),consent:true},expected:201})).body;const purchaseId=purchase.purchaseId;
+ // Credit pack purchases: test payments, expired POK orders, webhook ordering, tampering and reversals.
+ const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Security pack',credits:600,prices:{EUR:299},active:true},expected:201})).body.package;
+ const purchase=(await request('/api/credits/checkout',{method:'POST',cookie,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;const purchaseId=purchase.purchaseId;
  await request('/api/credits/purchases/'+purchaseId+'/pay',{method:'POST',cookie,data:{result:'unexpected'},expected:400});ok('Test payment only accepts explicit success or failure');
- sessions.set('cs_expired',{id:'cs_expired',status:'expired',payment_status:'unpaid'});await db.prepare("UPDATE credit_purchases SET provider='stripe',provider_session_id='cs_expired',checkout_url='https://checkout.stripe.com/c/expired' WHERE id=?").bind(purchaseId).run();
+ const expiredWebhook=new URL(config.APP_ORIGIN+'/api/webhooks/pok');expiredWebhook.searchParams.set('purchase',purchaseId);expiredWebhook.searchParams.set('sig',createHmac('sha256',config.APP_SECRET).update('pok-webhook:'+purchaseId).digest('hex'));
+ pok.orders.set('ord_expired',{id:'ord_expired',amount:2.99,capturedAmount:0,currencyCode:'EUR',merchantCustomReference:purchaseId,expiresAt:new Date(Date.now()-60000).toISOString(),self:{confirmUrl:'https://pay.pokpay.io/confirm/ord_expired'},webhookUrl:expiredWebhook.toString()});
+ await db.prepare("UPDATE credit_purchases SET provider='pok',provider_session_id='ord_expired',checkout_url='https://pay.pokpay.io/confirm/ord_expired' WHERE id=?").bind(purchaseId).run();
  const retries=await Promise.all([request('/api/credits/purchases/'+purchaseId+'/retry',{method:'POST',cookie,data:{}}),request('/api/credits/purchases/'+purchaseId+'/retry',{method:'POST',cookie,data:{}})]);
  const fresh=await db.prepare('SELECT * FROM credit_purchases WHERE id=?').bind(purchaseId).first();
- ok('Expired checkout renews once even under concurrent retries',stripeSessions===1&&fresh.checkout_attempt===1&&retries[0].body.url===retries[1].body.url);
- await webhook({id:'evt_expired_old',type:'checkout.session.expired',data:{object:{id:'cs_expired',metadata:{purchase_id:purchaseId}}}});
- ok('Delayed expiry event cannot fail a newer checkout',(await request('/api/credits/purchases/'+purchaseId,{cookie})).body.purchase.status==='pending');
- const waiting=sessions.get(fresh.provider_session_id);waiting.status='complete';
- await request('/api/credits/purchases/'+purchaseId+'/retry',{method:'POST',cookie,data:{},expected:409});ok('A pending asynchronous payment cannot open a second checkout',stripeSessions===1);
- const paid={id:'evt_paid_fixture',type:'checkout.session.completed',data:{object:{id:fresh.provider_session_id,payment_status:'paid',payment_intent:'pi_security_fixture',amount_total:299,currency:'usd',metadata:{purchase_id:purchaseId}}}};
- await webhook({...paid,id:'evt_bad_amount',data:{object:{...paid.data.object,amount_total:1}}},400);ok('Stripe webhook rejects amount tampering',(await request('/api/credits',{cookie})).body.available===0);
- await webhook(paid);await webhook(paid);ok('Signed confirmation is idempotent',(await db.prepare("SELECT COUNT(*) AS n FROM webhook_events WHERE id=?").bind(paid.id).first()).n===1&&(await request('/api/credits',{cookie})).body.available===600);
- await webhook({id:'evt_refunded',type:'charge.refunded',data:{object:{payment_intent:'pi_security_fixture',refunded:true,refunds:{data:[{id:'re_external'}]}}}});
- ok('An external refund reverses the purchase and removes its credits',(await request('/api/credits',{cookie})).body.available===0&&(await db.prepare('SELECT status FROM credit_purchases WHERE id=?').bind(purchaseId).first()).status==='reversed');
- ok('The reversal is retained in the ledger for reconciliation',!!await db.prepare("SELECT id FROM credit_transactions WHERE kind='reversal' AND reference_id=?").bind(purchaseId).first());
- await webhook({...paid,id:'evt_paid_late'});ok('A late payment event cannot grant a reversed purchase again',(await request('/api/credits',{cookie})).body.available===0);
+ ok('Expired order renews once even under concurrent retries',fresh.checkout_attempt===1&&fresh.provider_session_id!=='ord_expired'&&retries[0].body.url===retries[1].body.url&&retries[0].body.url===fresh.checkout_url);
+ await notify('ord_expired');
+ ok('A delayed webhook for the expired order cannot fail the newer one',(await request('/api/credits/purchases/'+purchaseId,{cookie})).body.purchase.status==='pending');
+ const created=pok.created.length;
+ ok('Retrying an open order reuses it',(await request('/api/credits/purchases/'+purchaseId+'/retry',{method:'POST',cookie,data:{}})).body.url===fresh.checkout_url&&pok.created.length===created);
+ const order=pok.orders.get(fresh.provider_session_id);
+ Object.assign(order,{amount:0.01,capturedAmount:0.01});await notify(order.id);
+ ok('An order with a different amount grants nothing',(await request('/api/credits',{cookie})).body.available===0);
+ Object.assign(order,{amount:2.99,capturedAmount:0});pok.pay(order.id);
+ await notify(order.id);await notify(order.id);ok('Payment confirmation is idempotent',(await request('/api/credits',{cookie})).body.available===600);
+ await request(`/api/admin/credits/purchases/${purchaseId}/reverse`,{method:'POST',cookie:admin,data:{reason:'Payment refunded',currentPassword:adminPassword}});
+ ok('A refund recorded by the admin reverses the purchase and removes its credits',(await request('/api/credits',{cookie})).body.available===0&&(await db.prepare('SELECT status FROM credit_purchases WHERE id=?').bind(purchaseId).first()).status==='reversed');
+ ok('The reversal is retained in the ledger for reconciliation',!!await db.prepare("SELECT id FROM credit_transactions WHERE kind='reversal' AND reference_id=? AND actor_id IS NOT NULL").bind(purchaseId).first());
+ await notify(order.id);ok('A late payment webhook cannot grant a reversed purchase again',(await request('/api/credits',{cookie})).body.available===0);
  // Generation deadline: a job running past 30 minutes fails and returns its credits.
  await request('/api/admin/users/'+user.body.user.id+'/credits',{method:'POST',cookie:admin,data:{amount:500,reason:'Security fixture',currentPassword:adminPassword,idempotencyKey:randomUUID()}});
  const timeout=await request('/api/generations',{method:'POST',cookie,data:{templateId:formula.id,expectedCost:formula.creditCost,uploadIds:[uploadId],consent:true,idempotencyKey:randomUUID()},expected:201});
@@ -106,7 +98,7 @@ try{
  ok('A timed-out generation returns its credits',JSON.stringify((await request('/api/credits',{cookie})).body)===JSON.stringify({available:500,held:0}));
  const currentOps=await request('/api/admin/operations',{cookie:admin});ok('External queue dispatch records an observable heartbeat',currentOps.body.dispatchHeartbeat>0&&currentOps.body.checks.find(c=>c.name==='External queue dispatcher').ready);
  ok('Operations lists the reversed purchase for review',currentOps.body.reversals.some(r=>r.id===purchaseId));
- const dashboard=await request('/api/admin/dashboard',{cookie:admin});ok('Financial reports separate reversed payments and keep estimated AI cost',dashboard.body.financials[0].reversed_amount===299&&dashboard.body.financials[0].revenue===0&&dashboard.body.financials[0].estimated_cost>=85);
+ const dashboard=await request('/api/admin/dashboard',{cookie:admin});const fin=c=>dashboard.body.financials.find(f=>f.currency===c)||{};ok('Financial reports separate reversed payments and keep estimated AI cost',fin('EUR').reversed_amount===299&&fin('EUR').revenue===0&&fin('USD').estimated_cost>=85);
  const exported=await request('/api/account/export',{cookie});ok('Account export includes owned records without internal workflow or password data',exported.body.creditPurchases.length===1&&exported.body.credits.available===500&&!exported.text.includes('password_hash')&&!exported.text.includes('workflow_snapshot')&&!exported.text.includes('storage_key'));
  const activity=await request('/api/admin/activity?search=account.password-changed',{cookie:admin});ok('Security actions are recorded in the searchable audit log',activity.body.activity.length===1);
  await request('/api/account',{method:'DELETE',cookie,data:{password:'wrong'},expected:403});ok('Deleting an account requires reauthentication');
@@ -114,5 +106,5 @@ try{
  await request('/api/admin/users/'+(await request('/api/me',{cookie:admin})).body.user.id,{method:'PATCH',cookie:admin,data:{status:'suspended'},expected:409});ok('Admin cannot accidentally suspend the administrator account');
  const html=await request('/admin/operations',{cookie:admin});ok('Authenticated admin operations page renders',html.text.includes('Keep everything moving')||html.text.includes('Workspace'));
  const headers=(await request('/')).response.headers;ok('Security response headers are present',headers.get('content-security-policy')?.includes("object-src 'none'")&&headers.get('x-content-type-options')==='nosniff');
- await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,network:'Stripe responses simulated locally; no external payments or messages sent',checks},null,2));console.log('\n'+checks.length+' security and operational checks passed.');
+ await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,network:'POK responses simulated locally; no external payments or messages sent',checks},null,2));console.log('\n'+checks.length+' security and operational checks passed.');
 }catch(e){console.error('FAIL',e);await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,error:String(e),checks},null,2));process.exitCode=1}finally{await mf.dispose()}

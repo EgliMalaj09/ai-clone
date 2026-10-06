@@ -5,6 +5,7 @@ import {ingestRemote,mediaUrl,storage} from './storage';
 import {settleHold} from './credits';
 import {demoVideos} from './demo-assets';
 import {sweepTemplateMedia} from './template-media';
+import {sweepPendingPurchases} from './credit-purchases';
 
 const active=['queued','preparing','generating','finalizing'];
 export async function failGeneration(g:Row,error:string){
@@ -69,7 +70,7 @@ export async function tickQueue(userId?:string){
  const maintenance=await one("INSERT INTO app_settings (key,value) VALUES ('last_maintenance',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE CAST(value AS INTEGER)<? RETURNING value",String(now()),now()-3600000);
  if(maintenance){
   await batch([stmt('DELETE FROM rate_limits WHERE reset_at<?',now()-3600000),stmt('DELETE FROM sessions WHERE expires_at<?',now()),stmt('DELETE FROM auth_tokens WHERE expires_at<?',now())]);
-  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads])await task().catch(e=>console.error('Maintenance task needs another run',e instanceof Error?e.message:'unknown'));
+  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads,sweepPendingPurchases])await task().catch(e=>console.error('Maintenance task needs another run',e instanceof Error?e.message:'unknown'));
  }
  await run("INSERT INTO app_settings (key,value) VALUES ('queue_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(now()));const rows=await all("SELECT id FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND next_run_at<=? AND lease_until<? AND deleted_at IS NULL"+(userId?' AND user_id=?':'')+' ORDER BY created_at LIMIT 5',now(),now(),...(userId?[userId]:[]));await Promise.allSettled(rows.map(g=>tickGeneration(g.id)));return rows.length;}
 export async function removeGeneration(id:string,userId:string){const g=await one('SELECT * FROM generations WHERE id=? AND user_id=? AND deleted_at IS NULL',id,userId);must(g,'Creation not found.',404);must(!active.includes(g.status),'Please wait for the running generation to finish before deleting it.',409);const assets=await all('SELECT * FROM generated_assets WHERE generation_id=?',id);for(const a of assets)await storage.delete(a.storage_key);await batch([stmt('DELETE FROM generated_assets WHERE generation_id=?',id),stmt("UPDATE generations SET deleted_at=?,context='{}',input_ids='[]' WHERE id=?",now(),id)]);}

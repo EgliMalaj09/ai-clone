@@ -2,7 +2,7 @@ import {liveWorkflow} from './workflow-presets';
 import {assertGeneratable,connectionStatus,publicAvailability,serviceConfig,updateConnections} from './connections';
 import {ZodError,z} from 'zod';
 import {jsonBody,pageQuery,readUploadedFile} from './http';
-import {creditValues,deletePackage,ensurePackCheckout,listPackages,listPurchases,payTestPurchase,publicPurchase,purchaseFor,savePackage,startPackCheckout,verifyPackCheckout} from './credit-purchases';
+import {creditValues,deletePackage,ensurePackCheckout,listPackages,listPurchases,payTestPurchase,publicPurchase,purchaseFor,reversePackPayment,savePackage,startPackCheckout,verifyPackCheckout} from './credit-purchases';
 import {adjust,balanceOf,creditHistory,creditLedger,grantWelcomeCredits,onlyIfApplied,placeHold,reconcileCredits} from './credits';
 import {deleteTemplateMedia,listTemplateMedia,releaseTemplateMedia,templateMediaUrls,uploadTemplateMedia} from './template-media';
 import {queryCatalog} from './catalog-query';
@@ -12,7 +12,7 @@ import {all,audit,batch,config,ensureSeed,event,getAdminTemplate,HttpError,must,
 import {authSchema,generationSchema,templateSchema} from './validation';
 import {checkPassword,clearCookie,constantEqual,getUser,hash,makeAuthToken,passwordHash,protectOrigin,rateLimit,requireUser,safeUser,sendAuthMail,sessionCookie} from './security';
 import {imageMime,mediaUrl,storage,validSignature} from './storage';
-import {stripeWebhook} from './payments';
+import {pokWebhook} from './payments';
 import {removeGeneration,tickQueue} from './queue';
 import type {AdminTemplate,StudioUser} from '../contracts';
 
@@ -62,7 +62,7 @@ async function startGeneration(user:StudioUser,input:unknown){
 export async function handleAPI(req:Request){try{
  const url=new URL(req.url);const p=url.pathname.slice(5).split('/').filter(Boolean);const method=req.method;
  await ensureSeed();
- if(p.join('/')==='webhooks/stripe'&&method==='POST'){await stripeWebhook(req);return json({received:true});}
+ if(p.join('/')==='webhooks/pok'&&method==='POST'){const purchase=await pokWebhook(req);if(purchase)await verifyPackCheckout(purchase);return json({received:true});}
  protectOrigin(req);
  if(p.join('/')==='queue/dispatch'&&method==='POST'){must(config().cronSecret&&constantEqual(req.headers.get('authorization')||'','Bearer '+config().cronSecret),'Unauthorized queue worker.',401);const processed=await tickQueue();await run("INSERT INTO app_settings (key,value) VALUES ('queue_dispatch_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(now()));return json({processed});}
  const ip=req.headers.get('cf-connecting-ip')||'local';
@@ -186,6 +186,11 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
    const account=await one('SELECT password_hash FROM users WHERE id=?',user.id);must(account&&await checkPassword(b.currentPassword,account.password_hash),'Your administrator password is incorrect.',403);
    const result=await adjust({userId:target.id,amount:b.amount,actorId:user.id,reason:b.reason,key:'adjust:'+b.idempotencyKey});if(result.applied)await audit(user.id,'credits.adjust',target.id);return json(result);}
  }
+ // A refund or chargeback made in the POK dashboard is recorded here, since POK does not report it to the studio.
+ if(p[1]==='credits'&&p[2]==='purchases'&&p[4]==='reverse'&&method==='POST'){await rateLimit('credit-adjust:'+user.id,30,900000);const b=z.object({reason:z.enum(['Payment refunded','Payment disputed']),currentPassword:z.string().min(1).max(128)}).parse(await body(req));
+  const account=await one('SELECT password_hash FROM users WHERE id=?',user.id);must(account&&await checkPassword(b.currentPassword,account.password_hash),'Your administrator password is incorrect.',403);
+  const purchase=await one('SELECT id,status FROM credit_purchases WHERE id=?',p[3]);must(purchase,'Purchase not found.',404);must(purchase.status==='paid','Only a paid purchase can be reversed.',409);
+  if(await reversePackPayment(purchase.id,b.reason,user.id))await audit(user.id,'credits.reverse-purchase',purchase.id);return json({ok:true});}
  if(p[1]==='credits'&&method==='GET'){if(p[2]==='ledger')return json(await creditLedger(new URL(req.url)));if(p[2]==='reconciliation')return json(await reconcileCredits());if(p[2]==='purchases')return json(await listPurchases(null,new URL(req.url)));}
  if(p[1]==='credit-packages'){
   if(method==='GET'&&!p[2])return json({packages:await listPackages(true)});
@@ -202,7 +207,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='PATCH'){const b=await body(req);const enabled=z.boolean().parse(b.enabled);must(['mock','fal','replicate'].includes(p[2]),'Unknown provider.');await run('UPDATE provider_configurations SET enabled=?,updated_at=? WHERE id=?',Number(enabled),now(),p[2]);await audit(user.id,'provider.update',p[2]);return json({ok:true});}
  }
  if(p[1]==='settings'){
-  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),demo:c.demo,stripeConfigured:!!c.stripeKey,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret});}
+  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret});}
   if(method==='PATCH'){const b=z.object({welcomeCredits:z.number().int().min(0).max(100000)}).parse(await body(req));
    await run("INSERT INTO app_settings (key,value) VALUES ('welcome_credits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(b.welcomeCredits));await audit(user.id,'settings.update','welcome_credits');
    return json({ok:true});}

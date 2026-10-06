@@ -1,6 +1,6 @@
 # Credits system — architecture design
 
-Status: **implemented** (ledger, packs, holds and admin tools) with the owner's decisions of 6 October 2026 (§15). Credits are the only payment model: the per-video orders, payments and refunds tables were removed in migration 0004, and pack sales are recorded in `credit_purchases`. Pack contents and the payment provider are still to be decided. Date: 6 October 2026.
+Status: **implemented** (ledger, packs, holds and admin tools) with the owner's decisions of 6 October 2026 (§15). Credits are the only payment model: the per-video orders, payments and refunds tables were removed in migration 0004, and pack sales are recorded in `credit_purchases`. Payments use POK (implemented after this design; see OPERATIONS.md). Pack contents are still to be decided. Date: 6 October 2026.
 Scope: let a signed-in customer buy credit packs and spend credits on template video generations. This document covers the rules, data model, connections, flows, user and admin journeys, safety, accounting and migration. Code comes later.
 
 ---
@@ -16,7 +16,7 @@ Scope: let a signed-in customer buy credit packs and spend credits on template v
 | Spending | **Hold → capture / release**: credits are reserved when generation starts, charged when the video is delivered, returned automatically if it fails | Like a card authorization; failed generations never cost the customer (Kling does the same) |
 | Expiry | **Credits never expire** (owner decision). If expiry is added later, per-purchase lots can be rebuilt from the purchase transactions | OpenAI (1 year per purchase) and Kling (2 years) use expiry; Runway reports non-expiring top-ups |
 | Refund of money | **No refunds** (owner decision). Failed generations still return their credits automatically. Chargebacks remove purchased credits | Matches the "non-refundable" policies of OpenAI and Kling |
-| Payment provider | Behind the existing `PaymentGateway` interface; **Stripe or a merchant of record** | Stripe does not officially support Albanian businesses (see §12) |
+| Payment provider | **POK** (decided 6 October 2026) | Albanian provider; charges ALL and EUR. Stripe was dropped because it does not support Albanian businesses (see §12) |
 | Integers only | Credits and money are stored as integers (credits, minor currency units) | No rounding errors |
 
 Everything below follows from these choices.
@@ -72,7 +72,7 @@ flowchart LR
     D1[(D1 database<br/>ledger and balances)]
     R2[(R2 storage<br/>photos and videos)]
   end
-  PSP[Payment provider<br/>Stripe or merchant of record]
+  PSP[Payment provider<br/>POK]
   AI[AI providers<br/>fal.ai, Replicate]
   MAIL[Email<br/>Resend]
 
@@ -471,7 +471,7 @@ The project is not live, so no customer balances need migrating. Existing test o
 | Welcome credits | **0**, configurable in admin settings |
 | Refund policy | **None**; failed generations still return credits; chargebacks remove purchased credits |
 | Packs | **To be decided**; packs are admin-managed data, so they can be set any time |
-| Payment provider | **To be decided**; behind the `PaymentGateway` interface (test checkout in demo mode, Stripe adapter included) |
+| Payment provider | **POK** (account verified; fees to be confirmed). Test checkout in demo mode. POK does not report refunds, so the admin records them with Reverse on Credit purchases |
 | Subscriptions | **Not for now** |
 | Pay-per-video checkout | Replaced by credits (every generation uses credits) |
 
