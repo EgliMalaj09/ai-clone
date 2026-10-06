@@ -13,9 +13,9 @@ import type {CreditHistory,CreditPackage,CreditPurchase,Pagination} from '@/lib/
 // POK charges in these currencies only.
 const currencies=['ALL','EUR'];
 const kinds:[string,string][]=[['all','All types'],['purchase','Purchases'],['hold','Reserved'],['capture','Spent'],['release','Returned'],['adjust','Adjustments'],['welcome','Welcome'],['reversal','Reversals']];
-const kindLabel=(k:string)=>kinds.find(([v])=>v===k)?.[1].replace(/s$/,'')||k;
+export const kindLabel=(k:string)=>kinds.find(([v])=>v===k)?.[1].replace(/s$/,'')||k;
 function Heading({title,description,children}:{title:string;description:string;children?:React.ReactNode}){return <div className="admin-heading"><div><span className="eyebrow">CREDITS</span><h1>{title}</h1><p>{description}</p></div>{children}</div>;}
-const signed=(n:number)=>(n>0?'+':n<0?'−':'')+credits(Math.abs(n));
+export const signed=(n:number)=>(n>0?'+':n<0?'−':'')+credits(Math.abs(n));
 
 type PackForm={id:string|null;name:string;credits:number;bonusCredits:number;active:boolean;sortOrder:number;prices:Record<string,string>};
 const emptyPack=():PackForm=>({id:null,name:'',credits:500,bonusCredits:0,active:true,sortOrder:0,prices:{EUR:'4.99'}});
@@ -69,7 +69,7 @@ export function CreditLedger({initialSearch=''}:{initialSearch?:string}){
 }
 
 /** Records a refund or chargeback made in POK: removes the pack's credits, even below zero. Requires the administrator password. */
-function ReversePurchase({purchase,onDone}:{purchase:CreditPurchase;onDone:()=>void}){
+export function ReversePurchase({purchase,onDone}:{purchase:CreditPurchase;onDone:()=>void}){
  const [open,setOpen]=useState(false),[reason,setReason]=useState('Payment refunded'),[password,setPassword]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
  async function submit(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{
   await api(`admin/credits/purchases/${purchase.id}/reverse`,'POST',{reason,currentPassword:password});

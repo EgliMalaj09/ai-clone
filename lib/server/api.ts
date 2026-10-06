@@ -61,6 +61,23 @@ async function startGeneration(user:StudioUser,input:unknown){
  return {generationId,balance:{available:hold.available,held:hold.held}};
 }
 
+/** Everything an administrator needs about one customer on a single page. */
+async function adminUserDetail(id:string){
+ const u=await one('SELECT id,name,email,role,status,email_verified,created_at FROM users WHERE id=?',id);must(u,'User not found.',404);
+ const [sessions,uploads,count,generations,activity]=await Promise.all([
+  one('SELECT COUNT(*) AS active,MAX(expires_at) AS latest FROM sessions WHERE user_id=? AND expires_at>?',id,now()),
+  one('SELECT COUNT(*) AS count,COALESCE(SUM(size),0) AS bytes FROM user_uploads WHERE user_id=?',id),
+  one("SELECT COUNT(*) AS total,SUM(status='completed') AS completed,SUM(status='failed') AS failed FROM generations WHERE user_id=? AND deleted_at IS NULL",id),
+  all("SELECT g.id,g.template_name,g.status,g.credit_cost,g.created_at,g.completed_at,g.error,h.status AS credit_status FROM generations g LEFT JOIN credit_holds h ON h.id=g.hold_id WHERE g.user_id=? AND g.deleted_at IS NULL ORDER BY g.created_at DESC LIMIT 20",id),
+  all('SELECT a.id,a.action,a.created_at,actor.email AS actor_email FROM audit_logs a LEFT JOIN users actor ON actor.id=a.user_id WHERE a.target_id=? OR a.user_id=? ORDER BY a.created_at DESC LIMIT 20',id,id),
+ ]);
+ return {user:{...u,email_verified:!!u.email_verified},balance:await balanceOf(id),
+  // Sessions last seven days, so the newest expiry tells when the customer last signed in.
+  sessions:{active:Number(sessions?.active||0),lastSignIn:sessions?.latest?Number(sessions.latest)-7*86400000:null},
+  uploads:{count:Number(uploads?.count||0),bytes:Number(uploads?.bytes||0)},
+  creations:{total:Number(count?.total||0),completed:Number(count?.completed||0),failed:Number(count?.failed||0),recent:generations},activity};
+}
+
 export async function handleAPI(req:Request){try{
  const url=new URL(req.url);const p=url.pathname.slice(5).split('/').filter(Boolean);const method=req.method;
  await ensureSeed();
@@ -201,7 +218,15 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='DELETE'&&p[2]){await deletePackage(p[2],user);return json({ok:true});}
  }
  if(p[1]==='users'){
-  if(method==='PATCH'){const b=await body(req);const status=z.enum(['active','suspended']).parse(b.status);must(!await one("SELECT id FROM users WHERE id=? AND role='admin'",p[2]),'Administrator accounts cannot be suspended here.',409);must(await one('SELECT id FROM users WHERE id=?',p[2]),'User not found.',404);await batch([stmt('UPDATE users SET status=? WHERE id=?',status,p[2]),...(status==='suspended'?[stmt('DELETE FROM sessions WHERE user_id=?',p[2])]:[])]);await audit(user.id,'user.'+status,p[2]);return json({ok:true});}
+  if(method==='GET'&&p[2]&&!p[3])return json(await adminUserDetail(p[2]));
+  if(method==='GET'&&p[3]==='purchases'){must(await one('SELECT id FROM users WHERE id=?',p[2]),'User not found.',404);return json(await listPurchases(p[2],new URL(req.url)));}
+  if(method==='PATCH'){const b=z.object({status:z.enum(['active','suspended']).optional(),name:z.string().trim().min(2).max(80).optional(),emailVerified:z.literal(true).optional()}).strict().parse(await body(req));
+   const target=await one('SELECT id,role,email_verified FROM users WHERE id=?',p[2]);must(target,'User not found.',404);must(b.status||b.name||b.emailVerified,'Choose something to change.');
+   if(b.status){must(target.role!=='admin','Administrator accounts cannot be suspended here.',409);await batch([stmt('UPDATE users SET status=? WHERE id=?',b.status,p[2]),...(b.status==='suspended'?[stmt('DELETE FROM sessions WHERE user_id=?',p[2])]:[])]);await audit(user.id,'user.'+b.status,p[2]);}
+   if(b.name){await run('UPDATE users SET name=? WHERE id=?',b.name,p[2]);await audit(user.id,'user.rename',p[2]);}
+   // Marking an email verified by hand behaves like opening the verification link, including welcome credits.
+   if(b.emailVerified&&!target.email_verified){await batch([stmt('UPDATE users SET email_verified=1 WHERE id=?',p[2]),stmt("DELETE FROM auth_tokens WHERE user_id=? AND type='verify'",p[2])]);await grantWelcomeCredits(p[2]).catch(e=>console.error('Welcome credits need review',e instanceof Error?e.message:'unknown'));await audit(user.id,'user.verify-email',p[2]);}
+   return json({ok:true});}
   if(method==='DELETE'){const u=await one('SELECT * FROM users WHERE id=?',p[2]);must(u,'User not found.',404);await deleteAccount(safeUser(u));await audit(user.id,'user.delete',p[2]);return json({ok:true});}
  }
  if(p[1]==='providers'){

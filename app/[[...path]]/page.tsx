@@ -18,7 +18,7 @@ export default async function Page({params,searchParams}:{params:Promise<{path?:
  const {path=[]}=await params;const query=await searchParams;
  const single=['explore','creations','favorites','credits','account','login','register','forgot-password','reset-password','verify','privacy','terms'];
  const adminSections=['templates','media','generations','users','credit-packs','purchases','credits','providers','settings','operations','activity','connections'];
- const valid=!path.length||path.length===1&&single.includes(path[0])||path.length===2&&path[0]==='template'||path.length===3&&path[0]==='credits'&&path[1]==='checkout'||path[0]==='admin'&&(path.length===1||path.length===2&&adminSections.includes(path[1])||path.length===3&&path[1]==='templates');
+ const valid=!path.length||path.length===1&&single.includes(path[0])||path.length===2&&path[0]==='template'||path.length===3&&path[0]==='credits'&&path[1]==='checkout'||path[0]==='admin'&&(path.length===1||path.length===2&&adminSections.includes(path[1])||path.length===3&&['templates','users'].includes(path[1]));
  if(!valid)notFound();
  const data=await loadPage(path,await headers());
  if(path[0]==='template'&&!data.selectedTemplate)notFound();

@@ -43,3 +43,8 @@ export type AdminUser={id:string;email:string;name:string;role:string;status:str
 export type Provider={id:string;name:string;enabled:number;configured:boolean};
 export type StudioSettings={welcomeCredits:number;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean};
 export type TemplateResult={template:AdminTemplate};
+export type AdminUserDetail={
+ user:{id:string;name:string;email:string;role:string;status:string;email_verified:boolean;created_at:number};
+ balance:Balance;sessions:{active:number;lastSignIn:number|null};uploads:{count:number;bytes:number};
+ creations:{total:number;completed:number;failed:number;recent:{id:string;template_name:string;status:string;credit_cost:number;created_at:number;completed_at:number|null;error:string|null;credit_status:string|null}[]};
+ activity:{id:string;action:string;created_at:number;actor_email:string|null}[]};

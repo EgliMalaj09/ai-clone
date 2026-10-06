@@ -78,6 +78,13 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/admin/generations/'+failure.body.generationId+'/retry',{method:'POST',cookie:userCookie,data:{},expected:403});ok('Customers cannot retry through the admin API',true);
  const dashboard=(await request('/api/admin/dashboard',{cookie:adminCookie})).body;ok('Admin metrics reflect real database activity',dashboard.users===3&&dashboard.metrics.total>=4&&dashboard.metrics.failed>=1&&dashboard.credits.consumed>=299+449*2&&dashboard.credits.granted===2100);
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
+ const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;
+ ok('Customer page returns profile, credits, creations and activity',detail.user.email===second.body.user.email&&typeof detail.balance.available==='number'&&Array.isArray(detail.creations.recent)&&detail.activity.some(a=>a.action==='user.suspended'));
+ await request('/api/admin/users/'+second.body.user.id,{cookie:userCookie,expected:403});ok('Customers cannot open the customer page API',true);
+ await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{name:'Renamed Customer'}});
+ ok('Admin renames a customer',(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body.user.name==='Renamed Customer');
+ await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{role:'admin'},expected:400});ok('Customer updates reject unknown fields such as role',true);
+ ok('Customer purchases are listed per customer',Array.isArray((await request('/api/admin/users/'+second.body.user.id+'/purchases',{cookie:adminCookie})).body.purchases));
  await request('/api/account',{method:'PATCH',cookie:userCookie,data:{name:'Updated QA'}});ok('Account changes persist',(await request('/api/me',{cookie:userCookie})).body.user.name==='Updated QA');
  await request('/api/account',{method:'PATCH',cookie:userCookie,headers:{origin:'https://evil.test','sec-fetch-site':'cross-site'},data:{name:'Evil'},expected:403});ok('Cross-site mutation blocked',true);
  await request('/api/webhooks/pok?purchase=cp_forged&sig=00',{method:'POST',data:{id:'forged'},expected:400});ok('POK webhook without the studio signature rejected',true);
