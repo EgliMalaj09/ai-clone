@@ -15,6 +15,7 @@ import {checkPassword,clearCookie,constantEqual,getUser,hash,makeAuthToken,passw
 import {imageMime,mediaUrl,storage,validSignature} from './storage';
 import {pokWebhook} from './payments';
 import {removeGeneration,tickQueue} from './queue';
+import {dispatcherStatus,recordDispatch} from './dispatcher';
 import type {AdminTemplate,StudioUser} from '../contracts';
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});
@@ -91,7 +92,7 @@ export async function handleAPI(req:Request){try{
  await ensureSeed();
  if(p.join('/')==='webhooks/pok'&&method==='POST'){const purchase=await pokWebhook(req);if(purchase)await verifyPackCheckout(purchase);return json({received:true});}
  protectOrigin(req);
- if(p.join('/')==='queue/dispatch'&&method==='POST'){must(config().cronSecret&&constantEqual(req.headers.get('authorization')||'','Bearer '+config().cronSecret),'Unauthorized queue worker.',401);const processed=await tickQueue();await run("INSERT INTO app_settings (key,value) VALUES ('queue_dispatch_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(now()));return json({processed});}
+ if(p.join('/')==='queue/dispatch'&&method==='POST'){must(config().cronSecret&&constantEqual(req.headers.get('authorization')||'','Bearer '+config().cronSecret),'Unauthorized queue worker.',401);const processed=await tickQueue();await recordDispatch('external');return json({processed});}
  const ip=req.headers.get('cf-connecting-ip')||'local';
  if(p.join('/')==='health'&&method==='GET')return json({status:'ok',demo:config().demo});
  if(p[0]==='templates'&&method==='GET'&&p.length<=2)return json(await queryCatalog(url,p[1]));
@@ -248,7 +249,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='PATCH'){const b=await body(req);const enabled=z.boolean().parse(b.enabled);must(['mock','higgsfield','fal','replicate'].includes(p[2]),'Unknown provider.');await run('UPDATE provider_configurations SET enabled=?,updated_at=? WHERE id=?',Number(enabled),now(),p[2]);await audit(user.id,'provider.update',p[2]);return json({ok:true});}
  }
  if(p[1]==='settings'){
-  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret});}
+  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus()});}
   if(method==='PATCH'){const b=z.object({welcomeCredits:z.number().int().min(0).max(100000)}).parse(await body(req));
    await run("INSERT INTO app_settings (key,value) VALUES ('welcome_credits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(b.welcomeCredits));await audit(user.id,'settings.update','welcome_credits');
    return json({ok:true});}

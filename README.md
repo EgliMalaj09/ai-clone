@@ -16,7 +16,7 @@ React 19, TypeScript, Tailwind 4 and Vinext (Next.js-compatible application rout
 
 Open `/login?next=/admin` with your administrator account. Add your own API keys in **Connections**; choose a template under **Templates**, then **AI workflow → Use photo-to-video workflow**. Write your private prompt, set the credit cost and publish. Create your credit packs under **Credit packs**. See the [admin guide](docs/ADMIN-GUIDE.md).
 
-`.env.example` defaults to production mode with credit sales and creation closed. Configure services, an external dispatcher and publicly reachable service endpoints before selling credits. A false demo flag alone does not activate paid services. Local development can still explicitly enable the simulator using the setup script below.
+`.env.example` defaults to production mode with credit sales and creation closed. Configure services, deploy with the included every-minute cron trigger (the queue dispatcher, see docs/OPERATIONS.md) and publicly reachable service endpoints before selling credits. A false demo flag alone does not activate paid services. Local development can still explicitly enable the simulator using the setup script below.
 
 ## Local setup
 

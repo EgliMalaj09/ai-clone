@@ -47,7 +47,7 @@ The checked-in dependency report records the audit result and package paths. An 
 ## Remaining production work
 
 1. Enable publicly reachable authorized webhook/provider endpoints, configure real Stripe/AI/mail accounts, and run account-specific checkout, refund, delivery and inference tests. Stubbed adapter tests are not live service verification.
-2. Operate an independently scheduled queue dispatcher with monitoring; the included best-effort background window and browser polling do not guarantee unattended long-running work.
+2. Confirm the every-minute cron trigger is active after deploying (or run the external dispatcher) and monitor its heartbeat; the best-effort background window and browser polling do not guarantee unattended long-running work.
 3. Add edge-level abuse controls and load tests. File signature/size checks are not antivirus scanning or full image decoding; add normalization/scanning and provider moderation appropriate to public volume.
 4. Define backup retention, abuse reporting, support, business identity, tax/refund policies, and region-specific legal requirements. The included legal text is for a private development preview.
 5. Add administrator MFA / a managed identity provider before broader operational access. Google OAuth is not part of this MVP.

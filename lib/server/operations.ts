@@ -5,6 +5,7 @@ import {all,audit,batch,HttpError,must,now,one,run,runtime,stmt} from './data';
 import {jsonBody,pageQuery} from './http';
 import {balanceOf,reconcileCredits} from './credits';
 import {checkPassword,hash,passwordHash,rateLimit,sessionCookie} from './security';
+import {dispatcherStatus} from './dispatcher';
 
 const response=(data:unknown,headers:Record<string,string>={})=>Response.json(data,{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 const pageInfo=(total:number,page:number,limit:number)=>({total,page,limit,pages:Math.max(1,Math.ceil(total/limit))});
@@ -94,7 +95,7 @@ export async function operationsSummary(){
     all("SELECT p.id,p.package_name,p.credits,p.amount,p.currency,p.created_at,u.email,COALESCE(b.available,0) AS balance FROM credit_purchases p LEFT JOIN users u ON u.id=p.user_id LEFT JOIN credit_balances b ON b.user_id=p.user_id WHERE p.status='reversed' ORDER BY p.created_at DESC LIMIT 20"),
     all("SELECT id,template_name,status,started_at,created_at,internal_error FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND COALESCE(started_at,created_at)<? ORDER BY created_at LIMIT 20",now()-10*60000),
     one("SELECT value FROM app_settings WHERE key='queue_heartbeat'"),
-    one("SELECT value FROM app_settings WHERE key='queue_dispatch_heartbeat'"),
+    dispatcherStatus(),
     one('SELECT (SELECT COALESCE(SUM(size),0) FROM user_uploads)+(SELECT COALESCE(SUM(size),0) FROM generated_assets)+(SELECT COALESCE(SUM(size),0) FROM template_media) AS bytes,(SELECT COUNT(*) FROM user_uploads) AS uploads,(SELECT COUNT(*) FROM generated_assets) AS assets,(SELECT COUNT(*) FROM template_media) AS previews'),
     all('SELECT name,COUNT(*) AS count FROM analytics_events WHERE created_at>=? GROUP BY name ORDER BY count DESC',now()-30*86400000),
     all("SELECT g.id,g.template_name,g.error,g.internal_error,g.completed_at,h.status AS credit_status FROM generations g LEFT JOIN credit_holds h ON h.id=g.hold_id WHERE g.status='failed' AND g.deleted_at IS NULL ORDER BY g.completed_at DESC LIMIT 10"),
@@ -109,7 +110,7 @@ export async function operationsSummary(){
     {name:'Transactional email',ready:!!c.mailKey&&!!c.mailFrom,detail:c.mailKey&&c.mailFrom?'Sender configured; verify delivery with your email service':'Email credentials or sender missing'},
     {name:'AI generation',ready:!!(c.higgsfieldKey&&c.higgsfieldSecret)||!!c.falKey||!!c.replicateKey,detail:c.demo?'Sample video simulator active':c.higgsfieldKey&&c.higgsfieldSecret?'Higgsfield credentials configured; watch your Higgsfield credit balance':c.falKey||c.replicateKey?'Provider credentials configured':'Higgsfield key ID and secret missing'},
     {name:'Credit ledger',ready:ledger.ok,detail:ledger.ok?(ledger.negative.length?ledger.negative.length+' account(s) below zero after a reversed payment':'Balances match the ledger'):'Ledger mismatch: review Admin → Credits'},
-    {name:'External queue dispatcher',ready:!!c.cronSecret&&Number(dispatch?.value)>now()-180000,detail:dispatch?.value?'Last external tick: '+new Date(Number(dispatch.value)).toISOString():'No external dispatcher call recorded'},
+    {name:'Background dispatcher',ready:dispatch.fresh,detail:dispatch.at?(dispatch.fresh?'Running':'Stopped')+' · last run '+new Date(dispatch.at).toISOString()+' by '+(dispatch.source==='cron'?'the every-minute cron trigger':'an external scheduler'):'No dispatcher run recorded. The live Worker runs it every minute through its cron trigger.'},
   ];
-  return {demo:c.demo,checkedAt:now(),queue,reversals,stalled,credits:{available:Number(credits?.available||0),held:Number(credits?.held||0)},heartbeat:Number(heartbeat?.value)||null,dispatchHeartbeat:Number(dispatch?.value)||null,storage:storageUsage,checks,events,failures};
+  return {demo:c.demo,checkedAt:now(),queue,reversals,stalled,credits:{available:Number(credits?.available||0),held:Number(credits?.held||0)},heartbeat:Number(heartbeat?.value)||null,dispatchHeartbeat:dispatch.at,dispatchSource:dispatch.source,storage:storageUsage,checks,events,failures};
 }

@@ -25,7 +25,7 @@ export type Dashboard={users:number;demo:boolean;purchasingAvailable:boolean;gen
  profitable:{name:string;currency:string;credit_cost:number;estimated_cost:number;value:number}[];
  daily:{day:string;currency:string;revenue:number;count:number}[];
  recentPurchases:{id:string;package_name:string;credits:number;amount:number;currency:string;status:string;created_at:number;email:string|null}[]};
-export type Operations={demo:boolean;checkedAt:number;heartbeat:number|null;dispatchHeartbeat:number|null;
+export type Operations={demo:boolean;checkedAt:number;heartbeat:number|null;dispatchHeartbeat:number|null;dispatchSource:'cron'|'external'|null;
  queue:{status:string;count:number;oldest:number}[];
  credits:Balance;
  reversals:{id:string;package_name:string;credits:number;amount:number;currency:string;created_at:number;email:string|null;balance:number}[];
@@ -41,7 +41,7 @@ export type AdminGeneration={id:string;user_id:string|null;template_name:string;
 export type GenerationStep={id:string;step_order:number;type:string;provider:string;model:string;status:string;error:string|null};
 export type AdminUser={id:string;email:string;name:string;role:string;status:string;content_strikes:number;blocked_at:number|null;email_verified:number;created_at:number;generation_count:number;purchase_count:number;credits:number;spending:{currency:string;amount:number}[]};
 export type Provider={id:string;name:string;enabled:number;configured:boolean};
-export type StudioSettings={welcomeCredits:number;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean};
+export type StudioSettings={welcomeCredits:number;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean;dispatcher:{at:number|null;source:'cron'|'external'|null;fresh:boolean}};
 export type TemplateResult={template:AdminTemplate};
 export type AdminUserDetail={
  user:{id:string;name:string;email:string;role:string;status:string;email_verified:boolean;created_at:number;content_strikes:number;blocked_at:number|null};

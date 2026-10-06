@@ -34,7 +34,21 @@ To add another provider, implement AIProvider in providers.ts, register it in pr
 
 ## Durable queue
 
-Starting a generation reserves its credits and queues the job in the same D1 batch. The Worker attempts a 22-second background processing window. My Creations also polls while open. Neither is sufficient for unattended long jobs: schedule `/api/queue/dispatch` with `Authorization: Bearer QUEUE_SECRET` at least once per minute, using scripts/dispatch-queue.mjs or an external scheduler. `pnpm queue:worker` runs a continuous dispatcher in a supervised Node service; configure APP_ORIGIN and QUEUE_SECRET in that service. It ticks every five seconds, reports errors without printing secrets, and shuts down on SIGTERM/SIGINT. A scheduled Worker handler is included for platforms supporting cron triggers. Sites deployment does not automatically create a cron schedule. Private hosting requires the scheduler to have authorized access as well.
+Starting a generation reserves its credits and queues the job in the same D1 batch. The Worker attempts a 22-second background processing window. My Creations also polls while open. Neither is sufficient for unattended long jobs, so production relies on a dispatcher that runs at least once per minute.
+
+### Queue dispatcher (production)
+
+**Default: Cloudflare cron trigger.** `vite.config.ts` sets `triggers.crons = ["* * * * *"]`, so the build writes it into `dist/server/wrangler.json`. Deploying that config to Cloudflare (`wrangler deploy --config dist/server/wrangler.json`) registers the schedule, and Cloudflare calls the Worker's `scheduled()` handler every minute. Each run records a heartbeat (source `cron`) and then advances queued jobs for about 22 seconds. It needs no `QUEUE_SECRET` and no public access. Failures are logged and show as errors in the Worker's cron event log (Cloudflare dashboard → Workers → Settings → Triggers).
+
+After deploying, check that:
+1. Cloudflare dashboard → the Worker → Settings → Triggers lists the cron `* * * * *`.
+2. Admin → Operations → Service readiness shows **Background dispatcher: Running · last run … by the every-minute cron trigger** within two minutes.
+
+If your hosting deploys the Worker without applying `triggers` (older Sites deployments did not create cron schedules), add the cron by hand in the Cloudflare dashboard (Triggers → Add Cron Trigger → `* * * * *`) or use the fallback below.
+
+**Fallback: external scheduler.** Call `POST /api/queue/dispatch` with `Authorization: Bearer QUEUE_SECRET` at least once per minute, using `pnpm queue:dispatch` (one run, for a cron job) or another scheduler. `pnpm queue:worker` runs a continuous dispatcher in a supervised Node service; configure APP_ORIGIN and QUEUE_SECRET in that service. It ticks every five seconds, reports errors without printing secrets, and shuts down on SIGTERM/SIGINT. Its runs are labelled "external scheduler" in Operations. Private hosting requires the scheduler to have authorized access as well.
+
+Both can run at once: jobs are leased, so a job is never worked on twice. Locally, `pnpm dev` does not run the cron; demo mode does not need it, and Admin → Operations → "Run a queue check" advances jobs by hand.
 
 Database leases prevent concurrent execution, provider job IDs persist, transient status checks retry, and a 30-minute deadline marks stuck jobs failed. Ambiguous provider submissions are not automatically resubmitted because they may already be billable. Inspect the provider before an admin retry. A failed or timed-out generation always returns its reserved credits; delivery charges them. The hourly maintenance settles any hold left pending by an interruption and deletes photos that no creation has used for 24 hours. An admin retry reserves the customer's credits again.
 
@@ -48,7 +62,7 @@ Before public launch, replace draft legal pages with your business identity, jur
 
 - Overview separates currencies and reports pack revenue, reversed payments, estimated AI cost, average purchase, 30-day revenue, credits sold/spent/given/outstanding, recent purchases, most-used templates and estimated margins (at your cheapest credit price).
 - Operations reports provider/email/payment configuration, the credit ledger reconciliation, queued work, credits reserved, jobs exceeding ten minutes, reversed purchases, storage usage, and event counts. Configuration presence does not prove live service health.
-- The external dispatcher heartbeat is separate from user/browser queue ticks. Green requires an authenticated dispatcher call within three minutes.
+- The dispatcher heartbeat is separate from user/browser queue ticks. Green requires a run of the cron trigger, or an authenticated external dispatcher call, within the last three minutes. Operations shows which one ran last.
 - Activity records template and pack changes, user administration, credit adjustments, settings, password changes, session revocation, and exports. Search and pagination operate on the server.
 - Users, generations, credit purchases and the credit ledger support search/filters and pagination. Admins can add or remove a user's credits with a reason and their password. Money summaries stay separated by currency.
 
@@ -61,7 +75,7 @@ Expired auth/session/rate-limit records are cleaned during queue maintenance, at
 
 Set DEMO_MODE=false. `/admin/connections` accepts POK, Higgsfield, optional fal.ai and Replicate, and Resend credentials. Every save requires the current administrator password, a trusted request origin, and the admin role. The API never returns saved secret values. Changes take effect without a rebuild. Connections do not make a paid API call or send a verification email until an applicable customer action occurs. Enable your connected provider under AI providers.
 
-Buying credits is closed until the POK key ID, key secret and merchant ID, an email sender, enabled AI provider, and fresh external dispatcher heartbeat are configured; starting a creation needs the AI provider, the dispatcher and public access. The hosting owner must deliberately allow public service traffic and then set PUBLIC_SERVICE_ACCESS=true. This flag does not change the hosting audience. It is an explicit deployment assertion; the app cannot inspect the Sites audience from inside the Worker. A stale dispatcher heartbeat (over three minutes) closes new credit sales and new creations but does not discard existing work. POK staging is usable for testing and is clearly identified in Connections; real sales require POK_ENVIRONMENT=production.
+Buying credits is closed until the POK key ID, key secret and merchant ID, an email sender, enabled AI provider, and a fresh dispatcher heartbeat are in place; starting a creation needs the AI provider, the dispatcher and public access. The hosting owner must deliberately allow public service traffic and then set PUBLIC_SERVICE_ACCESS=true. This flag does not change the hosting audience. It is an explicit deployment assertion; the app cannot inspect the Sites audience from inside the Worker. A stale dispatcher heartbeat (over three minutes) closes new credit sales and new creations but does not discard existing work. POK staging is usable for testing and is clearly identified in Connections; real sales require POK_ENVIRONMENT=production.
 
 On the first production-mode request, untouched starter workflows are converted to a server-owned two-step Higgsfield recipe (Seedream edit, then Kling 3.0 Turbo image-to-video). A fal.ai version of the recipe remains in `workflow-presets.ts`. Edited prompts and custom workflows are preserved. The recipe uses Nano Banana image editing and Kling 2.6 Pro image-to-video; model endpoint, prompt, input mapping and settings remain editable per template. Built-in previews stay labeled as concept previews until you upload actual examples. Saving or selecting a workflow does not verify output quality or current provider billing rates.
 

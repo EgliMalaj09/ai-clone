@@ -16,6 +16,9 @@ const managedLinux = readExecutionProfile() === "managed-linux";
 const localBindingConfig = {
   main: "./worker.ts",
   compatibility_flags: ["nodejs_compat"],
+  // Runs worker.ts scheduled() every minute: the production queue dispatcher (C3).
+  // Without it, videos only progress while someone has the site open.
+  triggers: { crons: ["* * * * *"] },
   d1_databases: d1
     ? [
         {

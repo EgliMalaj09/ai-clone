@@ -75,6 +75,7 @@ try{
   await request('/api/admin/providers/higgsfield',{method:'PATCH',cookie:admin,data:{enabled:true}});
   await mf.dispatchFetch(env.APP_ORIGIN+'/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+env.QUEUE_SECRET}});
   ok('Enabled provider and external dispatcher complete configuration',(await request('/api/admin/connections',{cookie:admin})).body.readiness.ready);
+  ok('An external scheduler run is labelled as external in Operations',(await request('/api/admin/operations',{cookie:admin})).body.dispatchSource==='external');
   const mailCipher=(await db.prepare("SELECT value FROM app_settings WHERE key='connection.RESEND_API_KEY'").first()).value;
   await db.prepare("UPDATE app_settings SET value=? WHERE key='connection.HIGGSFIELD_API_KEY'").bind(mailCipher).run();
   status=await request('/api/admin/connections',{cookie:admin});
@@ -104,6 +105,13 @@ try{
   await db.prepare("UPDATE app_settings SET value='1' WHERE key='queue_dispatch_heartbeat'").run();
   ok('A stale dispatcher closes new credit sales',(await request('/api/admin/connections',{cookie:admin})).body.readiness.ready===false);
   await request('/api/generations',{method:'POST',cookie:admin,data:{...creation,idempotencyKey:randomUUID()},expected:503});ok('A stale dispatcher also closes new generations');
+  const deployed=JSON.parse(await readFile(path.join(server,'wrangler.json'),'utf8'));
+  ok('The deployed Worker has an every-minute cron trigger',deployed.triggers?.crons?.includes('* * * * *'));
+  const cron=await (await mf.getWorker()).scheduled({cron:'* * * * *',scheduledTime:new Date()});
+  ok('The cron trigger runs the scheduled dispatcher without errors',cron.outcome==='ok');
+  ok('A cron run reopens credit sales after a stale heartbeat',(await request('/api/admin/connections',{cookie:admin})).body.readiness.ready===true);
+  const cronOps=(await request('/api/admin/operations',{cookie:admin})).body,cronCheck=cronOps.checks.find(c=>c.name==='Background dispatcher');
+  ok('Operations shows a fresh heartbeat from the cron trigger',cronOps.dispatchSource==='cron'&&cronOps.dispatchHeartbeat>Date.now()-60000&&cronCheck.ready&&cronCheck.detail.includes('cron trigger'));
   await save({}, {remove:['HIGGSFIELD_API_KEY']});
   ok('Removing a connection actually deletes its encrypted record',!(await db.prepare("SELECT key FROM app_settings WHERE key='connection.HIGGSFIELD_API_KEY'").first()));
   const audit=(await db.prepare('SELECT * FROM audit_logs').all()).results;

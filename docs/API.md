@@ -91,7 +91,7 @@ Admin record lists accept `page` (1–100000), `limit` (1–100), `search`, `sta
 
 ## Worker
 
-`POST /queue/dispatch` requires `Authorization: Bearer QUEUE_SECRET`, not an account cookie. It advances up to five eligible jobs and records an external-dispatch heartbeat. Schedule it independently of browsers. A private site access gate must also permit that scheduler; knowing QUEUE_SECRET does not bypass hosting authorization.
+`POST /queue/dispatch` requires `Authorization: Bearer QUEUE_SECRET`, not an account cookie. It advances up to five eligible jobs and records a dispatcher heartbeat labelled `external`. It is the fallback for hosting without the Worker's cron trigger, which records its own heartbeat labelled `cron`. A private site access gate must also permit that scheduler; knowing QUEUE_SECRET does not bypass hosting authorization.
 
 ## Common errors
 

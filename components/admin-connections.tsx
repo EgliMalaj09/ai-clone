@@ -37,7 +37,7 @@ export default function Connections(){
       ['POK payments',readiness.payments,'Save the POK key ID, key secret and merchant ID.'],
       ['Email sender',readiness.email,'Connect Resend with an address on a verified domain.'],
       ['AI provider',readiness.ai,'Save the Higgsfield key ID and secret, then enable Higgsfield under AI providers.'],
-      ['Background processing',readiness.dispatcher,'Run the queue dispatcher continuously. Operations shows its last heartbeat.'],
+      ['Background processing',readiness.dispatcher,'Runs every minute through the Worker\'s cron trigger once the site is deployed. Operations shows its last run.'],
       ['Public service access',readiness.publicAccess,'The hosting owner must enable public access so POK and AI providers can reach the app. After that, set PUBLIC_SERVICE_ACCESS=true in the hosting environment.'],
     ].map(([label,ready,note])=><div className="service-check" key={String(label)}>{ready?<CheckCircle2 size={19} className="profit-positive"/>:<AlertCircle size={19} className="readiness-warning"/>}<div><strong>{label}</strong><small>{note}</small></div></div>)}<p className="panel-note">Configuration checks do not verify account balances, model quality, or successful provider calls.</p></section>
     <section className="panel"><h2>Make your first template</h2><p>Open Templates, set its name, preview and credit cost, then choose AI workflow. Use the photo-to-video preset and write your hidden prompt. Publish when the preview matches a result you have tested.</p><a className="button secondary small" href="/admin/templates/new">Create a template<ArrowUpRight size={16}/></a></section>

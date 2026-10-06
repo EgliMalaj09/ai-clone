@@ -57,7 +57,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 - [ ] **F7 — Storefront loads every template at once.** `lib/server/data.ts:46` loads up to 500 templates into the page. Switch the UI to the paginated `/api/templates` endpoint before the catalog grows.
 - [ ] **F8 — Replicate adapter is limited.** `lib/server/providers.ts:26` only calls `models/{owner}/{model}/predictions`. Add support for `version` IDs (community models). Also check that its output-type detection (`.mp4/.webm` in the URL) is reliable.
 - [ ] **F9 — Anonymous analytics are missing.** `homepage_view` and `template_view` are recorded only for signed-in users (`components/studio.tsx:18`, `components/template-detail.tsx:12`), so funnel numbers in the dashboard are incomplete. Allow anonymous, rate-limited events.
-- [ ] **F10 — No cron trigger configured.** `worker.ts` has a `scheduled()` handler, but no `triggers.crons` is set, so nothing calls it. Production checkout stays closed until the dispatcher heartbeat is fresh (`lib/server/connections.ts:55`). Add a cron trigger or document the external scheduler clearly (see L2).
+- [x] **F10 — No cron trigger configured.** ✅ Fixed (C3): `triggers.crons` set in `vite.config.ts`; Operations shows the heartbeat and its source. `worker.ts` has a `scheduled()` handler, but no `triggers.crons` is set, so nothing calls it. Production checkout stays closed until the dispatcher heartbeat is fresh (`lib/server/connections.ts:55`). Add a cron trigger or document the external scheduler clearly (see L2).
 - [ ] **F11 — Remove leftovers.**
   - The dev middleware `/__qa/responsive` in `vite.config.ts:59` is still there, although `docs/QA.md` says it was removed.
   - `app/chatgpt-auth.ts` is unused.
@@ -77,7 +77,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 ## 4. Not implemented, needed before a public launch
 
 - [ ] **L1 — Live service testing.** Run real POK staging payments (success, cancel, expiry, webhook, refund + Reverse), real fal.ai generations, and real Resend emails.
-- [ ] **L2 — Queue dispatcher in production.** Schedule `/api/queue/dispatch` every minute (cron trigger or `pnpm queue:worker`) and add alerting when it stops.
+- [x] **L2 — Queue dispatcher in production.** ✅ Cron trigger every minute (C3); external scheduler documented as fallback. Alerting is I10.2. Schedule `/api/queue/dispatch` every minute (cron trigger or `pnpm queue:worker`) and add alerting when it stops.
 - [ ] **L3 — Content safety.** Add moderation of uploaded photos and outputs (NSFW, minors, celebrity/impersonation). Add antivirus scanning or image re-encoding. Add a face/quality check before payment.
 - [ ] **L4 — Refunds and partial refunds.** ✅ The admin records a refund or chargeback made in POK with Reverse, which removes the pack's credits. Still open: decide what a partial refund should do (Reverse removes all of the pack's credits).
 - [ ] **L5 — Admin MFA**, or a managed identity provider.

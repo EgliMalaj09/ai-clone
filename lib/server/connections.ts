@@ -1,6 +1,7 @@
 import {z} from 'zod';
-import {all,audit,batch,config,HttpError,must,now,one,runtime,stmt} from './data';
+import {all,audit,batch,config,HttpError,must,one,runtime,stmt} from './data';
 import {jsonBody} from './http';
+import {dispatcherStatus} from './dispatcher';
 import {checkPassword,rateLimit} from './security';
 import type {AdminTemplate,StudioUser} from '../contracts';
 
@@ -48,13 +49,14 @@ export function providerConfigured(id:string,c:ReturnType<typeof config>){return
 export async function purchaseReadiness(){
   const c=await serviceConfig(true);
   const [heartbeat,enabled]=await Promise.all([
-    one("SELECT value FROM app_settings WHERE key='queue_dispatch_heartbeat'"),
+    dispatcherStatus(),
     all('SELECT id FROM provider_configurations WHERE enabled=1'),
   ]);
   const payments=!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId;
   const email=!!c.mailKey&&!!c.mailFrom;
   const ai=enabled.some(p=>p.id!=='mock'&&providerConfigured(p.id as string,c));
-  const dispatcher=!!c.cronSecret&&Number(heartbeat?.value)>now()-180000;
+  // The cron trigger needs no QUEUE_SECRET; an external scheduler can only record a run with it.
+  const dispatcher=heartbeat.fresh;
   const publicAccess=runtime().PUBLIC_SERVICE_ACCESS==='true';
   return {demo:c.demo,ready:c.demo||payments&&email&&ai&&dispatcher&&publicAccess,
     registrationAvailable:c.demo||email,payments,email,ai,dispatcher,publicAccess,

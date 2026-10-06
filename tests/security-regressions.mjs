@@ -96,7 +96,7 @@ try{
  await request('/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+config.QUEUE_SECRET},data:{}});
  ok('Queue enforces the deadline',(await db.prepare('SELECT status FROM generations WHERE id=?').bind(timeout.body.generationId).first()).status==='failed');
  ok('A timed-out generation returns its credits',JSON.stringify((await request('/api/credits',{cookie})).body)===JSON.stringify({available:500,held:0}));
- const currentOps=await request('/api/admin/operations',{cookie:admin});ok('External queue dispatch records an observable heartbeat',currentOps.body.dispatchHeartbeat>0&&currentOps.body.checks.find(c=>c.name==='External queue dispatcher').ready);
+ const currentOps=await request('/api/admin/operations',{cookie:admin});ok('External queue dispatch records an observable heartbeat',currentOps.body.dispatchHeartbeat>0&&currentOps.body.checks.find(c=>c.name==='Background dispatcher').ready);
  ok('Operations lists the reversed purchase for review',currentOps.body.reversals.some(r=>r.id===purchaseId));
  const dashboard=await request('/api/admin/dashboard',{cookie:admin});const fin=c=>dashboard.body.financials.find(f=>f.currency===c)||{};ok('Financial reports separate reversed payments and keep estimated AI cost',fin('EUR').reversed_amount===299&&fin('EUR').revenue===0&&fin('USD').estimated_cost>=85);
  const exported=await request('/api/account/export',{cookie});ok('Account export includes owned records without internal workflow or password data',exported.body.creditPurchases.length===1&&exported.body.credits.available===500&&!exported.text.includes('password_hash')&&!exported.text.includes('workflow_snapshot')&&!exported.text.includes('storage_key'));
