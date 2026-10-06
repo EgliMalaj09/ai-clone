@@ -37,6 +37,24 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await upload(userCookie,'fake.txt',new Uint8Array(40));ok('Unsupported file format rejected',true);
  const fake=new FormData();fake.append('file',new File([new Uint8Array(64)],'fake.webp',{type:'image/webp'}));await request('/api/uploads',{method:'POST',cookie:userCookie,data:fake,expected:415});ok('Forged image MIME rejected',true);
  const huge=new FormData();huge.append('file',new File([new Uint8Array(8*1024*1024+1)],'large.webp',{type:'image/webp'}));await request('/api/uploads',{method:'POST',cookie:userCookie,data:huge,expected:413});ok('Oversized upload rejected',true);
+ // Uploaded photos are stored cleaned: no metadata (GPS), nothing hidden after the image, and at least 512 × 512.
+ const sendPhoto=async(name,type,bytes,expected=201)=>{const f=new FormData();f.append('file',new File([bytes],name,{type}));return request('/api/uploads',{method:'POST',cookie:userCookie,data:f,expected});};
+ const stored=async id=>new Uint8Array(await (await bucket.get((await db.prepare('SELECT storage_key FROM user_uploads WHERE id=?').bind(id).first()).storage_key)).arrayBuffer());
+ const has=(bytes,text)=>Buffer.from(bytes).includes(Buffer.from(text));
+ const jpeg=await readFile('tests/fixtures/photo-600.jpg'),exif=Buffer.from('Exif\0\0GPSInfo 41.3275N 19.8187E'),app1=Buffer.concat([Buffer.from([0xff,0xe1,(exif.length+2)>>8,(exif.length+2)&255]),exif]);
+ const dirtyJpeg=Buffer.concat([jpeg.subarray(0,2),app1,jpeg.subarray(2),Buffer.from('HIDDEN-PAYLOAD')]);
+ const cj=await stored((await sendPhoto('photo.jpg','image/jpeg',dirtyJpeg)).body.id);
+ ok('JPEG uploads lose GPS metadata and hidden trailing data',!has(cj,'GPSInfo')&&!has(cj,'HIDDEN-PAYLOAD')&&cj[0]===0xff&&cj[1]===0xd8&&cj.at(-2)===0xff&&cj.at(-1)===0xd9&&cj.length<dirtyJpeg.length);
+ const png=await readFile('tests/fixtures/photo-600.png'),text=Buffer.from('Location\0Tirana'),textChunk=Buffer.concat([Buffer.from([0,0,0,text.length]),Buffer.from('tEXt'),text,Buffer.alloc(4)]);
+ const cp=await stored((await sendPhoto('photo.png','image/png',Buffer.concat([png.subarray(0,33),textChunk,png.subarray(33),Buffer.from('HIDDEN-PAYLOAD')]))).body.id);
+ ok('PNG uploads lose text metadata and hidden trailing data',!has(cp,'Tirana')&&!has(cp,'HIDDEN-PAYLOAD')&&Buffer.from(cp.subarray(-8,-4)).toString()==='IEND');
+ const webpPhoto=await readFile('public/media/formula-driver.webp'),exifChunk=Buffer.concat([Buffer.from('EXIF'),Buffer.from([8,0,0,0]),Buffer.from('GPS-WEBP')]),body=Buffer.concat([webpPhoto.subarray(12),exifChunk]);
+ const riff=Buffer.alloc(12);webpPhoto.copy(riff,0,0,12);riff.writeUInt32LE(4+body.length,4);
+ const cw=await stored((await sendPhoto('photo.webp','image/webp',Buffer.concat([riff,body,Buffer.from('HIDDEN-PAYLOAD')]))).body.id);
+ ok('WebP uploads lose EXIF chunks and hidden trailing data',!has(cw,'GPS-WEBP')&&!has(cw,'HIDDEN-PAYLOAD')&&Buffer.from(cw).readUInt32LE(4)===cw.length-8);
+ const small=await sendPhoto('small.jpg','image/jpeg',await readFile('tests/fixtures/photo-small.jpg'),422);
+ ok('Photos under 512 × 512 are refused with a clear message',small.body.error.includes('400 × 300')&&small.body.error.includes('512 × 512'));
+ await sendPhoto('broken.jpg','image/jpeg',Buffer.concat([jpeg.subarray(0,200)]),415);ok('Broken image files are refused',true);
  const u=await upload(userCookie);ok('Valid upload is stored',u.body.id&&u.body.url.startsWith('/api/media/'));
  const media=await mf.dispatchFetch(config.APP_ORIGIN+u.body.url,{headers:{cookie:userCookie}});ok('Owner can view uploaded image',media.status===200&&media.headers.get('content-type')==='image/webp');await media.arrayBuffer();
  await request(u.body.url,{cookie:second.cookie,expected:403});await request(u.body.url,{expected:403});ok('Other users and anonymous visitors cannot read uploads',true);
