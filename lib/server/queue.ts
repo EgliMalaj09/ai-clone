@@ -2,21 +2,21 @@ import {all,batch,config,event,must,now,one,parse,run,stmt,uid,type Row} from '.
 import type {WorkflowStep} from '../contracts';
 import {buildInput,providerFor} from './providers';
 import {ingestRemote,mediaUrl,storage} from './storage';
-import {refundOrder} from './payments';
+import {settleHold} from './credits';
 import {demoVideos} from './demo-assets';
 import {sweepTemplateMedia} from './template-media';
 
 const active=['queued','preparing','generating','finalizing'];
 export async function failGeneration(g:Row,error:string){
- const result=await run("UPDATE generations SET status='failed',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",'Your video could not be completed. You can review its payment in Orders.',error.slice(0,2000),now(),g.id,g.lease_token);
+ const result=await run("UPDATE generations SET status='failed',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",'Your video could not be completed. Your credits were returned.',error.slice(0,2000),now(),g.id,g.lease_token);
  if(!result.meta.changes)return;
  await run("UPDATE generation_steps SET status='failed',error=? WHERE generation_id=? AND status NOT IN ('completed','cancelled')",error.slice(0,2000),g.id);
  await event('generation_failed',g.user_id,{generationId:g.id});
- const s=await one("SELECT value FROM app_settings WHERE key='auto_refund'");
- if(s?s.value==='true':config().autoRefund){const o=await one('SELECT id FROM orders WHERE generation_id=? AND status=?',g.id,'paid');if(o)try{await refundOrder(o.id)}catch{console.error('Automatic refund needs review',o.id)}}
+ // A failed generation always returns its credits.
+ if(g.hold_id)await settleHold(g.hold_id,'release').catch(()=>console.error('Credit release needs review; the hold sweep will retry',g.id));
 }
 export async function tickGeneration(id:string){
- const token=uid();const g=await one("UPDATE generations SET lease_token=?,lease_until=? WHERE id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND lease_until<? AND next_run_at<=? AND EXISTS (SELECT 1 FROM orders WHERE orders.generation_id=generations.id AND orders.status='paid') RETURNING *",token,now()+45000,id,now(),now());if(!g)return;
+ const token=uid();const g=await one("UPDATE generations SET lease_token=?,lease_until=? WHERE id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND lease_until<? AND next_run_at<=? AND EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=generations.hold_id AND h.status='pending') RETURNING *",token,now()+45000,id,now(),now());if(!g)return;
  try{
   const elapsed=now()-(g.started_at||now());if(elapsed>30*60*1000){await failGeneration(g,'Generation exceeded the 30 minute deadline.');return;}
   const snapshot=parse<Row>(g.workflow_snapshot,{});const steps=snapshot.steps as WorkflowStep[];const i=g.current_step;
@@ -24,7 +24,9 @@ export async function tickGeneration(id:string){
   if(g.status==='queued'){await run("UPDATE generations SET status='preparing',started_at=COALESCE(started_at,?),next_run_at=? WHERE id=? AND lease_token=?",now(),now()+500,id,token);await event('generation_started',g.user_id,{generationId:id});return;}
   if(g.status==='finalizing'){
    const asset=await one("SELECT id FROM generated_assets WHERE generation_id=? ORDER BY created_at DESC LIMIT 1",id);must(asset,'No output asset was saved.');
-   const completed=await run("UPDATE generations SET status='completed',completed_at=?,error=NULL WHERE id=? AND lease_token=? AND status='finalizing' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM orders WHERE generation_id=? AND status='paid')",now(),id,token,id);if(completed.meta.changes)await event('generation_completed',g.user_id,{generationId:id});return;
+   const completed=await run("UPDATE generations SET status='completed',completed_at=?,error=NULL WHERE id=? AND lease_token=? AND status='finalizing' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=? AND h.status='pending')",now(),id,token,g.hold_id);
+   // Delivered: charge the reserved credits. If this is interrupted, the hold sweep captures it.
+   if(completed.meta.changes){await settleHold(g.hold_id,'capture').catch(()=>console.error('Credit capture needs review; the hold sweep will retry',id));await event('generation_completed',g.user_id,{generationId:id});}return;
   }
   const step=steps[i];must(step,'Workflow has no executable step.');const p=providerFor(step.provider);const stepId=id+'_'+i;const record=await one('SELECT * FROM generation_steps WHERE id=?',stepId);
   if(record?.status==='completed'){await run("UPDATE generations SET current_step=current_step+1,status=?,next_run_at=? WHERE id=? AND lease_token=?",i+1>=steps.length?'finalizing':'preparing',now()+500,id,token);return;}
@@ -65,6 +67,24 @@ export async function tickGeneration(id:string){
 }
 export async function tickQueue(userId?:string){
  const maintenance=await one("INSERT INTO app_settings (key,value) VALUES ('last_maintenance',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE CAST(value AS INTEGER)<? RETURNING value",String(now()),now()-3600000);
- if(maintenance){await batch([stmt('DELETE FROM rate_limits WHERE reset_at<?',now()-3600000),stmt('DELETE FROM sessions WHERE expires_at<?',now()),stmt('DELETE FROM auth_tokens WHERE expires_at<?',now())]);await sweepTemplateMedia().catch(e=>console.error('Template media sweep needs another run',e instanceof Error?e.message:'unknown'));}
+ if(maintenance){
+  await batch([stmt('DELETE FROM rate_limits WHERE reset_at<?',now()-3600000),stmt('DELETE FROM sessions WHERE expires_at<?',now()),stmt('DELETE FROM auth_tokens WHERE expires_at<?',now())]);
+  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads])await task().catch(e=>console.error('Maintenance task needs another run',e instanceof Error?e.message:'unknown'));
+ }
  await run("INSERT INTO app_settings (key,value) VALUES ('queue_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(now()));const rows=await all("SELECT id FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND next_run_at<=? AND lease_until<? AND deleted_at IS NULL"+(userId?' AND user_id=?':'')+' ORDER BY created_at LIMIT 5',now(),now(),...(userId?[userId]:[]));await Promise.allSettled(rows.map(g=>tickGeneration(g.id)));return rows.length;}
 export async function removeGeneration(id:string,userId:string){const g=await one('SELECT * FROM generations WHERE id=? AND user_id=? AND deleted_at IS NULL',id,userId);must(g,'Creation not found.',404);must(!active.includes(g.status),'Please wait for the running generation to finish before deleting it.',409);const assets=await all('SELECT * FROM generated_assets WHERE generation_id=?',id);for(const a of assets)await storage.delete(a.storage_key);await batch([stmt('DELETE FROM generated_assets WHERE generation_id=?',id),stmt("UPDATE generations SET deleted_at=?,context='{}',input_ids='[]' WHERE id=?",now(),id)]);}
+
+/** Settle holds whose generation finished without settling them (e.g. an interrupted capture or release). */
+export async function sweepCreditHolds(){
+ const holds=await all("SELECT h.id,g.status,g.deleted_at,g.hold_id FROM credit_holds h LEFT JOIN generations g ON g.id=h.generation_id WHERE h.status='pending' AND h.created_at<? ORDER BY h.created_at LIMIT 50",now()-60000);
+ for(const h of holds){
+  if(h.status==='completed'&&h.hold_id===h.id&&!h.deleted_at)await settleHold(h.id,'capture');
+  else if(!h.status||h.deleted_at||h.hold_id!==h.id||h.status==='failed')await settleHold(h.id,'release');
+ }
+}
+const unusedUpload="NOT EXISTS (SELECT 1 FROM generations g, json_each(CASE WHEN json_valid(g.input_ids) THEN g.input_ids ELSE '[]' END) j WHERE g.user_id=user_uploads.user_id AND g.deleted_at IS NULL AND j.value=user_uploads.id)";
+/** Photos uploaded more than 24 hours ago that no creation uses. */
+export async function sweepUnusedUploads(){
+ const rows=await all(`SELECT id FROM user_uploads WHERE created_at<? AND ${unusedUpload} ORDER BY created_at LIMIT 50`,now()-24*3600000);
+ for(const r of rows){const gone=await one(`DELETE FROM user_uploads WHERE id=? AND ${unusedUpload} RETURNING storage_key`,r.id);if(gone)await storage.delete(gone.storage_key);}
+}

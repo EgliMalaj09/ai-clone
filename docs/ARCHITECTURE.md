@@ -2,13 +2,13 @@
 
 ## Data and boundaries
 
-The schema in db/schema.ts defines users, external account extension points, sessions, authentication tokens, templates and ordered workflows, customer uploads, studio-owned template preview media, generations and execution steps, output assets, favorites, orders, payments, refunds, provider configuration, application settings, events, rate limits and audit logs. Checked-in Drizzle SQL files are the schema history. Demo content is seeded as runtime DML after migration.
+The schema in db/schema.ts defines users, external account extension points, sessions, authentication tokens, templates (with credit costs) and ordered workflows, customer uploads, studio-owned template preview media, generations and execution steps, output assets, favorites, credit balances, an append-only double-entry credit ledger, credit holds, credit packs and purchases, provider configuration, application settings, events, rate limits and audit logs. Checked-in Drizzle SQL files are the schema history. Demo content is seeded as runtime DML after migration.
 
 Public template responses are explicitly whitelisted: prompts, models, provider settings and internal economics are omitted. Admin authorization is checked on the server for each operation. The immutable generation snapshot protects in-flight purchases from later admin edits. Order idempotency keys, one payment per order, unique generation-step identities and persisted webhook IDs prevent ordinary replay duplication.
 
 ## Request flow
 
-Template selection → authenticated upload to R2 → validated checkout with price and workflow snapshot → server-confirmed payment → leased asynchronous steps → private output in R2 → My Creations. Upload ownership and count are rechecked at checkout. Price calculations use server records and integer amounts. Unpaid jobs are never selected by the queue. Deleted creations that settle late are refunded.
+Credit pack purchase (signed webhook grants credits once) → template selection → authenticated upload to R2 (requires credits) → validated generation request that reserves the template's credit cost and snapshots its workflow → leased asynchronous steps → private output in R2 → credits charged on delivery, or returned on failure → My Creations. Upload ownership and count are checked when the generation starts. Credit costs come from server records. Jobs without a pending credit hold are never selected by the queue.
 
 ## Security and privacy
 
@@ -18,7 +18,7 @@ File validation checks supported signatures, not a full antivirus/decompression-
 
 ## Extension points
 
-AIProvider and ObjectStorage separate infrastructure from customer outcomes. Orders/payments/refunds form a monetary ledger foundation; adding a wallet requires separate transactional balance/ledger records. Creator ownership, revenue-sharing ledgers, subscriptions, coupons and regional prices are future extensions, not implemented features. The existing accounts table can host OAuth identities when adding a verified OAuth flow.
+AIProvider and ObjectStorage separate infrastructure from customer outcomes. Credits are a double-entry ledger (credit_transactions/credit_entries) with a cached balance per user; every change is one atomic, idempotent D1 batch. See [credits architecture](CREDITS-ARCHITECTURE.md). Creator ownership, revenue-sharing ledgers, subscriptions, coupons and regional prices are future extensions, not implemented features. The existing accounts table can host OAuth identities when adding a verified OAuth flow.
 
 ## Known MVP limits
 
@@ -28,4 +28,4 @@ No Google OAuth, PostgreSQL adapter, marketplace, wallet, automated tax handling
 
 `lib/server/operations.ts` holds role-protected readiness, audit, paginated administration and account security APIs. `catalog-query.ts` provides a safe public catalog query layer with whitelisted sort/filter fields and explicit public record projection. `http.ts` centralizes bounded body parsing and pagination validation. Query values are bound rather than interpolated; interpolated SQL fragments come from closed server-side maps.
 
-Payment retries increment a durable checkout attempt only after Stripe confirms expiry. Queue-to-refund races invalidate lease ownership and prevent finalization. External full refunds create reconciliation records even when initiated outside this app. Processing stores asset IDs in workflow context rather than expiring URLs; only submission-time provider inputs contain signed media URLs.
+Pack checkout retries increment a durable attempt only after Stripe confirms expiry. A reversed pack payment removes its credits through a reversal transaction. The ledger can be reconciled at any time (Operations, Admin → Credit ledger). Processing stores asset IDs in workflow context rather than expiring URLs; only submission-time provider inputs contain signed media URLs.

@@ -1,4 +1,5 @@
 import type {AdminTemplate,WorkflowStep} from './contracts';
+// [name, category, credit cost, estimated AI cost in USD cents, description]
 const entries:[string,string,number,number,string][]=[
  ['Formula Driver','Sports',299,85,'Step into the paddock. Your own cinematic racing moment, from one photo.'],
  ['Superhero Transformation','Transformation',349,110,'An ordinary photo. An extraordinary alter ego. Become the hero of your own story.'],
@@ -21,8 +22,8 @@ const entries:[string,string,number,number,string][]=[
 ];
 export const slugify=(s:string)=>s.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
 export const defaultStep=(type:WorkflowStep['type']='video'):WorkflowStep=>({id:crypto.randomUUID(),type,provider:'mock',model:'studio-demo',prompt:'Create a cinematic {{template_name}} featuring the person in {{user_image_1}}. Preserve identity. Output {{aspect_ratio}}, {{duration}} seconds.',negativePrompt:'distorted face, extra limbs, text, watermark',inputs:{image:'{{user_image_1}}'},output:type==='video'?'video_output':'prepared_image',settings:{},duration:5,resolution:'720p',aspectRatio:'9:16',cost:85});
-export function seedTemplates():AdminTemplate[]{return entries.map(([name,category,price,estimatedCost,description],i)=>{
+export function seedTemplates():AdminTemplate[]{return entries.map(([name,category,creditCost,estimatedCost,description],i)=>{
  const slug=slugify(name);const step=defaultStep();step.id=`seed-step-${i}`;step.cost=estimatedCost;
  if(name==='Wedding Cinematic'){step.prompt='Create a romantic wedding cinematic with both people in {{user_image_1}} and {{user_image_2}}. Preserve both identities.';step.inputs={image:'{{user_image_1}}',second_image:'{{user_image_2}}'};}
- return {id:`tpl_${slug}`,slug,name,category,price,creditCost:price,estimatedCost,description,currency:'USD',thumbnail:`/media/${slug}.webp`,previewVideo:`/media/${slug}.mp4`,previewImages:[],active:true,featured:i<6,trending:[0,1,4,10].includes(i),isNew:[3,9,12,15,17].includes(i),popular:[0,2,3,7,10].includes(i),requiredImageCount:name==='Wedding Cinematic'?2:1,aspectRatio:'9:16',duration:5,resolution:'720p',provider:'mock',model:'studio-demo',generationType:'video',hiddenPrompt:step.prompt,negativePrompt:step.negativePrompt,settings:{},workflow:[step],createdAt:Date.UTC(2026,8,10)-i*86400000};
+ return {id:`tpl_${slug}`,slug,name,category,creditCost,estimatedCost,description,currency:'USD',thumbnail:`/media/${slug}.webp`,previewVideo:`/media/${slug}.mp4`,previewImages:[],active:true,featured:i<6,trending:[0,1,4,10].includes(i),isNew:[3,9,12,15,17].includes(i),popular:[0,2,3,7,10].includes(i),requiredImageCount:name==='Wedding Cinematic'?2:1,aspectRatio:'9:16',duration:5,resolution:'720p',provider:'mock',model:'studio-demo',generationType:'video',hiddenPrompt:step.prompt,negativePrompt:step.negativePrompt,settings:{},workflow:[step],createdAt:Date.UTC(2026,8,10)-i*86400000};
 });}

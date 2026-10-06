@@ -6,14 +6,17 @@ This project is registered with Sites. Keep its existing project identifier. Bui
 
 The private preview is for its owner. Third-party AI downloads and Stripe webhooks require publicly reachable endpoints in a production deployment; owner-only Sites access blocks external callers. Review the audience deliberately before activating live providers.
 
-## Live payments
+## Credit sales (live payments)
 
-1. Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET; first use Stripe test credentials.
-2. Register `/api/webhooks/stripe` for checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, checkout.session.expired, charge.refunded, charge.dispute.created and refund.updated. Credit pack purchases use the same endpoint; their sessions carry `purchase_id` metadata.
-3. Set DEMO_MODE=false. The development pay endpoint is then disabled. The server creates Checkout Sessions from immutable order amounts, verifies signed webhook bodies and checks session IDs, currency and amounts. Browser return URLs cannot independently authorize generation.
-4. Exercise a successful checkout, a declined card, webhook replay and a full refund in your Stripe account before accepting live transactions.
+Customers buy credit packs; generations spend credits. See [credits architecture](CREDITS-ARCHITECTURE.md).
 
-Amounts are integer minor units. Supported admin currencies assume two decimal places. Taxes, invoices, regional pricing, partial refunds and chargeback operations require additional business configuration. Existing checkout snapshots preserve their price when a template price changes. Retrying an expired Stripe checkout creates a new session on the same immutable order. The checkout attempt counter scopes its idempotency key. A completed session awaiting asynchronous payment cannot create another session. Delayed expiry events for an old session do not fail the replacement.
+1. Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET; first use Stripe test credentials. Stripe does not officially support businesses based in Albania; see the architecture document for options, including a merchant of record.
+2. Register `/api/webhooks/stripe` for checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, checkout.session.expired, charge.refunded and charge.dispute.created.
+3. Create credit packs under Admin → Credit packs (credits, optional bonus, a price per currency).
+4. Set DEMO_MODE=false. The test checkout is then disabled. The server creates Checkout Sessions from the pack price, verifies signed webhook bodies, checks session, amount and currency, and grants the pack's credits exactly once. Browser return URLs cannot grant credits on their own.
+5. Exercise a successful purchase, a declined card, webhook replay and a dispute in your Stripe test account before accepting live payments.
+
+Packs are non-refundable by policy and customers consent to immediate delivery at checkout. A reversed payment (dispute, or a refund made in the Stripe dashboard) removes the purchased credits, even below zero; such accounts are listed in Operations. Money amounts are integer minor units and admin currencies assume two decimal places. Taxes and invoices require additional business configuration. Retrying an expired Stripe checkout creates a new session on the same purchase; a completed session awaiting asynchronous payment cannot open another; a delayed expiry event for an old session does not fail the replacement.
 
 ## AI services
 
@@ -25,9 +28,9 @@ To add another provider, implement AIProvider in providers.ts, register it in pr
 
 ## Durable queue
 
-Payment confirmation queues a generation in the same D1 batch that records payment. The Worker attempts a 22-second background processing window. My Creations also polls while open. Neither is sufficient for unattended long jobs: schedule `/api/queue/dispatch` with `Authorization: Bearer QUEUE_SECRET` at least once per minute, using scripts/dispatch-queue.mjs or an external scheduler. `pnpm queue:worker` runs a continuous dispatcher in a supervised Node service; configure APP_ORIGIN and QUEUE_SECRET in that service. It ticks every five seconds, reports errors without printing secrets, and shuts down on SIGTERM/SIGINT. A scheduled Worker handler is included for platforms supporting cron triggers. Sites deployment does not automatically create a cron schedule. Private hosting requires the scheduler to have authorized access as well.
+Starting a generation reserves its credits and queues the job in the same D1 batch. The Worker attempts a 22-second background processing window. My Creations also polls while open. Neither is sufficient for unattended long jobs: schedule `/api/queue/dispatch` with `Authorization: Bearer QUEUE_SECRET` at least once per minute, using scripts/dispatch-queue.mjs or an external scheduler. `pnpm queue:worker` runs a continuous dispatcher in a supervised Node service; configure APP_ORIGIN and QUEUE_SECRET in that service. It ticks every five seconds, reports errors without printing secrets, and shuts down on SIGTERM/SIGINT. A scheduled Worker handler is included for platforms supporting cron triggers. Sites deployment does not automatically create a cron schedule. Private hosting requires the scheduler to have authorized access as well.
 
-Database leases prevent concurrent execution, provider job IDs persist, transient status checks retry, and a 30-minute deadline marks stuck jobs failed. Ambiguous provider submissions are not automatically resubmitted because they may already be billable. Inspect the provider before an admin retry. Automatic full refunds are configurable; the database setting overrides the environment default in either direction. Unsuccessful refunds remain visible for review. Out-of-band full Stripe refunds stop queued/running work and revoke the job lease. Accepted refund IDs are reconciled before another request. Partial refunds remain outside this MVP.
+Database leases prevent concurrent execution, provider job IDs persist, transient status checks retry, and a 30-minute deadline marks stuck jobs failed. Ambiguous provider submissions are not automatically resubmitted because they may already be billable. Inspect the provider before an admin retry. A failed or timed-out generation always returns its reserved credits; delivery charges them. The hourly maintenance settles any hold left pending by an interruption and deletes photos that no creation has used for 24 hours. An admin retry reserves the customer's credits again.
 
 ## Authentication and operations
 
@@ -37,13 +40,13 @@ Before public launch, replace draft legal pages with your business identity, jur
 
 ## Operating the dashboard
 
-- Overview separates currencies and reports revenue, estimated cost (including started refunded jobs), gross profit, average paid order, 30-day revenue, recent payments, and popular/profitable templates.
-- Operations reports provider/email/payment configuration, queued work, jobs exceeding ten minutes, unresolved refunds, storage usage, and event counts. Configuration presence does not prove live service health.
+- Overview separates currencies and reports pack revenue, reversed payments, estimated AI cost, average purchase, 30-day revenue, credits sold/spent/given/outstanding, recent purchases, most-used templates and estimated margins (at your cheapest credit price).
+- Operations reports provider/email/payment configuration, the credit ledger reconciliation, queued work, credits reserved, jobs exceeding ten minutes, reversed purchases, storage usage, and event counts. Configuration presence does not prove live service health.
 - The external dispatcher heartbeat is separate from user/browser queue ticks. Green requires an authenticated dispatcher call within three minutes.
-- Activity records template changes, user administration, refunds, settings, password changes, session revocation, and exports. Search and pagination operate on the server.
-- Users, generations, orders, and payments support search/status filters and pagination. User spending and all finance summaries stay separated by currency.
+- Activity records template and pack changes, user administration, credit adjustments, settings, password changes, session revocation, and exports. Search and pagination operate on the server.
+- Users, generations, credit purchases and the credit ledger support search/filters and pagination. Admins can add or remove a user's credits with a reason and their password. Money summaries stay separated by currency.
 
-Migration 0001 adds checkout attempt tracking and revokes older reset links and sessions after recovery hardening. Existing accounts and orders remain intact; sign in again after upgrading. Bootstrap configuration does not reset a password already changed in Account.
+Migration 0001 revokes older reset links and sessions after recovery hardening. Migration 0003 adds the credit tables; migration 0004 removes the per-video orders, payments and refunds tables and template prices. Back up D1 before applying them. Existing accounts and orders remain intact; sign in again after upgrading. Bootstrap configuration does not reset a password already changed in Account.
 
 Expired auth/session/rate-limit records are cleaned during queue maintenance, at most once per hour. Active uploads are limited to 250 files / 512 MB per account. Template preview media is stored separately (`template_media`) under a studio-wide limit of 5 GB / 1000 files. A preview is deleted when the last template using it is changed or removed, unless a past creation still uses it as its poster; uploads never saved to a template are swept by the hourly maintenance after 24 hours. Admin → Media library lists every file and where it is used. Large provider results stream to R2 using a known content length; responses without a length are limited to 24 MB. Intermediate asset identities are persisted and signed links are renewed on every workflow submission, including an administrator retry.
 
@@ -52,7 +55,7 @@ Expired auth/session/rate-limit records are cleaned during queue maintenance, at
 
 Set DEMO_MODE=false. `/admin/connections` accepts Stripe, webhook, fal.ai, optional Replicate, and Resend credentials. Every save requires the current administrator password, a trusted request origin, and the admin role. The API never returns saved secret values. Changes take effect without a rebuild. Connections do not make a paid API call or send a verification email until an applicable customer action occurs. Enable your connected provider under AI providers.
 
-Checkout is closed until a Stripe key and webhook secret, email sender, enabled AI provider, and fresh external dispatcher heartbeat are configured. The hosting owner must deliberately allow public service traffic and then set PUBLIC_SERVICE_ACCESS=true. This flag does not change the hosting audience. It is an explicit deployment assertion; the app cannot inspect the Sites audience from inside the Worker. A stale dispatcher heartbeat (over three minutes) closes new checkout but does not discard existing work. Stripe test keys remain usable for staging and are clearly identified in Connections; real sales require matching live keys and a live webhook endpoint.
+Buying credits is closed until a Stripe key and webhook secret, email sender, enabled AI provider, and fresh external dispatcher heartbeat are configured; starting a creation needs the AI provider, the dispatcher and public access. The hosting owner must deliberately allow public service traffic and then set PUBLIC_SERVICE_ACCESS=true. This flag does not change the hosting audience. It is an explicit deployment assertion; the app cannot inspect the Sites audience from inside the Worker. A stale dispatcher heartbeat (over three minutes) closes new credit sales and new creations but does not discard existing work. Stripe test keys remain usable for staging and are clearly identified in Connections; real sales require matching live keys and a live webhook endpoint.
 
 On the first production-mode request, untouched starter workflows are converted to a server-owned two-step Fal recipe. Edited prompts and custom workflows are preserved. The recipe uses Nano Banana image editing and Kling 2.6 Pro image-to-video; model endpoint, prompt, input mapping and settings remain editable per template. Built-in previews stay labeled as concept previews until you upload actual examples. Saving or selecting a workflow does not verify output quality or current provider billing rates.
 

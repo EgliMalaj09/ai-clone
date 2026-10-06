@@ -1,6 +1,6 @@
 # Credits system — architecture design
 
-Status: **approved for implementation** with the owner's decisions of 6 October 2026 (§15). Date: 6 October 2026.
+Status: **implemented** (ledger, packs, holds and admin tools) with the owner's decisions of 6 October 2026 (§15). Credits are the only payment model: the per-video orders, payments and refunds tables were removed in migration 0004, and pack sales are recorded in `credit_purchases`. Pack contents and the payment provider are still to be decided. Date: 6 October 2026.
 Scope: let a signed-in customer buy credit packs and spend credits on template video generations. This document covers the rules, data model, connections, flows, user and admin journeys, safety, accounting and migration. Code comes later.
 
 ---

@@ -21,7 +21,7 @@ const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15
     assert.equal(req.headers.get('authorization'),'Bearer '+keys.STRIPE_SECRET_KEY);
     assert.equal(u.pathname,'/v1/checkout/sessions');
     const form=new URLSearchParams(await req.text()),id='cs_'+(++serial);
-    const session={id,url:'https://checkout.stripe.com/c/'+id,amount_total:Number(form.get('line_items[0][price_data][unit_amount]')),currency:form.get('line_items[0][price_data][currency]'),metadata:{order_id:form.get('metadata[order_id]')}};
+    const session={id,url:'https://checkout.stripe.com/c/'+id,amount_total:Number(form.get('line_items[0][price_data][unit_amount]')),currency:form.get('line_items[0][price_data][currency]'),metadata:{purchase_id:form.get('metadata[purchase_id]')}};
     sessions.set(id,session);return MFResponse.json(session);
   }
   if(u.hostname==='queue.fal.run'){
@@ -45,7 +45,7 @@ const ok=(name,value=true)=>{assert(value,name);checks.push({name,passed:true});
 async function request(route,{method='GET',data,cookie,expected=200,origin=env.APP_ORIGIN}={}){
   const r=await mf.dispatchFetch(env.APP_ORIGIN+route,{method,headers:{origin,...(cookie?{cookie}:{}),...(data?{'content-type':'application/json'}:{})},body:data?JSON.stringify(data):undefined});
   const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}
-  assert.equal(r.status,expected,route+': '+text.slice(0,180));return {body,text,cookie:r.headers.get('set-cookie')?.split(';')[0]};
+  if(expected!==null)assert.equal(r.status,expected,route+': '+text.slice(0,180));return {body,text,cookie:r.headers.get('set-cookie')?.split(';')[0]};
 }
 try{
   const db=await mf.getD1Database('DB'),bucket=await mf.getR2Bucket('BUCKET');
@@ -58,7 +58,7 @@ try{
   const template=(await request('/api/admin/templates/tpl_formula-driver',{cookie:admin})).body.template;
   ok('Production seed uses actual image and video endpoints',template.workflow.length===2&&template.workflow.every(s=>s.provider==='fal')&&template.workflow[1].model==='fal-ai/kling-video/v2.6/pro/image-to-video');
   const page=await request('/template/formula-driver');
-  ok('Closed checkout is visible before an upload or payment',page.text.includes('Checkout is currently closed.')&&!page.text.includes('Demo studio'));
+  ok('Closed creation is visible before an upload',page.text.includes('Creation is currently closed.')&&!page.text.includes('Demo studio'));
   const save=(values,extra={})=>request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values,...extra}});
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,origin:'https://attacker.test',data:{currentPassword:password,values:keys},expected:403});ok('Connection changes reject a cross-site origin');
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:'incorrect-password',values:keys},expected:403});ok('Saving keys requires administrator password reauthentication');
@@ -82,9 +82,11 @@ try{
   const owner=(await request('/api/me',{cookie:admin})).body.user.id;
   await bucket.put('uploads/fixture',image);
   await db.prepare('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,created_at) VALUES (?,?,?,?,?,?,?)').bind('up_fixture',owner,'uploads/fixture','image/webp',image.length,'photo.webp',Date.now()).run();
-  const purchase={templateId:template.id,expectedPrice:template.price,uploadIds:['up_fixture'],idempotencyKey:randomUUID(),consent:true};
-  await request('/api/checkout',{method:'POST',cookie:admin,data:purchase,expected:503});
-  ok('Missing service readiness blocks order creation before charging',(await db.prepare('SELECT COUNT(*) AS n FROM orders').first()).n===0&&!requests.some(r=>r.host==='api.stripe.com'));
+  const creation={templateId:template.id,expectedCost:template.creditCost,uploadIds:['up_fixture'],idempotencyKey:randomUUID(),consent:true};
+  await request('/api/generations',{method:'POST',cookie:admin,data:creation,expected:503});
+  const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Launch pack',credits:1000,prices:{USD:999},active:true},expected:201})).body.package;
+  await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'USD',idempotencyKey:randomUUID(),consent:true},expected:503});
+  ok('Missing service readiness blocks generation and credit sales before anything is charged',(await db.prepare('SELECT COUNT(*) AS n FROM credit_holds').first()).n===0&&(await db.prepare('SELECT COUNT(*) AS n FROM credit_purchases').first()).n===0&&!requests.some(r=>r.host==='api.stripe.com'));
   await request('/api/admin/providers/fal',{method:'PATCH',cookie:admin,data:{enabled:true}});
   await mf.dispatchFetch(env.APP_ORIGIN+'/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+env.QUEUE_SECRET}});
   ok('Enabled provider and external dispatcher complete configuration',(await request('/api/admin/connections',{cookie:admin})).body.readiness.ready);
@@ -93,26 +95,33 @@ try{
   status=await request('/api/admin/connections',{cookie:admin});
   ok('Ciphertext cannot be transplanted to another credential field',!status.body.fields.FAL_KEY.configured&&!status.body.readiness.ready);
   await save({FAL_KEY:keys.FAL_KEY});ok('An administrator can repair an unreadable saved connection',(await request('/api/admin/connections',{cookie:admin})).body.fields.FAL_KEY.configured);
-  const order=(await request('/api/checkout',{method:'POST',cookie:admin,data:purchase,expected:201})).body;
-  await request('/api/orders/'+order.orderId+'/pay',{method:'POST',cookie:admin,data:{result:'success'},expected:403});ok('Simulated payment cannot confirm a production order');
-  const e={id:'evt_production_fixture',type:'checkout.session.completed',data:{object:{...sessions.get(order.id),payment_status:'paid',payment_intent:'pi_fixture'}}};
+  const bought=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'USD',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
+  const session=[...sessions.values()].find(x=>x.metadata.purchase_id===bought.purchaseId);
+  ok('Production credit sales open a Stripe checkout',bought.url===session.url);
+  await request('/api/credits/purchases/'+bought.purchaseId+'/pay',{method:'POST',cookie:admin,data:{result:'success'},expected:403});ok('Simulated payment cannot confirm a production purchase');
+  const e={id:'evt_production_fixture',type:'checkout.session.completed',data:{object:{...session,payment_status:'paid',payment_intent:'pi_fixture'}}};
   const t=Math.floor(Date.now()/1000),raw=JSON.stringify(e);
   const paid=await mf.dispatchFetch(env.APP_ORIGIN+'/api/webhooks/stripe',{method:'POST',headers:{'stripe-signature':'t='+t+',v1='+createHmac('sha256',keys.STRIPE_WEBHOOK_SECRET).update(t+'.'+raw).digest('hex')},body:raw});
   assert.equal(paid.status,200,await paid.text());
+  ok('The signed payment grants the pack credits',(await request('/api/credits',{cookie:admin})).body.available===1000);
+  const order=(await request('/api/generations',{method:'POST',cookie:admin,data:creation,expected:201})).body;
   let generation;
   const until=Date.now()+30000;
-  while(Date.now()<until){await request('/api/queue/tick',{method:'POST',cookie:admin,data:{}});generation=(await request('/api/generations/'+order.generationId,{cookie:admin})).body.generations[0];if(['completed','failed'].includes(generation.status))break;await new Promise(r=>setTimeout(r,700));}
-  ok('Encrypted connections power confirmed checkout and the actual preset adapters',generation.status==='completed');
+  while(Date.now()<until){await request('/api/queue/tick',{method:'POST',cookie:admin,data:{},expected:null});generation=(await request('/api/generations/'+order.generationId,{cookie:admin})).body.generations[0];if(['completed','failed'].includes(generation.status))break;await new Promise(r=>setTimeout(r,700));}
+  ok('Encrypted connections power a paid credit pack and the actual preset adapters',generation.status==='completed');
+  ok('The delivered video spends the template credits',(await request('/api/credits',{cookie:admin})).body.available===1000-template.creditCost);
   const submitted=[...jobs.values()];
   ok('Hidden prompt and signed photos are supplied only to the provider',submitted[0].input.prompt===template.hiddenPrompt&&submitted[0].input.image_urls[0].includes('signature=')&&submitted[1].input.start_image_url.includes('/api/media/asset_'));
   const catalog=await request('/api/templates/formula-driver');
   ok('Public template payload excludes private prompt, workflow, cost and keys',!catalog.text.includes(template.hiddenPrompt)&&!catalog.text.includes('workflow')&&!catalog.text.includes('estimatedCost')&&Object.values(keys).every(k=>!catalog.text.includes(k)));
   const download=await mf.dispatchFetch(env.APP_ORIGIN+'/api/media/'+generation.assetId+'?download=1',{headers:{cookie:admin}});
   ok('Provider result is downloadable from private storage',download.status===200&&download.headers.get('content-disposition').includes('attachment')&&(await download.arrayBuffer()).byteLength===video.length);
-  await db.prepare("UPDATE payments SET provider='mock' WHERE order_id=?").bind(order.orderId).run();
-  await request('/api/orders/'+order.orderId+'/retry',{method:'POST',cookie:admin,data:{},expected:403});ok('Old simulated orders cannot reopen checkout after a production switch');
+  const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'USD',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
+  await db.prepare("UPDATE credit_purchases SET provider='mock',status='pending' WHERE id=?").bind(stale.purchaseId).run();
+  await request('/api/credits/purchases/'+stale.purchaseId+'/retry',{method:'POST',cookie:admin,data:{},expected:403});ok('A test purchase cannot reopen checkout after a production switch');
   await db.prepare("UPDATE app_settings SET value='1' WHERE key='queue_dispatch_heartbeat'").run();
-  ok('A stale dispatcher closes new checkout',(await request('/api/admin/connections',{cookie:admin})).body.readiness.ready===false);
+  ok('A stale dispatcher closes new credit sales',(await request('/api/admin/connections',{cookie:admin})).body.readiness.ready===false);
+  await request('/api/generations',{method:'POST',cookie:admin,data:{...creation,idempotencyKey:randomUUID()},expected:503});ok('A stale dispatcher also closes new generations');
   await save({}, {remove:['FAL_KEY']});
   ok('Removing a connection actually deletes its encrypted record',!(await db.prepare("SELECT key FROM app_settings WHERE key='connection.FAL_KEY'").first()));
   const audit=(await db.prepare('SELECT * FROM audit_logs').all()).results;

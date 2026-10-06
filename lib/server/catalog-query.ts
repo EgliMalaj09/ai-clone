@@ -7,7 +7,7 @@ export async function queryCatalog(url:URL,slug?:string){
  const query=(url.searchParams.get('q')||'').trim().slice(0,150);
  const category=url.searchParams.get('category')||'all',tag=url.searchParams.get('tag')||'all',sort=url.searchParams.get('sort')||'featured';
  const flags:Record<string,string>={trending:'trending',new:'is_new',popular:'popular'};
- const sorting:Record<string,string>={featured:'featured DESC,trending DESC,created_at DESC',newest:'created_at DESC','price-low':'currency,price ASC','price-high':'currency,price DESC'};
+ const sorting:Record<string,string>={featured:'featured DESC,trending DESC,created_at DESC',newest:'created_at DESC','price-low':'credit_cost ASC','price-high':'credit_cost DESC'};
  must(tag==='all'||Object.hasOwn(flags,tag),'Unknown discovery filter.');must(Object.hasOwn(sorting,sort),'Unknown sort order.');
  const where=['active=1'],args:unknown[]=[];
  if(query){const pattern='%'+query.replace(/[\\%_]/g,'\\$&')+'%';where.push("(name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')");args.push(pattern,pattern);}

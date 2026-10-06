@@ -60,18 +60,22 @@ export async function purchaseReadiness(){
     enabledProviders:enabled.filter(p=>p.id==='fal'?!!c.falKey:p.id==='replicate'?!!c.replicateKey:c.demo).map(p=>p.id as string),
   };
 }
-export async function assertPurchasable(template:AdminTemplate){
-  const r=await purchaseReadiness();
-  must(template.workflow.length>0,'This template is currently unavailable.',409);
-  must(template.workflow.every(s=>r.demo?s.provider==='mock':s.provider!=='mock'),'This template is not available for purchase yet.',409);
-  must(r.ready,'Video creation is not open yet. Please check back soon.',503);
-  must(template.workflow.every(s=>r.enabledProviders.includes(s.provider)),'This template is temporarily unavailable.',503);
+/** Generation needs an AI provider, the background dispatcher and public access; it does not need payments. */
+function generationReady(r:Awaited<ReturnType<typeof purchaseReadiness>>){return r.demo||r.ai&&r.dispatcher&&r.publicAccess;}
+function templateRunnable(template:AdminTemplate,r:Awaited<ReturnType<typeof purchaseReadiness>>){
+  return template.workflow.length>0&&template.workflow.every(s=>r.enabledProviders.includes(s.provider)&&(r.demo?s.provider==='mock':s.provider!=='mock'));
 }
+export async function assertGeneratable(template:AdminTemplate){
+  const r=await purchaseReadiness();
+  must(template.workflow.length>0&&template.workflow.every(s=>r.demo?s.provider==='mock':s.provider!=='mock'),'This template is not available yet.',409);
+  must(generationReady(r),'Video creation is not open yet. Please check back soon.',503);
+  must(templateRunnable(template,r),'This template is temporarily unavailable.',503);
+}
+/** What the storefront may offer: registration, buying credits (needs payments) and generating a template. */
 export async function publicAvailability(template?:AdminTemplate|null){
   const r=await purchaseReadiness();
-  return {registrationAvailable:r.registrationAvailable,purchasingAvailable:r.ready&&(!template||template.workflow.length>0&&template.workflow.every(s=>r.enabledProviders.includes(s.provider)&&(r.demo?s.provider==='mock':s.provider!=='mock')))};
+  return {registrationAvailable:r.registrationAvailable,purchasingAvailable:r.ready,generationAvailable:generationReady(r)&&(!template||templateRunnable(template,r))};
 }
-
 export async function connectionStatus(){
   const c=await serviceConfig(true),readiness=await purchaseReadiness();
   const saved=await all("SELECT key FROM app_settings WHERE key LIKE 'connection.%'");

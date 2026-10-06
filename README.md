@@ -1,12 +1,12 @@
 # PROJECT STUDIO
 
-A working template-based video creation MVP. Customers choose an outcome, upload photos, pay the template's fixed price, and receive a video in My Creations. No balance purchase is required.
+A working template-based video creation MVP. Customers buy credit packs, choose a template, upload photos and spend the template's credits; the video arrives in My Creations. Credits are reserved when a video starts, charged on delivery and returned automatically if it fails. Design: [credits architecture](docs/CREDITS-ARCHITECTURE.md).
 
 ## Included
 
-18 original templates and playable concept previews; search, categories, sorting and favorites; email/password accounts; secure uploads; orders and checkout; asynchronous multi-step workflows; private video playback, downloads, expiring share links and deletion; protected administration for templates, prices, workflows, users, payments, refunds, provider switches, encrypted connection management, a photo-to-video workflow preset and metrics; operations/readiness dashboard, activity log, paginated administration, password changes, session revocation and account exports.
+18 original templates and playable concept previews; search, categories, sorting and favorites; email/password accounts; secure uploads; credit packs with checkout and a double-entry credit ledger; asynchronous multi-step workflows; private video playback, downloads, expiring share links and deletion; protected administration for templates, credit costs, workflows, users and credit adjustments, credit packs, purchases, the credit ledger, provider switches, encrypted connection management, a photo-to-video workflow preset and metrics; operations/readiness dashboard, activity log, paginated administration, password changes, session revocation and account exports.
 
-**Demo mode uses simulated payments and bundled sample videos. It does not transform the uploaded person's identity.** Live payments and generation require your own Stripe and AI service credentials.
+**Demo mode uses a test checkout for credits and bundled sample videos. It does not transform the uploaded person's identity.** Live payments and generation require your own Stripe and AI service credentials.
 
 ## Stack
 
@@ -14,9 +14,9 @@ React 19, TypeScript, Tailwind 4 and Vinext (Next.js-compatible application rout
 
 ## Production administration
 
-Open `/login?next=/admin` with your administrator account. Add your own API keys in **Connections**; choose a template under **Templates**, then **AI workflow → Use photo-to-video workflow**. Write your private prompt, set the price and publish. See the [admin guide](docs/ADMIN-GUIDE.md).
+Open `/login?next=/admin` with your administrator account. Add your own API keys in **Connections**; choose a template under **Templates**, then **AI workflow → Use photo-to-video workflow**. Write your private prompt, set the credit cost and publish. Create your credit packs under **Credit packs**. See the [admin guide](docs/ADMIN-GUIDE.md).
 
-`.env.example` defaults to production mode with checkout closed. Configure services, an external dispatcher and publicly reachable service endpoints before accepting purchases. A false demo flag alone does not activate paid services. Local development can still explicitly enable the simulator using the setup script below.
+`.env.example` defaults to production mode with credit sales and creation closed. Configure services, an external dispatcher and publicly reachable service endpoints before selling credits. A false demo flag alone does not activate paid services. Local development can still explicitly enable the simulator using the setup script below.
 
 ## Local setup
 
@@ -34,14 +34,14 @@ Tables are created by migrations. The first application request seeds the 18 tem
 
 GitHub Actions (`.github/workflows/ci.yml`) runs typecheck, lint, build and all test suites on every push and on pull requests from forks. Test result files are attached to each run.
 
-`pnpm typecheck` checks TypeScript. `pnpm build` builds the production Worker. `pnpm test:integration` runs against that compiled Worker in disposable D1/R2 bindings, applies real migrations, and exercises authentication, ownership, uploads, checkout, payment replay, asynchronous workflows, downloads, admin publishing/pricing, refunds and deletion. It creates its own random credentials and does not contact paid providers. Results are written to `test-results/integration.json`.
+`pnpm typecheck` checks TypeScript. `pnpm build` builds the production Worker. `pnpm test:integration` runs against that compiled Worker in disposable D1/R2 bindings, applies real migrations, and exercises authentication, ownership, uploads, credit-based generation (reserve, charge on delivery, return on failure, admin retry), downloads, admin publishing and credit costs, media management, a signed pack webhook and deletion. It creates its own random credentials and does not contact paid providers. Results are written to `test-results/integration.json`.
 
-`pnpm test:security` runs the regression suite for concurrent password reset, session rotation, request bounds, workflow validation, payment retries, webhook ordering, refunds, operational reporting, and data export. Stripe HTTP responses are intercepted in-process; no financial transaction is executed.
+`pnpm test:security` runs the regression suite for concurrent password reset, session rotation, request bounds, workflow validation, credit pack checkout retries, webhook ordering, payment reversals, the generation deadline, operational reporting and data export. Stripe HTTP responses are intercepted in-process; no financial transaction is executed.
 
-`pnpm test:providers` verifies the Fal and Replicate adapters, private R2 ingestion, multi-step signed inputs, and unsafe-output blocking using local HTTP fixtures.
+`pnpm test:providers` verifies the Fal and Replicate adapters, private R2 ingestion, multi-step signed inputs, unsafe-output blocking and credit charging/returns using local HTTP fixtures.
 
-`pnpm test:credits` checks the credits ledger: welcome credits, admin adjustments, idempotency, simultaneous spending and reconciliation.
+`pnpm test:credits` checks the credits ledger and packs: welcome credits, admin adjustments, idempotency, simultaneous spending, reconciliation, the demo checkout, and (in production mode with a fake Stripe) signed webhooks, duplicates, wrong amounts, chargebacks and expired sessions.
 
-`pnpm test:production` checks encrypted credentials, production readiness, the ready-made workflow, and production payment/generation guards using local fixtures.
+`pnpm test:production` checks encrypted credentials, production readiness, the ready-made workflow, and an end-to-end production run: a pack bought through a fake Stripe pays for a real-workflow generation.
 
 See [API reference](docs/API.md) for routes, [security review](docs/SECURITY.md) for findings and remaining limits, [operations](docs/OPERATIONS.md) for deployment, Stripe, AI integration and queue scheduling; [architecture](docs/ARCHITECTURE.md) for data, security and extension points.

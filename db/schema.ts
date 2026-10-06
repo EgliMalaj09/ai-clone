@@ -19,7 +19,8 @@ export const templates=sqliteTable('templates',{
  id:text('id').primaryKey(),slug:text('slug').notNull().unique(),name:text('name').notNull(),description:text('description').notNull(),category:text('category').notNull(),
  thumbnail:text('thumbnail').notNull(),previewVideo:text('preview_video').notNull().default(''),previewImages:text('preview_images').notNull().default('[]'),
  active:integer('active').notNull().default(0),featured:integer('featured').notNull().default(0),trending:integer('trending').notNull().default(0),isNew:integer('is_new').notNull().default(0),popular:integer('popular').notNull().default(0),
- price:integer('price').notNull(),estimatedCost:integer('estimated_cost').notNull().default(0),currency:text('currency').notNull().default('USD'),
+ // Customers pay in credits (credit_cost). estimated_cost is the AI provider cost in `currency` minor units.
+ estimatedCost:integer('estimated_cost').notNull().default(0),currency:text('currency').notNull().default('USD'),
  requiredImageCount:integer('required_image_count').notNull().default(1),aspectRatio:text('aspect_ratio').notNull().default('9:16'),duration:integer('duration').notNull().default(5),resolution:text('resolution').notNull().default('720p'),
  generationType:text('generation_type').notNull().default('video'),provider:text('provider').notNull().default('mock'),model:text('model').notNull().default('studio-demo'),
  hiddenPrompt:text('hidden_prompt').notNull(),negativePrompt:text('negative_prompt').notNull().default(''),settings:text('settings').notNull().default('{}'),createdAt:integer('created_at').notNull(),updatedAt:integer('updated_at').notNull(),
@@ -41,7 +42,9 @@ export const templateMedia=sqliteTable('template_media',{
 export const generations=sqliteTable('generations',{
  id:text('id').primaryKey(),userId:text('user_id').references(()=>users.id,{onDelete:'set null'}),templateId:text('template_id').references(()=>templates.id,{onDelete:'set null'}),
  templateName:text('template_name').notNull(),templateSlug:text('template_slug').notNull(),thumbnail:text('thumbnail').notNull(),
- status:text('status').notNull().default('awaiting_payment'),price:integer('price').notNull(),currency:text('currency').notNull(),estimatedCost:integer('estimated_cost').notNull(),
+ // The column default is historical; changing a default would force a table rebuild that cascades to steps and assets.
+ // New generations always set status explicitly.
+ status:text('status').notNull().default('awaiting_payment'),currency:text('currency').notNull(),estimatedCost:integer('estimated_cost').notNull(),
  workflowSnapshot:text('workflow_snapshot').notNull(),inputIds:text('input_ids').notNull(),context:text('context').notNull().default('{}'),currentStep:integer('current_step').notNull().default(0),
  leaseToken:text('lease_token'),leaseUntil:integer('lease_until').notNull().default(0),nextRunAt:integer('next_run_at').notNull().default(0),attempts:integer('attempts').notNull().default(0),error:text('error'),internalError:text('internal_error'),
  createdAt:integer('created_at').notNull(),startedAt:integer('started_at'),completedAt:integer('completed_at'),deletedAt:integer('deleted_at'),
@@ -56,17 +59,6 @@ export const generatedAssets=sqliteTable('generated_assets',{
 export const favorites=sqliteTable('favorites',{
  id:text('id').primaryKey(),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),templateId:text('template_id').notNull().references(()=>templates.id,{onDelete:'cascade'}),createdAt:integer('created_at').notNull(),
 },t=>[uniqueIndex('idx_favorite_user_template').on(t.userId,t.templateId)]);
-export const orders=sqliteTable('orders',{
- id:text('id').primaryKey(),userId:text('user_id').references(()=>users.id,{onDelete:'set null'}),generationId:text('generation_id').notNull().unique().references(()=>generations.id),templateName:text('template_name').notNull(),
- amount:integer('amount').notNull(),currency:text('currency').notNull(),status:text('status').notNull().default('pending'),idempotencyKey:text('idempotency_key').notNull(),createdAt:integer('created_at').notNull(),
-},t=>[uniqueIndex('idx_order_idempotency').on(t.userId,t.idempotencyKey),index('idx_orders_user_date').on(t.userId,t.createdAt)]);
-export const payments=sqliteTable('payments',{
- id:text('id').primaryKey(),orderId:text('order_id').notNull().unique().references(()=>orders.id),provider:text('provider').notNull(),providerSessionId:text('provider_session_id').unique(),providerTransactionId:text('provider_transaction_id'),amount:integer('amount').notNull(),currency:text('currency').notNull(),status:text('status').notNull().default('pending'),checkoutUrl:text('checkout_url'),createdAt:integer('created_at').notNull(),paidAt:integer('paid_at'),
- checkoutAttempt:integer('checkout_attempt').notNull().default(0),
-});
-export const refunds=sqliteTable('refunds',{
- id:text('id').primaryKey(),paymentId:text('payment_id').notNull().unique().references(()=>payments.id),amount:integer('amount').notNull(),reason:text('reason').notNull(),status:text('status').notNull(),providerRefundId:text('provider_refund_id'),error:text('error'),createdAt:integer('created_at').notNull(),
-});
 export const webhookEvents=sqliteTable('webhook_events',{id:text('id').primaryKey(),type:text('type').notNull(),processedAt:integer('processed_at').notNull()});
 export const providerConfigurations=sqliteTable('provider_configurations',{id:text('id').primaryKey(),name:text('name').notNull(),enabled:integer('enabled').notNull().default(0),settings:text('settings').notNull().default('{}'),updatedAt:integer('updated_at').notNull()});
 export const settings=sqliteTable('app_settings',{key:text('key').primaryKey(),value:text('value').notNull()});
@@ -88,8 +80,8 @@ export const creditEntries=sqliteTable('credit_entries',{
  id:text('id').primaryKey(),transactionId:text('transaction_id').notNull().references(()=>creditTransactions.id),account:text('account').notNull(),amount:integer('amount').notNull(),balanceAfter:integer('balance_after'),createdAt:integer('created_at').notNull(),
 },t=>[index('idx_credit_entries_transaction').on(t.transactionId),index('idx_credit_entries_account').on(t.account)]);
 export const creditHolds=sqliteTable('credit_holds',{
- id:text('id').primaryKey(),userId:text('user_id').notNull(),generationId:text('generation_id').notNull().unique(),amount:integer('amount').notNull(),status:text('status').notNull().default('pending'),createdAt:integer('created_at').notNull(),settledAt:integer('settled_at'),
-},t=>[index('idx_credit_holds_status').on(t.status)]);
+ id:text('id').primaryKey(),userId:text('user_id').notNull(),generationId:text('generation_id').notNull(),amount:integer('amount').notNull(),status:text('status').notNull().default('pending'),createdAt:integer('created_at').notNull(),settledAt:integer('settled_at'),
+},t=>[index('idx_credit_holds_status').on(t.status),index('idx_credit_holds_generation').on(t.generationId)]);
 export const creditPackages=sqliteTable('credit_packages',{
  id:text('id').primaryKey(),name:text('name').notNull(),credits:integer('credits').notNull(),bonusCredits:integer('bonus_credits').notNull().default(0),prices:text('prices').notNull().default('{}'),active:integer('active').notNull().default(0),sortOrder:integer('sort_order').notNull().default(0),createdAt:integer('created_at').notNull(),updatedAt:integer('updated_at').notNull(),
 });

@@ -1,5 +1,19 @@
 # Verification record
 
+6 October 2026 (credits): credits replaced the per-video purchase system. TypeScript, lint and the production Worker build passed. All 237 executable checks passed against the compiled Worker with disposable D1/R2 bindings and the checked-in migrations, including 0003 (credit ledger) and 0004 (removal of orders, payments and refunds).
+
+| Suite | Checks | Coverage |
+|---|---:|---|
+| `pnpm test:integration` | 93 | Catalog/routes, authentication, uploads requiring credits, ownership, credit holds on generation, capture on delivery, return on failure, admin retry re-holding, signed pack webhook, hold sweep, downloads, favorites, admin templates/workflows, deletion |
+| `pnpm test:security` | 46 | Session/CSRF/body limits, protected operational APIs, pack checkout expiry and renewal races, asynchronous payments, amount tampering, idempotent and late webhooks, refund reversal, deadline returning credits, exports |
+| `pnpm test:providers` | 11 | Live-mode guards, Fal and Replicate contracts with credits reserved, charged and returned |
+| `pnpm test:production` | 34 | Encrypted credentials, readiness, production preset, pack bought through a simulated Stripe and spent on a video |
+| `pnpm test:credits` | 53 | Double-entry ledger, concurrency and idempotency, holds, adjustments, welcome credits, packs, reversals and reconciliation |
+
+Browser verification against the production build: an admin created a pack, a customer with 0 credits was asked to buy credits before uploading, bought the pack with the test checkout, generated a video (credits reserved, then charged once on delivery), and the admin adjusted credits and reviewed the ledger, purchases, dashboard and welcome-credits setting (17/17 checks). The old `/orders` and `/checkout` pages return 404. No real payment, email or paid inference occurred.
+
+## Earlier record
+
 20 September 2026: production Worker build and TypeScript checks passed. All 156 executable checks passed against the compiled Worker with disposable D1/R2 bindings and the checked-in migrations.
 
 | Suite | Checks | Coverage |

@@ -21,6 +21,12 @@ const publicPurchase=(p:Row)=>({id:p.id,packageName:p.package_name,credits:p.cre
 export async function listPackages(includeInactive=false){
  return (await all(`SELECT * FROM credit_packages${includeInactive?'':' WHERE active=1'} ORDER BY sort_order,credits,id`)).map(publicPackage);
 }
+/** Lowest price of one credit per currency across active packs (minor units, fractional). Used for margin estimates. */
+export async function creditValues(){
+ const values:Record<string,number>={};
+ for(const p of await listPackages())for(const [currency,price] of Object.entries(p.prices)){const v=price/p.totalCredits;if(values[currency]===undefined||v<values[currency])values[currency]=v;}
+ return values;
+}
 export async function savePackage(id:string|null,input:unknown,user:StudioUser){
  const b=packageSchema.parse(input);
  if(id)must(await one('SELECT id FROM credit_packages WHERE id=?',id),'Credit pack not found.',404);

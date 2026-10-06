@@ -1,7 +1,7 @@
 import type {PublicTemplate} from './contracts';
 
 export const ALL_CATEGORIES='All templates';
-export const sortOptions=[['featured','Recommended'],['newest','Newest first'],['price-low','Price: low to high'],['price-high','Price: high to low']] as const;
+export const sortOptions=[['featured','Recommended'],['newest','Newest first'],['price-low','Credits: low to high'],['price-high','Credits: high to low']] as const;
 export const tagOptions=[['all','All'],['trending','Trending'],['new','New'],['popular','Popular']] as const;
 export type Sort=typeof sortOptions[number][0];
 export type Tag=typeof tagOptions[number][0];
@@ -27,12 +27,12 @@ export function matchesTemplate(t:PublicTemplate,f:Pick<Filters,'category'|'sear
   &&(!text||(t.name+' '+t.description+' '+t.category).toLowerCase().includes(text))
   &&(f.tag==='all'||f.tag==='trending'&&t.trending||f.tag==='new'&&t.isNew||f.tag==='popular'&&t.popular);
 }
-// Mirrors the server catalog order (lib/server/catalog-query.ts). Prices are compared within a currency only.
+// Mirrors the server catalog order (lib/server/catalog-query.ts).
 const comparators:Record<Sort,(a:PublicTemplate,b:PublicTemplate)=>number>={
  featured:(a,b)=>Number(b.featured)-Number(a.featured)||Number(b.trending)-Number(a.trending)||b.createdAt-a.createdAt,
  newest:(a,b)=>b.createdAt-a.createdAt,
- 'price-low':(a,b)=>a.currency.localeCompare(b.currency)||a.price-b.price,
- 'price-high':(a,b)=>a.currency.localeCompare(b.currency)||b.price-a.price,
+ 'price-low':(a,b)=>a.creditCost-b.creditCost,
+ 'price-high':(a,b)=>b.creditCost-a.creditCost,
 };
 export const sortTemplates=(list:PublicTemplate[],sort:Sort)=>[...list].sort((a,b)=>comparators[sort](a,b)||a.id.localeCompare(b.id));
 /** Up to three posters for the home page: featured templates first, topped up with the rest of the catalog. */

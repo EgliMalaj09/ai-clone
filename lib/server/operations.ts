@@ -38,16 +38,16 @@ export async function accountSecurity(req:Request,path:string[],user:StudioUser)
   }
   if(path[1]==='export'&&req.method==='GET'){
     await rateLimit('account-export:'+user.id,3,3600000);
-    const [uploads,generations,orders,favorites,credits,creditTransactions]=await Promise.all([
+    const [uploads,generations,purchases,favorites,credits,creditTransactions]=await Promise.all([
       all('SELECT id,name,mime,size,created_at FROM user_uploads WHERE user_id=?',user.id),
-      all('SELECT id,template_name,status,price,currency,created_at,completed_at FROM generations WHERE user_id=? AND deleted_at IS NULL',user.id),
-      all('SELECT id,template_name,amount,currency,status,created_at FROM orders WHERE user_id=?',user.id),
+      all('SELECT id,template_name,status,credit_cost,created_at,completed_at FROM generations WHERE user_id=? AND deleted_at IS NULL',user.id),
+      all('SELECT id,package_name,credits,amount,currency,status,created_at,paid_at FROM credit_purchases WHERE user_id=?',user.id),
       all('SELECT template_id,created_at FROM favorites WHERE user_id=?',user.id),
       balanceOf(user.id),
       all("SELECT t.id,t.kind,t.reason,t.created_at,e.amount FROM credit_transactions t JOIN credit_entries e ON e.transaction_id=t.id AND e.account='user:'||t.user_id||':available' WHERE t.user_id=? ORDER BY t.created_at",user.id),
     ]);
     await audit(user.id,'account.exported',user.id);
-    return response({exportedAt:new Date().toISOString(),profile:user,uploads,generations,orders,favorites,credits:{...credits,transactions:creditTransactions}},{'Content-Disposition':'attachment; filename="project-studio-account.json"'});
+    return response({exportedAt:new Date().toISOString(),profile:user,uploads,generations,creditPurchases:purchases,favorites,credits:{...credits,transactions:creditTransactions}},{'Content-Disposition':'attachment; filename="project-studio-account.json"'});
   }
   throw new HttpError(404,'Account action not found.');
 }
@@ -62,28 +62,19 @@ export async function adminRecords(kind:string,url:URL){
     if(status!=='all'){must(['active','suspended'].includes(status),'Unknown account status.');where.push('u.status=?');args.push(status);}
     const filter=where.length?' WHERE '+where.join(' AND '):'';
     const count=await one('SELECT COUNT(*) AS total FROM users u'+filter,...args);
-    const users=await all('SELECT u.id,u.email,u.name,u.role,u.status,u.email_verified,u.created_at,(SELECT COUNT(*) FROM generations g WHERE g.user_id=u.id) AS generation_count,(SELECT COUNT(*) FROM orders o WHERE o.user_id=u.id) AS order_count FROM users u'+filter+' ORDER BY u.created_at DESC,u.id LIMIT ? OFFSET ?',...args,limit,offset);
-    const spending=users.length?await all("SELECT user_id,currency,SUM(amount) AS amount FROM orders WHERE status='paid' AND user_id IN ("+users.map(()=>'?').join(',')+') GROUP BY user_id,currency',...users.map(u=>u.id)):[];
+    const users=await all('SELECT u.id,u.email,u.name,u.role,u.status,u.email_verified,u.created_at,(SELECT COUNT(*) FROM generations g WHERE g.user_id=u.id) AS generation_count,(SELECT COUNT(*) FROM credit_purchases p WHERE p.user_id=u.id AND p.status=\'paid\') AS purchase_count,COALESCE((SELECT available FROM credit_balances b WHERE b.user_id=u.id),0) AS credits FROM users u'+filter+' ORDER BY u.created_at DESC,u.id LIMIT ? OFFSET ?',...args,limit,offset);
+    const spending=users.length?await all("SELECT user_id,currency,SUM(amount) AS amount FROM credit_purchases WHERE status='paid' AND user_id IN ("+users.map(()=>'?').join(',')+') GROUP BY user_id,currency',...users.map(u=>u.id)):[];
     return {users:users.map(u=>({...u,spending:spending.filter(s=>s.user_id===u.id)})),pagination:pageInfo(count?.total||0,page,limit)};
   }
   if(kind==='generations'){
     if(search){where.push("(g.id LIKE ? ESCAPE '\\' OR g.template_name LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\')");args.push(like(search),like(search),like(search));}
-    if(status!=='all'){must(['awaiting_payment','queued','preparing','generating','finalizing','completed','failed'].includes(status),'Unknown generation status.');where.push('g.status=?');args.push(status);}
+    if(status!=='all'){must(['queued','preparing','generating','finalizing','completed','failed'].includes(status),'Unknown generation status.');where.push('g.status=?');args.push(status);}
     const from=' FROM generations g LEFT JOIN users u ON u.id=g.user_id'+(where.length?' WHERE '+where.join(' AND '):'');
     const count=await one('SELECT COUNT(*) AS total'+from,...args);
-    const generations=await all('SELECT g.id,g.user_id,g.template_name,g.price,g.currency,g.estimated_cost,g.status,g.created_at,g.started_at,g.completed_at,g.error,g.internal_error,g.deleted_at,u.email'+from+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);
+    const generations=await all('SELECT g.id,g.user_id,g.template_name,g.credit_cost,g.currency,g.estimated_cost,g.status,g.created_at,g.started_at,g.completed_at,g.error,g.internal_error,g.deleted_at,u.email'+from+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);
     return {generations,pagination:pageInfo(count?.total||0,page,limit)};
   }
-  if(search){where.push("(o.id LIKE ? ESCAPE '\\' OR o.template_name LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\' OR p.provider_transaction_id LIKE ? ESCAPE '\\')");args.push(...Array(4).fill(like(search)));}
-  if(status!=='all'){
-    must(['pending','paid','failed','refunded','refund-review'].includes(status),'Unknown payment status.');
-    if(status==='refund-review')where.push("r.status IN ('failed','pending','requires_action')");
-    else {where.push('p.status=?');args.push(status);}
-  }
-  const from=' FROM orders o LEFT JOIN users u ON u.id=o.user_id JOIN generations g ON g.id=o.generation_id JOIN payments p ON p.order_id=o.id LEFT JOIN refunds r ON r.payment_id=p.id'+(where.length?' WHERE '+where.join(' AND '):'');
-  const count=await one('SELECT COUNT(*) AS total'+from,...args);
-  const orders=await all('SELECT o.*,u.email,g.status AS generation_status,p.id AS payment_id,p.provider,p.provider_session_id,p.provider_transaction_id,p.status AS payment_status,r.status AS refund_status,r.error AS refund_error'+from+' ORDER BY o.created_at DESC,o.id LIMIT ? OFFSET ?',...args,limit,offset);
-  return {orders,pagination:pageInfo(count?.total||0,page,limit)};
+  throw new HttpError(404,'Unknown record type.');
 }
 
 export async function adminActivity(url:URL){
@@ -98,27 +89,27 @@ export async function adminActivity(url:URL){
 
 export async function operationsSummary(){
   const c=await serviceConfig();
-  const [queue,refunds,stalled,unpaid,heartbeat,dispatch,storageUsage,events,failures,ledger]=await Promise.all([
+  const [queue,reversals,stalled,heartbeat,dispatch,storageUsage,events,failures,ledger,credits]=await Promise.all([
     all("SELECT status,COUNT(*) AS count,MIN(created_at) AS oldest FROM generations WHERE deleted_at IS NULL GROUP BY status"),
-    all("SELECT r.id,r.amount,r.status,r.error,r.created_at,o.id AS order_id,o.currency,u.email FROM refunds r JOIN payments p ON p.id=r.payment_id JOIN orders o ON o.id=p.order_id LEFT JOIN users u ON u.id=o.user_id WHERE r.status!='succeeded' ORDER BY r.created_at LIMIT 20"),
+    all("SELECT p.id,p.package_name,p.credits,p.amount,p.currency,p.created_at,u.email,COALESCE(b.available,0) AS balance FROM credit_purchases p LEFT JOIN users u ON u.id=p.user_id LEFT JOIN credit_balances b ON b.user_id=p.user_id WHERE p.status='reversed' ORDER BY p.created_at DESC LIMIT 20"),
     all("SELECT id,template_name,status,started_at,created_at,internal_error FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND COALESCE(started_at,created_at)<? ORDER BY created_at LIMIT 20",now()-10*60000),
-    one("SELECT COUNT(*) AS count FROM orders WHERE status IN ('pending','failed')"),
     one("SELECT value FROM app_settings WHERE key='queue_heartbeat'"),
     one("SELECT value FROM app_settings WHERE key='queue_dispatch_heartbeat'"),
     one('SELECT (SELECT COALESCE(SUM(size),0) FROM user_uploads)+(SELECT COALESCE(SUM(size),0) FROM generated_assets)+(SELECT COALESCE(SUM(size),0) FROM template_media) AS bytes,(SELECT COUNT(*) FROM user_uploads) AS uploads,(SELECT COUNT(*) FROM generated_assets) AS assets,(SELECT COUNT(*) FROM template_media) AS previews'),
     all('SELECT name,COUNT(*) AS count FROM analytics_events WHERE created_at>=? GROUP BY name ORDER BY count DESC',now()-30*86400000),
-    all("SELECT g.id,g.template_name,g.error,g.internal_error,g.completed_at,o.status AS payment_status FROM generations g JOIN orders o ON o.generation_id=g.id WHERE g.status='failed' AND g.deleted_at IS NULL ORDER BY g.completed_at DESC LIMIT 10"),
+    all("SELECT g.id,g.template_name,g.error,g.internal_error,g.completed_at,h.status AS credit_status FROM generations g LEFT JOIN credit_holds h ON h.id=g.hold_id WHERE g.status='failed' AND g.deleted_at IS NULL ORDER BY g.completed_at DESC LIMIT 10"),
     reconcileCredits(),
+    one('SELECT COALESCE(SUM(available),0) AS available,COALESCE(SUM(held),0) AS held FROM credit_balances'),
   ]);
   const checks=[
     {name:'Database',ready:true,detail:'Connected'},
     {name:'Private file storage',ready:!!runtime().BUCKET,detail:runtime().BUCKET?'Connected':'Storage binding missing'},
     {name:'Application signing key',ready:c.secret.length>=32,detail:c.secret.length>=32?'Configured':'Missing'},
-    {name:'Payments',ready:!!c.stripeKey&&!!c.webhookSecret,detail:c.demo?'Test checkout active':c.stripeKey&&c.webhookSecret?'Stripe keys configured; verify webhook delivery in Stripe':'Stripe secret or webhook secret missing'},
+    {name:'Payments',ready:!!c.stripeKey&&!!c.webhookSecret,detail:c.demo?'Test credit checkout active':c.stripeKey&&c.webhookSecret?'Stripe keys configured; verify webhook delivery in Stripe':'Stripe secret or webhook secret missing'},
     {name:'Transactional email',ready:!!c.mailKey&&!!c.mailFrom,detail:c.mailKey&&c.mailFrom?'Sender configured; verify delivery with your email service':'Email credentials or sender missing'},
     {name:'AI generation',ready:!!c.falKey||!!c.replicateKey,detail:c.demo?'Sample video simulator active':c.falKey||c.replicateKey?'Provider credentials configured':'Provider credentials missing'},
     {name:'Credit ledger',ready:ledger.ok,detail:ledger.ok?(ledger.negative.length?ledger.negative.length+' account(s) below zero after a reversed payment':'Balances match the ledger'):'Ledger mismatch: review Admin → Credits'},
     {name:'External queue dispatcher',ready:!!c.cronSecret&&Number(dispatch?.value)>now()-180000,detail:dispatch?.value?'Last external tick: '+new Date(Number(dispatch.value)).toISOString():'No external dispatcher call recorded'},
   ];
-  return {demo:c.demo,checkedAt:now(),queue,refunds,stalled,unpaid:unpaid?.count||0,heartbeat:Number(heartbeat?.value)||null,dispatchHeartbeat:Number(dispatch?.value)||null,storage:storageUsage,checks,events,failures};
+  return {demo:c.demo,checkedAt:now(),queue,reversals,stalled,credits:{available:Number(credits?.available||0),held:Number(credits?.held||0)},heartbeat:Number(heartbeat?.value)||null,dispatchHeartbeat:Number(dispatch?.value)||null,storage:storageUsage,checks,events,failures};
 }
