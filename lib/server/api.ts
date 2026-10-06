@@ -2,6 +2,7 @@ import {liveWorkflow} from './workflow-presets';
 import {assertPurchasable,connectionStatus,publicAvailability,serviceConfig,updateConnections} from './connections';
 import {ZodError,z} from 'zod';
 import {jsonBody,pageQuery,readUploadedFile} from './http';
+import {deletePackage,ensurePackCheckout,listPackages,listPurchases,payTestPurchase,publicPurchase,purchaseFor,savePackage,startPackCheckout,verifyPackCheckout} from './credit-purchases';
 import {adjust,balanceOf,creditHistory,creditLedger,grantWelcomeCredits,reconcileCredits} from './credits';
 import {deleteTemplateMedia,listTemplateMedia,releaseTemplateMedia,templateMediaUrls,uploadTemplateMedia} from './template-media';
 import {queryCatalog} from './catalog-query';
@@ -43,6 +44,7 @@ export async function handleAPI(req:Request){try{
  const ip=req.headers.get('cf-connecting-ip')||'local';
  if(p.join('/')==='health'&&method==='GET')return json({status:'ok',demo:config().demo});
  if(p[0]==='templates'&&method==='GET'&&p.length<=2)return json(await queryCatalog(url,p[1]));
+ if(p.join('/')==='credit-packages'&&method==='GET')return json({packages:await listPackages()});
  if(p[0]==='me'&&method==='GET')return json({user:await getUser(req.headers),demo:config().demo});
  if(p[0]==='auth'){
   await rateLimit('auth:'+ip,30,600000);const b=await body(req);
@@ -100,7 +102,19 @@ export async function handleAPI(req:Request){try{
   if(method==='POST'&&p[2]==='share'){const a=await one("SELECT a.id FROM generated_assets a JOIN generations g ON g.id=a.generation_id WHERE g.id=? AND g.user_id=? AND g.deleted_at IS NULL AND g.status='completed' AND a.kind='output'",p[1],user.id);must(a,'Completed creation not found.',404);return json({url:await mediaUrl(a.id,now()+23*3600000)});}
  }
  if(p.join('/')==='queue/tick'&&method==='POST'){await rateLimit('tick:'+user.id,50);await tickQueue(user.id);return json({ok:true});}
- if(p[0]==='credits'&&method==='GET'){if(!p[1])return json(await balanceOf(user.id));if(p[1]==='history')return json(await creditHistory(user.id,url));}
+ if(p[0]==='credits'){
+  if(method==='GET'&&!p[1])return json(await balanceOf(user.id));
+  if(method==='GET'&&p[1]==='history')return json(await creditHistory(user.id,url));
+  if(method==='POST'&&p[1]==='checkout'){await rateLimit('credit-checkout:'+user.id,20,3600000);return json(await startPackCheckout(user,await body(req)),201);}
+  if(p[1]==='purchases'){
+   if(method==='GET'&&!p[2])return json(await listPurchases(user.id,url));
+   const purchase=await purchaseFor(user.id,p[2]);
+   if(method==='GET'&&!p[3])return json({purchase:publicPurchase(purchase),balance:await balanceOf(user.id)});
+   if(method==='POST'&&p[3]==='pay'){const b=z.object({result:z.enum(['success','fail'])}).parse(await body(req));if(!await payTestPurchase(purchase,b.result)&&b.result==='fail')return json({error:'Test payment was declined. No charge was made. Please try again.'},402);return json({purchase:publicPurchase((await purchaseFor(user.id,purchase.id))),balance:await balanceOf(user.id)});}
+   if(method==='POST'&&p[3]==='verify'){await verifyPackCheckout(purchase);return json({purchase:publicPurchase(await purchaseFor(user.id,purchase.id)),balance:await balanceOf(user.id)});}
+   if(method==='POST'&&p[3]==='retry'){await rateLimit('credit-checkout:'+user.id,20,3600000);return json(await ensurePackCheckout(purchase,user.email,true));}
+  }
+ }
  if(p[0]==='account'){
   if(method==='PATCH'){const b=await body(req);const name=z.string().trim().min(2).max(80).parse(b.name);await run('UPDATE users SET name=? WHERE id=?',name,user.id);return json({ok:true});}
   if(method==='DELETE'&&!p[1]){await rateLimit('delete-account:'+user.id,5,900000);const b=z.object({password:z.string().min(1).max(128)}).parse(await body(req));const account=await one('SELECT password_hash FROM users WHERE id=?',user.id);must(account&&await checkPassword(b.password,account.password_hash),'Your password is incorrect.',403);await deleteAccount(user);return json({ok:true},200,{'Set-Cookie':clearCookie(req)});}
@@ -147,7 +161,13 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
    const account=await one('SELECT password_hash FROM users WHERE id=?',user.id);must(account&&await checkPassword(b.currentPassword,account.password_hash),'Your administrator password is incorrect.',403);
    const result=await adjust({userId:target.id,amount:b.amount,actorId:user.id,reason:b.reason,key:'adjust:'+b.idempotencyKey});if(result.applied)await audit(user.id,'credits.adjust',target.id);return json(result);}
  }
- if(p[1]==='credits'&&method==='GET'){if(p[2]==='ledger')return json(await creditLedger(new URL(req.url)));if(p[2]==='reconciliation')return json(await reconcileCredits());}
+ if(p[1]==='credits'&&method==='GET'){if(p[2]==='ledger')return json(await creditLedger(new URL(req.url)));if(p[2]==='reconciliation')return json(await reconcileCredits());if(p[2]==='purchases')return json(await listPurchases(null,new URL(req.url)));}
+ if(p[1]==='credit-packages'){
+  if(method==='GET'&&!p[2])return json({packages:await listPackages(true)});
+  if(method==='POST'&&!p[2])return json({package:await savePackage(null,await body(req),user)},201);
+  if(method==='PATCH'&&p[2])return json({package:await savePackage(p[2],await body(req),user)});
+  if(method==='DELETE'&&p[2]){await deletePackage(p[2],user);return json({ok:true});}
+ }
  if(p[1]==='users'){
   if(method==='GET'){const users=await all("SELECT u.id,u.email,u.name,u.role,u.status,u.created_at,(SELECT COUNT(*) FROM generations g WHERE g.user_id=u.id) AS generation_count,(SELECT COUNT(*) FROM orders o WHERE o.user_id=u.id) AS order_count FROM users u ORDER BY created_at DESC LIMIT 300");const spend=await all("SELECT user_id,currency,SUM(amount) AS amount FROM orders WHERE status='paid' GROUP BY user_id,currency");return json({users:users.map(u=>({...u,spending:spend.filter(s=>s.user_id===u.id)}))});}
   if(method==='PATCH'){const b=await body(req);const status=z.enum(['active','suspended']).parse(b.status);must(!await one("SELECT id FROM users WHERE id=? AND role='admin'",p[2]),'Administrator accounts cannot be suspended here.',409);must(await one('SELECT id FROM users WHERE id=?',p[2]),'User not found.',404);await batch([stmt('UPDATE users SET status=? WHERE id=?',status,p[2]),...(status==='suspended'?[stmt('DELETE FROM sessions WHERE user_id=?',p[2])]:[])]);await audit(user.id,'user.'+status,p[2]);return json({ok:true});}

@@ -9,7 +9,7 @@ The private preview is for its owner. Third-party AI downloads and Stripe webhoo
 ## Live payments
 
 1. Configure STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET; first use Stripe test credentials.
-2. Register `/api/webhooks/stripe` for checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, checkout.session.expired, charge.refunded and refund.updated.
+2. Register `/api/webhooks/stripe` for checkout.session.completed, checkout.session.async_payment_succeeded, checkout.session.async_payment_failed, checkout.session.expired, charge.refunded, charge.dispute.created and refund.updated. Credit pack purchases use the same endpoint; their sessions carry `purchase_id` metadata.
 3. Set DEMO_MODE=false. The development pay endpoint is then disabled. The server creates Checkout Sessions from immutable order amounts, verifies signed webhook bodies and checks session IDs, currency and amounts. Browser return URLs cannot independently authorize generation.
 4. Exercise a successful checkout, a declined card, webhook replay and a full refund in your Stripe account before accepting live transactions.
 

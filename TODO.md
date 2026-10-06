@@ -112,5 +112,5 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 ## 6. Credits system
 - [ ] Implement the credits system — design: `docs/CREDITS-ARCHITECTURE.md` (owner decisions in §15).
   - [x] Step 1: database, credits ledger service, balance/history API, admin adjustments, welcome-credits setting, reconciliation (`pnpm test:credits`)
-  - [ ] Step 2: credit packs and pack checkout (test checkout in demo, Stripe adapter), chargebacks
+  - [x] Step 2: credit packs and pack checkout (test checkout in demo, Stripe adapter), chargebacks
   - [ ] Step 3: generation spends credits (holds), all customer and admin screens

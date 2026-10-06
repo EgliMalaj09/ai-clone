@@ -381,13 +381,17 @@ journey
 | `GET /api/credits` | user | Balance (`available`, `held`) |
 | `GET /api/credits/history?page=` | user | Paginated ledger entries for the user |
 | `GET /api/credit-packages` | public | Active packs and prices |
-| `POST /api/credits/checkout` | user | `{packageId, currency, idempotencyKey}` → checkout URL |
-| `POST /api/credits/orders/:id/verify` | user | Confirms a returned checkout if the webhook is late |
+| `POST /api/credits/checkout` | user | `{packageId, currency, idempotencyKey, consent}` → checkout URL |
+| `GET /api/credits/purchases[/:id]` | user | The user's pack purchases |
+| `POST /api/credits/purchases/:id/verify` | user | Confirms a returned checkout if the webhook is late |
+| `POST /api/credits/purchases/:id/retry` | user | Reopens checkout; replaces an expired Stripe session |
+| `POST /api/credits/purchases/:id/pay` | user | Demo mode only: completes or declines the test payment |
 | `POST /api/generations` | user | `{templateId, uploadIds, idempotencyKey}` → places the hold and queues the job (replaces per-video checkout) |
 | `POST /api/webhooks/stripe` (or provider) | provider | Existing endpoint, extended for packs and disputes |
 | `GET/POST/PATCH /api/admin/credit-packages` | admin | Manage packs |
 | `POST /api/admin/users/:id/credits` | admin | Adjustment `{amount, reason, currentPassword}` |
-| `GET /api/admin/credits/ledger` | admin | Search and export |
+| `GET /api/admin/credits/ledger` | admin | Search transactions by customer, id or type |
+| `GET /api/admin/credits/purchases` | admin | All pack purchases |
 | `GET /api/admin/credits/reconciliation` | admin | Invariant check results |
 
 Every money-changing endpoint takes an **idempotency key**, reusing the pattern of today's checkout endpoint.

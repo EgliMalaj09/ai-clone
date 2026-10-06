@@ -3,12 +3,13 @@ import {all,batch,config,event,must,now,one,run,stmt,type Row} from './data';
 import {constantEqual} from './security';
 import {boundedText} from './http';
 import {providerFor} from './providers';
+import {confirmPackPayment,failPackPayment,reversePackPayment} from './credit-purchases';
 
 export interface PaymentGateway {
   create(order:Row,email:string,attempt?:number):Promise<{id:string;url:string}>;
   refund(payment:Row,refundId:string):Promise<{id:string;status:string}>;
 }
-async function stripe(path:string,body?:Record<string,string>,idempotencyKey?:string){
+export async function stripe(path:string,body?:Record<string,string>,idempotencyKey?:string){
   const c=await serviceConfig();must(c.stripeKey,'Stripe is not configured.',503);
   const r=await fetch(`https://api.stripe.com/v1/${path}`,{
     method:body?'POST':'GET',
@@ -19,16 +20,20 @@ async function stripe(path:string,body?:Record<string,string>,idempotencyKey?:st
   if(!r.ok){console.error('Stripe request failed',r.status,data.error?.type);throw new Error('The payment service is unavailable. Please try again.');}
   return data;
 }
+/** One-time Stripe Checkout session. `reference` names the metadata key the webhook routes on (order_id or purchase_id). */
+export async function createStripeCheckout(o:{reference:'order_id'|'purchase_id';id:string;amount:number;currency:string;name:string;email:string;attempt:number;successPath:string;cancelPath:string}){
+  const d=await stripe('checkout/sessions',{
+    mode:'payment',customer_email:o.email,client_reference_id:o.id,[`metadata[${o.reference}]`]:o.id,[`payment_intent_data[metadata][${o.reference}]`]:o.id,
+    'line_items[0][price_data][currency]':o.currency.toLowerCase(),'line_items[0][price_data][unit_amount]':String(o.amount),
+    'line_items[0][price_data][product_data][name]':o.name,'line_items[0][quantity]':'1',
+    success_url:config().origin+o.successPath,cancel_url:config().origin+o.cancelPath,
+  },`checkout:${o.id}:${o.attempt}`);
+  must(typeof d.id==='string'&&typeof d.url==='string','Checkout was not ready. Please try again.',502);
+  return {id:d.id as string,url:d.url as string};
+}
 export class StripeGateway implements PaymentGateway {
-  async create(o:Row,email:string,attempt=0){
-    const d=await stripe('checkout/sessions',{
-      mode:'payment',customer_email:email,client_reference_id:o.id,'metadata[order_id]':o.id,'payment_intent_data[metadata][order_id]':o.id,
-      'line_items[0][price_data][currency]':o.currency.toLowerCase(),'line_items[0][price_data][unit_amount]':String(o.amount),
-      'line_items[0][price_data][product_data][name]':o.template_name,'line_items[0][quantity]':'1',
-      success_url:`${config().origin}/checkout/${o.id}?returned=1`,cancel_url:`${config().origin}/checkout/${o.id}?cancelled=1`,
-    },`checkout:${o.id}:${attempt}`);
-    must(typeof d.id==='string'&&typeof d.url==='string','Checkout was not ready. Please try again.',502);
-    return {id:d.id,url:d.url};
+  create(o:Row,email:string,attempt=0){
+    return createStripeCheckout({reference:'order_id',id:o.id,amount:o.amount,currency:o.currency,name:o.template_name,email,attempt,successPath:`/checkout/${o.id}?returned=1`,cancelPath:`/checkout/${o.id}?cancelled=1`});
   }
   async refund(p:Row,refundId:string){
     must(p.provider_transaction_id,'Payment is not settled.',409);
@@ -157,12 +162,23 @@ export async function stripeWebhook(request:Request){
   must(typeof e.id==='string'&&e.data?.object,'Invalid webhook.');
   if(await one('SELECT id FROM webhook_events WHERE id=?',e.id))return;
   const s=e.data.object;
-  if(['checkout.session.completed','checkout.session.async_payment_succeeded'].includes(e.type)&&s.payment_status==='paid')await confirmPayment(s.metadata?.order_id,s.id,s.payment_intent,s.amount_total,s.currency);
-  if(['checkout.session.async_payment_failed','checkout.session.expired'].includes(e.type)&&s.metadata?.order_id)await failPayment(s.metadata.order_id,s.id);
+  // Credit pack purchases carry purchase_id; per-video orders carry order_id.
+  const purchaseId=typeof s.metadata?.purchase_id==='string'?s.metadata.purchase_id:null;
+  if(['checkout.session.completed','checkout.session.async_payment_succeeded'].includes(e.type)&&s.payment_status==='paid'){
+    if(purchaseId)await confirmPackPayment(purchaseId,s.id,s.payment_intent,s.amount_total,s.currency);
+    else await confirmPayment(s.metadata?.order_id,s.id,s.payment_intent,s.amount_total,s.currency);
+  }
+  if(['checkout.session.async_payment_failed','checkout.session.expired'].includes(e.type)){
+    if(purchaseId)await failPackPayment(purchaseId,s.id);
+    else if(s.metadata?.order_id)await failPayment(s.metadata.order_id,s.id);
+  }
   if(e.type==='charge.refunded'&&s.refunded){
     const p=await one('SELECT * FROM payments WHERE provider_transaction_id=?',s.payment_intent);
     if(p)await settleRefund(p,s.refunds?.data?.[0]?.id);
+    else await reversePackPayment(s.payment_intent,'Payment refunded');
   }
+  // Packs are not refundable, but a bank can still reverse the payment.
+  if(e.type==='charge.dispute.created'&&typeof s.payment_intent==='string')await reversePackPayment(s.payment_intent,'Payment disputed');
   if(e.type==='refund.updated'){
     await run('UPDATE refunds SET status=?,error=? WHERE provider_refund_id=?',s.status,s.failure_reason||null,s.id);
     if(s.status==='succeeded'){
