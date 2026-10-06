@@ -65,8 +65,8 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 - [ ] **F12 — Retry the `image-size` dependency update.** `docs/SECURITY.md` says it could be retried after 21 Sept 2026, and that date has passed. Run the audit again.
 
 ### Low priority
-- [ ] **F13** — `/api/auth/resend` sends a verification email even when the email is already verified (`lib/server/api.ts:49`).
-- [ ] **F14** — Opening `/reset-password` without a token shows a raw validation error ("token: Required"). Show a friendly "link is invalid" message instead.
+- [x] **F13** — ✅ Fixed (C6.5): `/api/auth/resend` returns "already verified" without sending when the email is already verified.
+- [x] **F14** — ✅ Fixed (C6.5/C15): `/reset-password` and `/verify` without a token show a clear "incomplete link" message with a way to request a new one.
 - [ ] **F15** — Generated images are always stored with a `.png` key extension, even when they are WEBP/JPG (`lib/server/queue.ts:52`). This is cosmetic: the MIME type is correct.
 - [ ] **F16** — The PBKDF2 iteration count is hard-coded, and `checkPassword` ignores the count stored in the hash (`lib/server/security.ts:7-9`), so iterations can never be raised later without breaking logins. Read the count from the stored hash.
 - [ ] **F17** — Account deletion removes the R2 files before the database batch (`lib/server/api.ts:31`). If the batch fails, records point to missing files. Delete the DB rows first, or make the cleanup retryable.

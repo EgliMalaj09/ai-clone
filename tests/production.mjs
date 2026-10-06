@@ -15,12 +15,12 @@ const password=randomBytes(20).toString('hex'),salt=randomBytes(32).toString('he
 const env={DEMO_MODE:'false',PUBLIC_SERVICE_ACCESS:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(password,salt,100000,32,'sha256').toString('hex'),REPLICATE_API_TOKEN:'replicate_environment_fixture'};
 const keys={POK_KEY_ID:'pokkey_'+randomBytes(10).toString('hex'),POK_KEY_SECRET:'poksecret_'+randomBytes(20).toString('hex'),POK_MERCHANT_ID:'merchant_'+randomBytes(8).toString('hex'),HIGGSFIELD_API_KEY:'hfkey_'+randomBytes(10).toString('hex'),HIGGSFIELD_API_SECRET:'hfsecret_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test'};
 const image=await readFile('public/media/formula-driver.webp'),video=await readFile('public/media/formula-driver.mp4');
-const requests=[];
+const requests=[],mails=[];
 const higgsfield=fakeHiggsfield({keyId:keys.HIGGSFIELD_API_KEY,keySecret:keys.HIGGSFIELD_API_SECRET,Response:MFResponse,image,video});
 const pok=fakePok({keyId:keys.POK_KEY_ID,keySecret:keys.POK_KEY_SECRET,merchantId:keys.POK_MERCHANT_ID,Response:MFResponse});
 const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:env,d1Databases:{DB:'production-fixture'},r2Buckets:['BUCKET'],cf:false,outboundService:async req=>{
   const u=new URL(req.url);requests.push({host:u.hostname,path:u.pathname});
-  if(u.hostname==='api.resend.com'){assert.equal(req.headers.get('authorization'),'Bearer '+keys.RESEND_API_KEY);return MFResponse.json({id:'local_mail_fixture'});}
+  if(u.hostname==='api.resend.com'){assert.equal(req.headers.get('authorization'),'Bearer '+keys.RESEND_API_KEY);mails.push(await req.json());return MFResponse.json({id:'local_mail_fixture'});}
   if(pok.matches(u)){assert.equal(u.hostname,'api-staging.pokpay.io','Staging is the default POK environment');return pok.handle(req);}
   if(higgsfield.matches(u))return higgsfield.handle(req);
   throw new Error('Unexpected external request');
@@ -60,6 +60,8 @@ try{
   ok('Repeated saves use fresh authenticated-encryption nonces',(await db.prepare("SELECT value FROM app_settings WHERE key='connection.HIGGSFIELD_API_KEY'").first()).value!==original);
   const member=(await request('/api/auth/register',{method:'POST',data:{name:'Member',email:'member@studio.test',password:'Member-password-123'},expected:201}));
   ok('Configured production registration requires email verification',member.body.verificationRequired&&!member.body.user.emailVerified&&requests.some(r=>r.host==='api.resend.com'));
+  const verifyMail=mails[mails.length-1];
+  ok('The verification email is branded HTML with a verify button and link, plus a plain-text fallback',verifyMail.subject==='Verify your Project Studio email'&&verifyMail.from===keys.MAIL_FROM&&verifyMail.to==='member@studio.test'&&/<a [^>]*href="[^"]*\/verify\?token=/.test(verifyMail.html)&&verifyMail.html.includes('Verify my email')&&verifyMail.html.includes('Project Studio')&&!verifyMail.html.includes('PROJECT STUDIO')&&verifyMail.text.includes('/verify?token=')&&verifyMail.text.includes('30 minutes'));
   await request('/api/admin/connections',{cookie:member.cookie,expected:403});ok('Members cannot inspect connection configuration');
   await request('/api/admin/connections',{method:'PATCH',cookie:member.cookie,data:{currentPassword:password,values:{HIGGSFIELD_API_KEY:keys.HIGGSFIELD_API_KEY}},expected:403});ok('Members cannot write connections even with a supplied password');
   const preset=(await request('/api/admin/workflows/preset',{method:'POST',cookie:admin,data:{...template,requiredImageCount:2}})).body;

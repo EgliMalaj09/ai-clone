@@ -9,7 +9,9 @@ export const now=()=>Date.now();
 export const uid=(prefix='')=>prefix+crypto.randomUUID().replace(/-/g,'');
 // Text variables and secrets. Bindings such as DB and BUCKET are only checked for presence through this view.
 export const runtime=()=>env as unknown as Record<string,string|undefined>;
-export function config(){const e=runtime();const demo=e.DEMO_MODE==='true';return {demo,origin:e.APP_ORIGIN||'http://terminal.local:4173',secret:e.APP_SECRET||'',pokKeyId:e.POK_KEY_ID||'',pokKeySecret:e.POK_KEY_SECRET||'',pokMerchantId:e.POK_MERCHANT_ID||'',pokEnvironment:e.POK_ENVIRONMENT||'',falKey:e.FAL_KEY||'',higgsfieldKey:e.HIGGSFIELD_API_KEY||'',higgsfieldSecret:e.HIGGSFIELD_API_SECRET||'',replicateKey:e.REPLICATE_API_TOKEN||'',mailKey:e.RESEND_API_KEY||'',mailFrom:e.MAIL_FROM||'',cronSecret:e.QUEUE_SECRET||''};}
+export function config(){const e=runtime();const demo=e.DEMO_MODE==='true';return {demo,origin:e.APP_ORIGIN||'http://terminal.local:4173',secret:e.APP_SECRET||'',pokKeyId:e.POK_KEY_ID||'',pokKeySecret:e.POK_KEY_SECRET||'',pokMerchantId:e.POK_MERCHANT_ID||'',pokEnvironment:e.POK_ENVIRONMENT||'',falKey:e.FAL_KEY||'',higgsfieldKey:e.HIGGSFIELD_API_KEY||'',higgsfieldSecret:e.HIGGSFIELD_API_SECRET||'',replicateKey:e.REPLICATE_API_TOKEN||'',mailKey:e.RESEND_API_KEY||'',mailFrom:e.MAIL_FROM||'',cronSecret:e.QUEUE_SECRET||'',
+ // TODO(C6.4/D5): swap this temporary brand name for the final brand before launch. Set BRAND_NAME in the hosting env, or change the fallback here.
+ brandName:e.BRAND_NAME||'Project Studio'};}
 export function db():D1Database{if(!env.DB)throw new Error('Database unavailable');return env.DB;}
 export const stmt=(sql:string,...args:unknown[])=>db().prepare(sql).bind(...args);
 export const one=async(sql:string,...args:unknown[]):Promise<Row|null>=>stmt(sql,...args).first<Row>();
