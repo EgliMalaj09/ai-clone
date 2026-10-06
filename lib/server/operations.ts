@@ -62,13 +62,13 @@ export async function adminRecords(kind:string,url:URL){
     if(status!=='all'){must(['active','suspended'].includes(status),'Unknown account status.');where.push('u.status=?');args.push(status);}
     const filter=where.length?' WHERE '+where.join(' AND '):'';
     const count=await one('SELECT COUNT(*) AS total FROM users u'+filter,...args);
-    const users=await all('SELECT u.id,u.email,u.name,u.role,u.status,u.email_verified,u.created_at,(SELECT COUNT(*) FROM generations g WHERE g.user_id=u.id) AS generation_count,(SELECT COUNT(*) FROM credit_purchases p WHERE p.user_id=u.id AND p.status=\'paid\') AS purchase_count,COALESCE((SELECT available FROM credit_balances b WHERE b.user_id=u.id),0) AS credits FROM users u'+filter+' ORDER BY u.created_at DESC,u.id LIMIT ? OFFSET ?',...args,limit,offset);
+    const users=await all('SELECT u.id,u.email,u.name,u.role,u.status,u.email_verified,u.created_at,u.content_strikes,u.blocked_at,(SELECT COUNT(*) FROM generations g WHERE g.user_id=u.id) AS generation_count,(SELECT COUNT(*) FROM credit_purchases p WHERE p.user_id=u.id AND p.status=\'paid\') AS purchase_count,COALESCE((SELECT available FROM credit_balances b WHERE b.user_id=u.id),0) AS credits FROM users u'+filter+' ORDER BY u.created_at DESC,u.id LIMIT ? OFFSET ?',...args,limit,offset);
     const spending=users.length?await all("SELECT user_id,currency,SUM(amount) AS amount FROM credit_purchases WHERE status='paid' AND user_id IN ("+users.map(()=>'?').join(',')+') GROUP BY user_id,currency',...users.map(u=>u.id)):[];
     return {users:users.map(u=>({...u,spending:spending.filter(s=>s.user_id===u.id)})),pagination:pageInfo(count?.total||0,page,limit)};
   }
   if(kind==='generations'){
     if(search){where.push("(g.id LIKE ? ESCAPE '\\' OR g.template_name LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\')");args.push(like(search),like(search),like(search));}
-    if(status!=='all'){must(['queued','preparing','generating','finalizing','completed','failed'].includes(status),'Unknown generation status.');where.push('g.status=?');args.push(status);}
+    if(status!=='all'){must(['queued','preparing','generating','finalizing','completed','failed','refused'].includes(status),'Unknown generation status.');where.push('g.status=?');args.push(status);}
     const from=' FROM generations g LEFT JOIN users u ON u.id=g.user_id'+(where.length?' WHERE '+where.join(' AND '):'');
     const count=await one('SELECT COUNT(*) AS total'+from,...args);
     const generations=await all('SELECT g.id,g.user_id,g.template_name,g.credit_cost,g.currency,g.estimated_cost,g.status,g.created_at,g.started_at,g.completed_at,g.error,g.internal_error,g.deleted_at,u.email'+from+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);

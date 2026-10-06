@@ -11,7 +11,7 @@ import {credits,money,statusLabel} from '@/lib/contracts';
 import type {AdminUserDetail,CreditHistory,CreditPurchase,Pagination} from '@/lib/api-types';
 
 const megabytes=(bytes:number)=>(bytes/1048576).toFixed(1)+' MB';
-const actionLabel=(a:string)=>({'user.suspended':'Suspended','user.active':'Reactivated','user.rename':'Name changed','user.verify-email':'Email marked as verified','user.delete':'Deleted','credits.adjust':'Credits adjusted','credits.reverse-purchase':'Purchase reversed'} as Record<string,string>)[a]||a;
+const actionLabel=(a:string)=>({'user.suspended':'Suspended','user.active':'Reactivated','user.rename':'Name changed','user.verify-email':'Email marked as verified','user.delete':'Deleted','credits.adjust':'Credits adjusted','credits.reverse-purchase':'Purchase reversed','user.blocked':'Blocked after 3 content refusals','user.unblock':'Unblocked (refusals reset)'} as Record<string,string>)[a]||a;
 
 export default function UserDetail({id}:{id:string}){
  const {data,error,loading,refresh}=useAPI<AdminUserDetail>('admin/users/'+id);
@@ -26,8 +26,9 @@ export default function UserDetail({id}:{id:string}){
  return <>
   <a className="back-link" href="/admin/users"><ArrowLeft size={15}/>All customers</a>
   <div className="admin-heading"><div><span className="eyebrow">CUSTOMER</span><h1>{user.name}</h1><p>{user.email}</p>
-   <div className="badge-row"><span className={'status '+(user.status==='active'?'completed':'failed')}>{user.status==='active'?'Active':'Suspended'}</span><span className={'status '+(user.email_verified?'completed':'pending')}>{user.email_verified?'Email verified':'Email not verified'}</span>{isAdmin&&<span className="status pending">Administrator</span>}</div></div>
+   <div className="badge-row"><span className={'status '+(user.status==='active'?'completed':'failed')}>{user.status==='active'?'Active':'Suspended'}</span><span className={'status '+(user.email_verified?'completed':'pending')}>{user.email_verified?'Email verified':'Email not verified'}</span>{isAdmin&&<span className="status pending">Administrator</span>}{user.blocked_at?<span className="status blocked">Blocked: 3 content refusals</span>:user.content_strikes>0&&<span className="status pending">Content refusals: {user.content_strikes} of 3</span>}</div></div>
    <div className="button-row">
+    {(user.blocked_at||user.content_strikes>0)&&<button className="button secondary small" disabled={busy} onClick={()=>update({unblock:true},user.blocked_at?'Customer unblocked':'Refusals reset')}><RotateCcw size={16}/>{user.blocked_at?'Unblock':'Reset refusals'}</button>}
     {!user.email_verified&&<button className="button secondary small" disabled={busy} onClick={()=>update({emailVerified:true},'Email marked as verified')}><BadgeCheck size={16}/>Mark email verified</button>}
     {!isAdmin&&<button className="button secondary small" disabled={busy} onClick={()=>update({status:user.status==='active'?'suspended':'active'},user.status==='active'?'Customer suspended':'Customer reactivated')}>{user.status==='active'?<><Ban size={16}/>Suspend</>:<><RotateCcw size={16}/>Reactivate</>}</button>}
     {!isAdmin&&<Confirm title={'Delete '+user.name+'?'} description="The account, its personal files and its credit balance will be permanently removed. Purchase and ledger records are kept without the account link." onConfirm={async()=>{await api('admin/users/'+id,'DELETE');toast.success('Customer deleted');window.location.assign('/admin/users')}}><button className="button danger-outline small"><Trash2 size={16}/>Delete</button></Confirm>}
@@ -57,6 +58,9 @@ export default function UserDetail({id}:{id:string}){
    </section>
   </div>
 
+  {data.refusals.length>0&&<section className="panel"><h2>Refused by content rules</h2><p className="panel-note">Photos the AI provider refused. If they were flagged by mistake (e.g. swimwear or sports), unblock the account above; that also resets the count.</p>
+   <div className="refusal-list">{data.refusals.map(r=><div className="refusal-item" key={r.id}><div className="refusal-photos">{r.photos.length?r.photos.map(src=><a key={src} href={src} target="_blank" rel="noreferrer"><img src={src} alt="Refused photo"/></a>):<span className="panel-note">Photo deleted by the customer</span>}</div><div><strong>{r.template_name}</strong><small className="block">{new Date(r.created_at).toLocaleString()}</small>{r.reason&&<small className="block">{r.reason}</small>}</div></div>)}</div>
+  </section>}
   <section className="panel"><h2>Credit purchases</h2>
    {purchases.loading?<Loading rows={2}/>:purchases.error||!purchases.data?<ErrorBox message={purchases.error} retry={purchases.refresh}/>:purchases.data.purchases.length?<Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Pack</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader><TableBody>{purchases.data.purchases.map(p=><TableRow key={p.id}>
     <TableCell>{date(p.createdAt)}</TableCell><TableCell>{p.packageName}<small className="block">{credits(p.credits)}</small></TableCell><TableCell>{money(p.amount,p.currency)}</TableCell>

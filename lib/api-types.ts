@@ -39,12 +39,13 @@ export type ActivityPage={activity:{id:string;action:string;target_id:string|nul
 export type AdminTemplateRow=PublicTemplate&{estimatedCost:number;costCurrency:string;creditValue:number|null;provider:string;model:string};
 export type AdminGeneration={id:string;user_id:string|null;template_name:string;credit_cost:number;currency:string;estimated_cost:number;credit_status?:string|null;status:string;created_at:number;started_at:number|null;completed_at:number|null;error:string|null;internal_error:string|null;deleted_at:number|null;email:string|null};
 export type GenerationStep={id:string;step_order:number;type:string;provider:string;model:string;status:string;error:string|null};
-export type AdminUser={id:string;email:string;name:string;role:string;status:string;email_verified:number;created_at:number;generation_count:number;purchase_count:number;credits:number;spending:{currency:string;amount:number}[]};
+export type AdminUser={id:string;email:string;name:string;role:string;status:string;content_strikes:number;blocked_at:number|null;email_verified:number;created_at:number;generation_count:number;purchase_count:number;credits:number;spending:{currency:string;amount:number}[]};
 export type Provider={id:string;name:string;enabled:number;configured:boolean};
 export type StudioSettings={welcomeCredits:number;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean};
 export type TemplateResult={template:AdminTemplate};
 export type AdminUserDetail={
- user:{id:string;name:string;email:string;role:string;status:string;email_verified:boolean;created_at:number};
+ user:{id:string;name:string;email:string;role:string;status:string;email_verified:boolean;created_at:number;content_strikes:number;blocked_at:number|null};
+ refusals:{id:string;template_name:string;created_at:number;reason:string|null;photos:string[]}[];
  balance:Balance;sessions:{active:number;lastSignIn:number|null};uploads:{count:number;bytes:number};
  creations:{total:number;completed:number;failed:number;recent:{id:string;template_name:string;status:string;credit_cost:number;created_at:number;completed_at:number|null;error:string|null;credit_status:string|null}[]};
  activity:{id:string;action:string;created_at:number;actor_email:string|null}[]};

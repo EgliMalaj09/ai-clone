@@ -39,7 +39,9 @@ async function deleteAccount(user:StudioUser){must(user.role!=='admin','An admin
  for(const o of objects)await storage.delete(o.storage_key).catch(e=>console.error('Account file removal needs a retry',o.storage_key,e instanceof Error?e.message:'unknown'));}
 
 /** Starts a creation by reserving its credits; the queue charges them on delivery and returns them on failure. */
-async function startGeneration(user:StudioUser,input:unknown){
+/** Three content refusals block uploads, creations and purchases until an administrator unblocks the account. */
+function assertNotBlocked(user:StudioUser){must(!user.blocked,'Your account can no longer upload photos or create videos because content was refused 3 times. Contact support if you think this is a mistake.',403);}
+async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(user);
  must(user.emailVerified,'Verify your email before creating a video.',403);
  const b=generationSchema.parse(input);
  const key=`generate:${user.id}:${b.idempotencyKey}`;
@@ -64,15 +66,20 @@ async function startGeneration(user:StudioUser,input:unknown){
 
 /** Everything an administrator needs about one customer on a single page. */
 async function adminUserDetail(id:string){
- const u=await one('SELECT id,name,email,role,status,email_verified,created_at FROM users WHERE id=?',id);must(u,'User not found.',404);
- const [sessions,uploads,count,generations,activity]=await Promise.all([
+ const u=await one('SELECT id,name,email,role,status,email_verified,created_at,content_strikes,blocked_at FROM users WHERE id=?',id);must(u,'User not found.',404);
+ const [sessions,uploads,count,generations,refused,activity]=await Promise.all([
   one('SELECT COUNT(*) AS active,MAX(expires_at) AS latest FROM sessions WHERE user_id=? AND expires_at>?',id,now()),
   one('SELECT COUNT(*) AS count,COALESCE(SUM(size),0) AS bytes FROM user_uploads WHERE user_id=?',id),
   one("SELECT COUNT(*) AS total,SUM(status='completed') AS completed,SUM(status='failed') AS failed FROM generations WHERE user_id=? AND deleted_at IS NULL",id),
   all("SELECT g.id,g.template_name,g.status,g.credit_cost,g.created_at,g.completed_at,g.error,h.status AS credit_status FROM generations g LEFT JOIN credit_holds h ON h.id=g.hold_id WHERE g.user_id=? AND g.deleted_at IS NULL ORDER BY g.created_at DESC LIMIT 20",id),
+  all("SELECT id,template_name,created_at,internal_error,input_ids FROM generations WHERE user_id=? AND status='refused' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 20",id),
   all('SELECT a.id,a.action,a.created_at,actor.email AS actor_email FROM audit_logs a LEFT JOIN users actor ON actor.id=a.user_id WHERE a.target_id=? OR a.user_id=? ORDER BY a.created_at DESC LIMIT 20',id,id),
  ]);
- return {user:{...u,email_verified:!!u.email_verified},balance:await balanceOf(id),
+ // Refused photos stay viewable for review while the customer keeps them; deleted ones are simply not listed.
+ const photoIds=[...new Set(refused.flatMap(r=>parse<string[]>(r.input_ids,[])))];
+ const kept=new Set(photoIds.length?(await all(`SELECT id FROM user_uploads WHERE user_id=? AND id IN (${photoIds.map(()=>'?').join(',')})`,id,...photoIds)).map(r=>r.id as string):[]);
+ return {user:{id:u.id,name:u.name,email:u.email,role:u.role,status:u.status,created_at:u.created_at,email_verified:!!u.email_verified,content_strikes:Number(u.content_strikes||0),blocked_at:u.blocked_at??null},balance:await balanceOf(id),
+  refusals:refused.map(r=>({id:r.id,template_name:r.template_name,created_at:r.created_at,reason:r.internal_error,photos:parse<string[]>(r.input_ids,[]).filter(p=>kept.has(p)).map(p=>'/api/media/'+p)})),
   // Sessions last seven days, so the newest expiry tells when the customer last signed in.
   sessions:{active:Number(sessions?.active||0),lastSignIn:sessions?.latest?Number(sessions.latest)-7*86400000:null},
   uploads:{count:Number(uploads?.count||0),bytes:Number(uploads?.bytes||0)},
@@ -111,7 +118,7 @@ export async function handleAPI(req:Request){try{
  await rateLimit('api:'+user.id,240);
  if(p[0]==='analytics'&&method==='POST'){const b=await body(req);const name=z.enum(['homepage_view','template_view','template_selected','upload_started','checkout_started']).parse(b.name);await event(name,user.id,{templateId:typeof b.templateId==='string'?b.templateId.slice(0,150):null});return json({ok:true});}
  if(p[0]==='uploads'){
-  if(method==='POST'){await rateLimit('upload:'+user.id,40,3600000);must((await balanceOf(user.id)).available>0,'Buy credits to upload photos and create videos.',402);const usage=await one('SELECT COALESCE(SUM(size),0) AS bytes,COUNT(*) AS count FROM user_uploads WHERE user_id=?',user.id);must(usage&&usage.bytes<512*1024*1024&&usage.count<250,'Your photo storage is full. Remove unused uploads in Account.',413);
+  if(method==='POST'){assertNotBlocked(user);await rateLimit('upload:'+user.id,40,3600000);must((await balanceOf(user.id)).available>0,'Buy credits to upload photos and create videos.',402);const usage=await one('SELECT COALESCE(SUM(size),0) AS bytes,COUNT(*) AS count FROM user_uploads WHERE user_id=?',user.id);must(usage&&usage.bytes<512*1024*1024&&usage.count<250,'Your photo storage is full. Remove unused uploads in Account.',413);
    const {file,bytes}=await readUploadedFile(req,8*1024*1024,'Photos must be under 8 MB.');must(usage.bytes+file.size<=512*1024*1024,'Your photo storage is full. Remove unused uploads in Account.',413);const mime=imageMime(bytes);must(mime&&mime===file.type,'Upload a valid JPG, PNG, or WEBP image.',415);
    // Store a cleaned copy: no location or other metadata, nothing hidden after the image, real size checked.
    const clean=cleanImage(bytes,mime);must(clean,'This photo could not be read. Try another JPG, PNG or WEBP photo.',415);
@@ -135,7 +142,7 @@ export async function handleAPI(req:Request){try{
  if(p[0]==='credits'){
   if(method==='GET'&&!p[1])return json(await balanceOf(user.id));
   if(method==='GET'&&p[1]==='history')return json(await creditHistory(user.id,url));
-  if(method==='POST'&&p[1]==='checkout'){await rateLimit('credit-checkout:'+user.id,20,3600000);return json(await startPackCheckout(user,await body(req)),201);}
+  if(method==='POST'&&p[1]==='checkout'){assertNotBlocked(user);await rateLimit('credit-checkout:'+user.id,20,3600000);return json(await startPackCheckout(user,await body(req)),201);}
   if(p[1]==='purchases'){
    if(method==='GET'&&!p[2])return json(await listPurchases(user.id,url));
    const purchase=await purchaseFor(user.id,p[2]);
@@ -225,10 +232,12 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
  if(p[1]==='users'){
   if(method==='GET'&&p[2]&&!p[3])return json(await adminUserDetail(p[2]));
   if(method==='GET'&&p[3]==='purchases'){must(await one('SELECT id FROM users WHERE id=?',p[2]),'User not found.',404);return json(await listPurchases(p[2],new URL(req.url)));}
-  if(method==='PATCH'){const b=z.object({status:z.enum(['active','suspended']).optional(),name:z.string().trim().min(2).max(80).optional(),emailVerified:z.literal(true).optional()}).strict().parse(await body(req));
-   const target=await one('SELECT id,role,email_verified FROM users WHERE id=?',p[2]);must(target,'User not found.',404);must(b.status||b.name||b.emailVerified,'Choose something to change.');
+  if(method==='PATCH'){const b=z.object({status:z.enum(['active','suspended']).optional(),name:z.string().trim().min(2).max(80).optional(),emailVerified:z.literal(true).optional(),unblock:z.literal(true).optional()}).strict().parse(await body(req));
+   const target=await one('SELECT id,role,email_verified FROM users WHERE id=?',p[2]);must(target,'User not found.',404);must(b.status||b.name||b.emailVerified||b.unblock,'Choose something to change.');
    if(b.status){must(target.role!=='admin','Administrator accounts cannot be suspended here.',409);await batch([stmt('UPDATE users SET status=? WHERE id=?',b.status,p[2]),...(b.status==='suspended'?[stmt('DELETE FROM sessions WHERE user_id=?',p[2])]:[])]);await audit(user.id,'user.'+b.status,p[2]);}
    if(b.name){await run('UPDATE users SET name=? WHERE id=?',b.name,p[2]);await audit(user.id,'user.rename',p[2]);}
+   // Unblocking also resets the refusal count, for photos the provider flagged by mistake.
+   if(b.unblock){await run('UPDATE users SET content_strikes=0,blocked_at=NULL WHERE id=?',p[2]);await audit(user.id,'user.unblock',p[2]);}
    // Marking an email verified by hand behaves like opening the verification link, including welcome credits.
    if(b.emailVerified&&!target.email_verified){await batch([stmt('UPDATE users SET email_verified=1 WHERE id=?',p[2]),stmt("DELETE FROM auth_tokens WHERE user_id=? AND type='verify'",p[2])]);await grantWelcomeCredits(p[2]).catch(e=>console.error('Welcome credits need review',e instanceof Error?e.message:'unknown'));await audit(user.id,'user.verify-email',p[2]);}
    return json({ok:true});}

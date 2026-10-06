@@ -4,6 +4,8 @@ export const users=sqliteTable('users',{
  id:text('id').primaryKey(),email:text('email').notNull().unique(),name:text('name').notNull(),
  passwordHash:text('password_hash'),role:text('role').notNull().default('user'),status:text('status').notNull().default('active'),
  avatar:text('avatar'),emailVerified:integer('email_verified').notNull().default(0),createdAt:integer('created_at').notNull(),
+ // Content refusals by the AI provider; three block uploads, creations and purchases until an admin unblocks.
+ contentStrikes:integer('content_strikes').notNull().default(0),blockedAt:integer('blocked_at'),
 });
 export const accounts=sqliteTable('accounts',{
  id:text('id').primaryKey(),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),

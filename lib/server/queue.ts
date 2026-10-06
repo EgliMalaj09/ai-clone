@@ -1,6 +1,6 @@
 import {all,batch,config,event,must,now,one,parse,run,stmt,uid,type Row} from './data';
 import type {WorkflowStep} from '../contracts';
-import {buildInput,providerFor} from './providers';
+import {buildInput,ProviderRefusal,providerFor} from './providers';
 import {ingestRemote,mediaUrl,storage} from './storage';
 import {settleHold} from './credits';
 import {demoVideos} from './demo-assets';
@@ -18,6 +18,20 @@ export async function failGeneration(g:Row,error:string){
  // A failed generation always returns its credits.
  if(g.hold_id)await settleHold(g.hold_id,'release').catch(()=>console.error('Credit release needs review; the hold sweep will retry',g.id));
 }
+export const STRIKE_LIMIT=3;
+/** The AI provider refused the content: the video ends as "refused", its credits return, and the account gets a strike.
+ * The third strike blocks the account from uploading, creating and buying until an administrator unblocks it. */
+export async function refuseGeneration(g:Row,reason:string){
+ const result=await run("UPDATE generations SET status='refused',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",'This video was refused under the content rules. Your credits were returned.',reason.slice(0,2000),now(),g.id,g.lease_token);
+ if(!result.meta.changes)return;
+ await run("UPDATE generation_steps SET status='failed',error=? WHERE generation_id=? AND status NOT IN ('completed','cancelled')",reason.slice(0,2000),g.id);
+ if(g.hold_id)await settleHold(g.hold_id,'release').catch(()=>console.error('Credit release needs review; the hold sweep will retry',g.id));
+ await event('generation_refused',g.user_id,{generationId:g.id});
+ if(!g.user_id)return;
+ const strikes=await one('UPDATE users SET content_strikes=content_strikes+1,blocked_at=CASE WHEN blocked_at IS NULL AND content_strikes+1>=? THEN ? ELSE blocked_at END WHERE id=? RETURNING content_strikes,blocked_at',STRIKE_LIMIT,now(),g.user_id);
+ if(strikes&&Number(strikes.content_strikes)===STRIKE_LIMIT)await run('INSERT INTO audit_logs (id,user_id,action,target_id,created_at) VALUES (?,NULL,?,?,?)',uid(),'user.blocked',g.user_id,now());
+}
+
 export async function tickGeneration(id:string){
  const token=uid();const g=await one("UPDATE generations SET lease_token=?,lease_until=? WHERE id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND lease_until<? AND next_run_at<=? AND EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=generations.hold_id AND h.status='pending') RETURNING *",token,now()+45000,id,now(),now());if(!g)return;
  try{
@@ -54,6 +68,7 @@ export async function tickGeneration(id:string){
    await batch([stmt("UPDATE generation_steps SET provider_job_id=?,status='generating' WHERE id=?",jobId,stepId),stmt("UPDATE generations SET status='generating',attempts=0,next_run_at=? WHERE id=? AND lease_token=?",now()+1500,id,token)]);return;
   }
   const result=await p.getStatus(record.provider_job_id);if(result.status==='processing'){await run('UPDATE generations SET next_run_at=? WHERE id=? AND lease_token=?',now()+1500,id,token);return;}
+  if(result.status==='refused'){await refuseGeneration(g,result.error||'Refused by the provider content rules.');return;}
   if(result.status==='failed'){await failGeneration(g,result.error||'Provider failed.');return;}
   must(result.url,'The provider returned no output.');const assetId='asset_'+stepId;let mime=result.mime||'video/mp4';const key=`generated/${g.user_id}/${id}/${i}.${extensions[mime]||(mime.startsWith('video')?'mp4':'png')}`;let size=0;
   if(step.provider==='mock'){
@@ -65,7 +80,7 @@ export async function tickGeneration(id:string){
   const fresh=await one('SELECT deleted_at,status,lease_token FROM generations WHERE id=?',id);if(!fresh||fresh.deleted_at||!active.includes(fresh.status)||fresh.lease_token!==token){await storage.delete(key);return;}
   const context={...parse(g.context,{}),previous_output:assetId,[step.output||'previous_output']:assetId};
   const saved=await batch([stmt('INSERT OR IGNORE INTO generated_assets (id,generation_id,user_id,storage_key,mime,kind,size,created_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM generations WHERE id=? AND lease_token=?)',assetId,id,g.user_id,key,mime,i===steps.length-1?'output':'intermediate',size,now(),id,token),stmt("UPDATE generation_steps SET status='completed',result=?,completed_at=? WHERE id=? AND EXISTS (SELECT 1 FROM generations WHERE id=? AND lease_token=?)",assetId,now(),stepId,id,token),stmt('UPDATE generations SET context=?,current_step=?,status=?,next_run_at=?,attempts=0 WHERE id=? AND lease_token=?',JSON.stringify(context),i+1,i+1>=steps.length?'finalizing':'preparing',now()+1000,id,token)]);if(!saved[0].meta.changes&&!await one('SELECT id FROM generated_assets WHERE id=?',assetId))await storage.delete(key);
- }catch(e){const message=e instanceof Error?e.message:'Generation failed';const submitting=await one("SELECT id FROM generation_steps WHERE generation_id=? AND status='submitting' AND provider_job_id IS NULL",id);if(submitting||g.attempts>=2){await failGeneration(g,message)}else await run('UPDATE generations SET attempts=attempts+1,next_run_at=?,internal_error=? WHERE id=? AND lease_token=?',now()+Math.pow(2,g.attempts)*2000,message.slice(0,2000),id,token);
+ }catch(e){const message=e instanceof Error?e.message:'Generation failed';if(e instanceof ProviderRefusal){await refuseGeneration(g,message);return;}const submitting=await one("SELECT id FROM generation_steps WHERE generation_id=? AND status='submitting' AND provider_job_id IS NULL",id);if(submitting||g.attempts>=2){await failGeneration(g,message)}else await run('UPDATE generations SET attempts=attempts+1,next_run_at=?,internal_error=? WHERE id=? AND lease_token=?',now()+Math.pow(2,g.attempts)*2000,message.slice(0,2000),id,token);
  }finally{await run('UPDATE generations SET lease_until=0,lease_token=NULL WHERE id=? AND lease_token=?',id,token);}
 }
 export async function tickQueue(userId?:string){
@@ -82,7 +97,7 @@ export async function sweepCreditHolds(){
  const holds=await all("SELECT h.id,g.status,g.deleted_at,g.hold_id FROM credit_holds h LEFT JOIN generations g ON g.id=h.generation_id WHERE h.status='pending' AND h.created_at<? ORDER BY h.created_at LIMIT 50",now()-60000);
  for(const h of holds){
   if(h.status==='completed'&&h.hold_id===h.id&&!h.deleted_at)await settleHold(h.id,'capture');
-  else if(!h.status||h.deleted_at||h.hold_id!==h.id||h.status==='failed')await settleHold(h.id,'release');
+  else if(!h.status||h.deleted_at||h.hold_id!==h.id||['failed','refused'].includes(h.status))await settleHold(h.id,'release');
  }
 }
 const unusedUpload="NOT EXISTS (SELECT 1 FROM generations g, json_each(CASE WHEN json_valid(g.input_ids) THEN g.input_ids ELSE '[]' END) j WHERE g.user_id=user_uploads.user_id AND g.deleted_at IS NULL AND j.value=user_uploads.id)";
