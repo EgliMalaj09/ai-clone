@@ -31,7 +31,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 | AI providers: fal.ai (Nano Banana → Kling 2.6) | ⚠️ Built, **never tested live** | |
 | AI providers: Replicate | ⚠️ Partial | Only `owner/model` official models; versioned community models aren't supported |
 | Demo mode output | ⚠️ By design | Returns a sample clip and does **not** transform the user's photo |
-| My Creations: play, download, share link (23 h), delete | ✅ Works | Polling never stops (see F1) |
+| My Creations: play, download, share link (23 h), delete | ✅ Works | |
 | Orders page | ✅ Works | No receipts/invoices |
 | Admin: dashboard, templates editor, workflows, pricing, users, orders, refunds, providers, settings, operations, activity log, encrypted connections | ✅ Works | No MFA, no role management, admin preview uploads share the personal quota (F3) |
 | Image-only templates | ❌ Can't be published | The validator only allows video-ending workflows |
@@ -44,7 +44,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 ## 3. Fixes (bugs and code problems)
 
 ### High priority
-- [ ] **F1 — My Creations polls forever.** `components/account-pages.tsx:21` calls `queue/tick` and then refetches the list every 2.2 s for as long as the page is open, even when nothing is processing. That's about 55 requests a minute per tab. Several open tabs can hit the 240 requests/min limit (`lib/server/api.ts:61`) and show "Too many requests". Fix: poll only while some creation is `queued/preparing/generating/finalizing`, back off over time, and pause when the tab is hidden.
+- [x] **F1 — My Creations polls forever.** ✅ *Fixed: polls only while a creation is processing, pauses in hidden tabs, backs off 2 s → 15 s, and the list refresh no longer depends on the tick.* `components/account-pages.tsx:21` calls `queue/tick` and then refetches the list every 2.2 s for as long as the page is open, even when nothing is processing. That's about 55 requests a minute per tab. Several open tabs can hit the 240 requests/min limit (`lib/server/api.ts:61`) and show "Too many requests". Fix: poll only while some creation is `queued/preparing/generating/finalizing`, back off over time, and pause when the tab is hidden.
 - [ ] **F2 — Abandoned uploads and unpaid orders are never cleaned up.** A user who uploads a photo and leaves the template page keeps that file forever. After 250 files or 512 MB, uploads are blocked (`lib/server/api.ts:64`). Unpaid `awaiting_payment` generations and orders also stay forever. Fix: add a cleanup to the hourly maintenance in `lib/server/queue.ts:66-67`: delete unreferenced uploads older than about 24 h and expire unpaid orders older than about 48 h.
 - [ ] **F3 — Admin preview media uses the admin's personal photo quota.** Both share the same 512 MB / 250-file limit, so about 17 uploads of 30 MB preview videos fills the admin quota (`lib/server/api.ts:64`). Fix: exclude `public=1` rows from the quota, or give admins a separate limit.
 - [ ] **F4 — Lint fails (93 errors).** Mostly `no-explicit-any` (43) and `<a>` used instead of `<Link>` (about 30). There are also 4 real `react-hooks/set-state-in-effect` issues (`components/shared.tsx`, `components/auth.tsx`, `components/admin.tsx`) and unused imports. Fix the real hook issues, then either fix or deliberately relax the style rules so `pnpm lint` passes.

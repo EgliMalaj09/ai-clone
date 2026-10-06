@@ -9,11 +9,12 @@ export async function api<T=any>(path:string,method='GET',body?:unknown,signal?:
 export function useAPI<T=any>(path:string|null){
  const [data,setData]=useState<T|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
  const controller=useRef<AbortController|null>(null);
- const refresh=useCallback(async()=>{
+ // Resolves with the fresh value, or null when the request failed or was superseded.
+ const refresh=useCallback(async():Promise<T|null>=>{
   controller.current?.abort();const request=new AbortController();controller.current=request;
-  if(!path){setLoading(false);setData(null);return;}
-  try{const value=await api<T>(path,'GET',undefined,request.signal);if(!request.signal.aborted){setData(value);setError('')}}
-  catch(e){if(!request.signal.aborted)setError(e instanceof Error?e.message:'Please try again.')}
+  if(!path){setLoading(false);setData(null);return null;}
+  try{const value=await api<T>(path,'GET',undefined,request.signal);if(!request.signal.aborted){setData(value);setError('');return value}return null}
+  catch(e){if(!request.signal.aborted)setError(e instanceof Error?e.message:'Please try again.');return null}
   finally{if(!request.signal.aborted)setLoading(false)}
  },[path]);
  useEffect(()=>{setLoading(true);void refresh();return()=>controller.current?.abort()},[refresh]);

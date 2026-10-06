@@ -26,7 +26,9 @@ async function generationsFor(userId:string,url:URL,id?:string){
  const count=await one('SELECT COUNT(*) AS total FROM generations g'+where,...args);
  const rows=await all("SELECT g.*,a.id AS asset_id,o.id AS order_id,o.status AS payment_status FROM generations g LEFT JOIN generated_assets a ON a.generation_id=g.id AND a.kind='output' JOIN orders o ON o.generation_id=g.id"+where+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);
  if(id)must(rows.length,'Creation not found.',404);
- return {generations:rows.map(generationPublic),pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
+ // Counted independently of the status filter so the client knows whether to keep polling.
+ const active=await one("SELECT COUNT(*) AS total FROM generations WHERE user_id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing')",userId);
+ return {generations:rows.map(generationPublic),activeCount:active?.total||0,pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
 }
 async function deleteAccount(user:StudioUser){must(user.role!=='admin','An administrator cannot delete their own account here.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);for(const o of objects)await storage.delete(o.storage_key);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);}
 
