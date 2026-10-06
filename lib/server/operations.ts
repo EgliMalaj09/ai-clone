@@ -3,6 +3,7 @@ import {z} from 'zod';
 import type {StudioUser} from '../contracts';
 import {all,audit,batch,HttpError,must,now,one,run,runtime,stmt} from './data';
 import {jsonBody,pageQuery} from './http';
+import {balanceOf,reconcileCredits} from './credits';
 import {checkPassword,hash,passwordHash,rateLimit,sessionCookie} from './security';
 
 const response=(data:unknown,headers:Record<string,string>={})=>Response.json(data,{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
@@ -37,14 +38,16 @@ export async function accountSecurity(req:Request,path:string[],user:StudioUser)
   }
   if(path[1]==='export'&&req.method==='GET'){
     await rateLimit('account-export:'+user.id,3,3600000);
-    const [uploads,generations,orders,favorites]=await Promise.all([
+    const [uploads,generations,orders,favorites,credits,creditTransactions]=await Promise.all([
       all('SELECT id,name,mime,size,created_at FROM user_uploads WHERE user_id=?',user.id),
       all('SELECT id,template_name,status,price,currency,created_at,completed_at FROM generations WHERE user_id=? AND deleted_at IS NULL',user.id),
       all('SELECT id,template_name,amount,currency,status,created_at FROM orders WHERE user_id=?',user.id),
       all('SELECT template_id,created_at FROM favorites WHERE user_id=?',user.id),
+      balanceOf(user.id),
+      all("SELECT t.id,t.kind,t.reason,t.created_at,e.amount FROM credit_transactions t JOIN credit_entries e ON e.transaction_id=t.id AND e.account='user:'||t.user_id||':available' WHERE t.user_id=? ORDER BY t.created_at",user.id),
     ]);
     await audit(user.id,'account.exported',user.id);
-    return response({exportedAt:new Date().toISOString(),profile:user,uploads,generations,orders,favorites},{'Content-Disposition':'attachment; filename="project-studio-account.json"'});
+    return response({exportedAt:new Date().toISOString(),profile:user,uploads,generations,orders,favorites,credits:{...credits,transactions:creditTransactions}},{'Content-Disposition':'attachment; filename="project-studio-account.json"'});
   }
   throw new HttpError(404,'Account action not found.');
 }
@@ -95,7 +98,7 @@ export async function adminActivity(url:URL){
 
 export async function operationsSummary(){
   const c=await serviceConfig();
-  const [queue,refunds,stalled,unpaid,heartbeat,dispatch,storageUsage,events,failures]=await Promise.all([
+  const [queue,refunds,stalled,unpaid,heartbeat,dispatch,storageUsage,events,failures,ledger]=await Promise.all([
     all("SELECT status,COUNT(*) AS count,MIN(created_at) AS oldest FROM generations WHERE deleted_at IS NULL GROUP BY status"),
     all("SELECT r.id,r.amount,r.status,r.error,r.created_at,o.id AS order_id,o.currency,u.email FROM refunds r JOIN payments p ON p.id=r.payment_id JOIN orders o ON o.id=p.order_id LEFT JOIN users u ON u.id=o.user_id WHERE r.status!='succeeded' ORDER BY r.created_at LIMIT 20"),
     all("SELECT id,template_name,status,started_at,created_at,internal_error FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND COALESCE(started_at,created_at)<? ORDER BY created_at LIMIT 20",now()-10*60000),
@@ -105,6 +108,7 @@ export async function operationsSummary(){
     one('SELECT (SELECT COALESCE(SUM(size),0) FROM user_uploads)+(SELECT COALESCE(SUM(size),0) FROM generated_assets)+(SELECT COALESCE(SUM(size),0) FROM template_media) AS bytes,(SELECT COUNT(*) FROM user_uploads) AS uploads,(SELECT COUNT(*) FROM generated_assets) AS assets,(SELECT COUNT(*) FROM template_media) AS previews'),
     all('SELECT name,COUNT(*) AS count FROM analytics_events WHERE created_at>=? GROUP BY name ORDER BY count DESC',now()-30*86400000),
     all("SELECT g.id,g.template_name,g.error,g.internal_error,g.completed_at,o.status AS payment_status FROM generations g JOIN orders o ON o.generation_id=g.id WHERE g.status='failed' AND g.deleted_at IS NULL ORDER BY g.completed_at DESC LIMIT 10"),
+    reconcileCredits(),
   ]);
   const checks=[
     {name:'Database',ready:true,detail:'Connected'},
@@ -113,6 +117,7 @@ export async function operationsSummary(){
     {name:'Payments',ready:!!c.stripeKey&&!!c.webhookSecret,detail:c.demo?'Test checkout active':c.stripeKey&&c.webhookSecret?'Stripe keys configured; verify webhook delivery in Stripe':'Stripe secret or webhook secret missing'},
     {name:'Transactional email',ready:!!c.mailKey&&!!c.mailFrom,detail:c.mailKey&&c.mailFrom?'Sender configured; verify delivery with your email service':'Email credentials or sender missing'},
     {name:'AI generation',ready:!!c.falKey||!!c.replicateKey,detail:c.demo?'Sample video simulator active':c.falKey||c.replicateKey?'Provider credentials configured':'Provider credentials missing'},
+    {name:'Credit ledger',ready:ledger.ok,detail:ledger.ok?(ledger.negative.length?ledger.negative.length+' account(s) below zero after a reversed payment':'Balances match the ledger'):'Ledger mismatch: review Admin → Credits'},
     {name:'External queue dispatcher',ready:!!c.cronSecret&&Number(dispatch?.value)>now()-180000,detail:dispatch?.value?'Last external tick: '+new Date(Number(dispatch.value)).toISOString():'No external dispatcher call recorded'},
   ];
   return {demo:c.demo,checkedAt:now(),queue,refunds,stalled,unpaid:unpaid?.count||0,heartbeat:Number(heartbeat?.value)||null,dispatchHeartbeat:Number(dispatch?.value)||null,storage:storageUsage,checks,events,failures};

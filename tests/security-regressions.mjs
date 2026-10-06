@@ -61,7 +61,7 @@ try{
  await request('/api/account',{method:'PATCH',cookie,origin:false,data:{name:'Cross-site'},expected:403});ok('Authenticated mutation without an Origin is rejected');
  await request('/api/account',{method:'PATCH',cookie,data:{name:'X'.repeat(1_000_001)},expected:413});ok('Large JSON requests are rejected before parsing');
  await request('/api/admin/operations',{cookie,expected:403});await request('/api/admin/activity',{expected:401});ok('Operations and audit endpoints enforce the admin role');
- const ops=await request('/api/admin/operations',{cookie:admin});ok('Readiness shows absent live services without exposing secrets',ops.body.checks.length===7&&!ops.text.includes(config.APP_SECRET)&&!ops.text.includes(config.STRIPE_SECRET_KEY));
+ const ops=await request('/api/admin/operations',{cookie:admin});ok('Readiness shows absent live services without exposing secrets',ops.body.checks.length===8&&ops.body.checks.some(c=>c.name==='Credit ledger')&&!ops.text.includes(config.APP_SECRET)&&!ops.text.includes(config.STRIPE_SECRET_KEY));
  const page=await request('/api/admin/users?limit=1&page=2',{cookie:admin});ok('Admin records support server pagination',page.body.users.length===1&&page.body.pagination.total===2&&page.body.pagination.page===2);
  const search=await request('/api/admin/users?search=qa%40studio.test',{cookie:admin});ok('Admin search filters on the server',search.body.users.length===1&&search.body.users[0].email==='qa@studio.test');
  await request('/api/admin/users?page=-1',{cookie:admin,expected:400});ok('Pagination parameters are validated');

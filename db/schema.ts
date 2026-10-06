@@ -23,6 +23,7 @@ export const templates=sqliteTable('templates',{
  requiredImageCount:integer('required_image_count').notNull().default(1),aspectRatio:text('aspect_ratio').notNull().default('9:16'),duration:integer('duration').notNull().default(5),resolution:text('resolution').notNull().default('720p'),
  generationType:text('generation_type').notNull().default('video'),provider:text('provider').notNull().default('mock'),model:text('model').notNull().default('studio-demo'),
  hiddenPrompt:text('hidden_prompt').notNull(),negativePrompt:text('negative_prompt').notNull().default(''),settings:text('settings').notNull().default('{}'),createdAt:integer('created_at').notNull(),updatedAt:integer('updated_at').notNull(),
+ creditCost:integer('credit_cost').notNull().default(0),
 },t=>[index('idx_templates_active_category').on(t.active,t.category)]);
 export const templateWorkflows=sqliteTable('template_workflows',{
  id:text('id').primaryKey(),templateId:text('template_id').notNull().unique().references(()=>templates.id,{onDelete:'cascade'}),version:integer('version').notNull().default(1),
@@ -44,6 +45,7 @@ export const generations=sqliteTable('generations',{
  workflowSnapshot:text('workflow_snapshot').notNull(),inputIds:text('input_ids').notNull(),context:text('context').notNull().default('{}'),currentStep:integer('current_step').notNull().default(0),
  leaseToken:text('lease_token'),leaseUntil:integer('lease_until').notNull().default(0),nextRunAt:integer('next_run_at').notNull().default(0),attempts:integer('attempts').notNull().default(0),error:text('error'),internalError:text('internal_error'),
  createdAt:integer('created_at').notNull(),startedAt:integer('started_at'),completedAt:integer('completed_at'),deletedAt:integer('deleted_at'),
+ creditCost:integer('credit_cost').notNull().default(0),holdId:text('hold_id'),
 },t=>[index('idx_generations_user_date').on(t.userId,t.createdAt),index('idx_generation_queue').on(t.status,t.nextRunAt,t.leaseUntil),index('idx_generations_thumbnail').on(t.thumbnail)]);
 export const generationSteps=sqliteTable('generation_steps',{
  id:text('id').primaryKey(),generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),stepOrder:integer('step_order').notNull(),type:text('type').notNull(),provider:text('provider').notNull(),model:text('model').notNull(),status:text('status').notNull(),providerJobId:text('provider_job_id'),result:text('result'),error:text('error'),startedAt:integer('started_at').notNull(),completedAt:integer('completed_at'),
@@ -71,3 +73,28 @@ export const settings=sqliteTable('app_settings',{key:text('key').primaryKey(),v
 export const analyticsEvents=sqliteTable('analytics_events',{id:text('id').primaryKey(),userId:text('user_id'),name:text('name').notNull(),metadata:text('metadata').notNull().default('{}'),createdAt:integer('created_at').notNull()},t=>[index('idx_events_name_time').on(t.name,t.createdAt)]);
 export const rateLimits=sqliteTable('rate_limits',{key:text('key').primaryKey(),count:integer('count').notNull(),resetAt:integer('reset_at').notNull()});
 export const auditLogs=sqliteTable('audit_logs',{id:text('id').primaryKey(),userId:text('user_id'),action:text('action').notNull(),targetId:text('target_id'),createdAt:integer('created_at').notNull()});
+
+// Credits. See docs/CREDITS-ARCHITECTURE.md. Balances change only through credit transactions, whose entries sum to zero.
+export const creditBalances=sqliteTable('credit_balances',{
+ userId:text('user_id').primaryKey().references(()=>users.id,{onDelete:'cascade'}),available:integer('available').notNull().default(0),held:integer('held').notNull().default(0),version:integer('version').notNull().default(0),
+ // The transaction that last changed this balance; statements in the same batch check it to know the change applied.
+ lastTransactionId:text('last_transaction_id'),updatedAt:integer('updated_at').notNull(),
+});
+// Ledger rows keep the user id without a foreign key, so financial history survives account deletion.
+export const creditTransactions=sqliteTable('credit_transactions',{
+ id:text('id').primaryKey(),kind:text('kind').notNull(),idempotencyKey:text('idempotency_key').notNull().unique(),userId:text('user_id'),referenceType:text('reference_type'),referenceId:text('reference_id'),actorId:text('actor_id'),reason:text('reason'),createdAt:integer('created_at').notNull(),
+},t=>[index('idx_credit_transactions_user').on(t.userId,t.createdAt)]);
+export const creditEntries=sqliteTable('credit_entries',{
+ id:text('id').primaryKey(),transactionId:text('transaction_id').notNull().references(()=>creditTransactions.id),account:text('account').notNull(),amount:integer('amount').notNull(),balanceAfter:integer('balance_after'),createdAt:integer('created_at').notNull(),
+},t=>[index('idx_credit_entries_transaction').on(t.transactionId),index('idx_credit_entries_account').on(t.account)]);
+export const creditHolds=sqliteTable('credit_holds',{
+ id:text('id').primaryKey(),userId:text('user_id').notNull(),generationId:text('generation_id').notNull().unique(),amount:integer('amount').notNull(),status:text('status').notNull().default('pending'),createdAt:integer('created_at').notNull(),settledAt:integer('settled_at'),
+},t=>[index('idx_credit_holds_status').on(t.status)]);
+export const creditPackages=sqliteTable('credit_packages',{
+ id:text('id').primaryKey(),name:text('name').notNull(),credits:integer('credits').notNull(),bonusCredits:integer('bonus_credits').notNull().default(0),prices:text('prices').notNull().default('{}'),active:integer('active').notNull().default(0),sortOrder:integer('sort_order').notNull().default(0),createdAt:integer('created_at').notNull(),updatedAt:integer('updated_at').notNull(),
+});
+export const creditPurchases=sqliteTable('credit_purchases',{
+ id:text('id').primaryKey(),userId:text('user_id').references(()=>users.id,{onDelete:'set null'}),packageId:text('package_id').notNull(),packageName:text('package_name').notNull(),credits:integer('credits').notNull(),amount:integer('amount').notNull(),currency:text('currency').notNull(),
+ status:text('status').notNull().default('pending'),provider:text('provider').notNull(),providerSessionId:text('provider_session_id').unique(),providerTransactionId:text('provider_transaction_id'),checkoutUrl:text('checkout_url'),checkoutAttempt:integer('checkout_attempt').notNull().default(0),
+ idempotencyKey:text('idempotency_key').notNull(),createdAt:integer('created_at').notNull(),paidAt:integer('paid_at'),
+},t=>[uniqueIndex('idx_credit_purchase_idempotency').on(t.userId,t.idempotencyKey),index('idx_credit_purchases_user').on(t.userId,t.createdAt)]);

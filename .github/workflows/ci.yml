@@ -55,6 +55,9 @@ jobs:
       - name: Production configuration tests
         run: pnpm test:production
 
+      - name: Credits ledger tests
+        run: pnpm test:credits
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4

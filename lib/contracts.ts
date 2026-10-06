@@ -1,7 +1,7 @@
 export type PublicTemplate = {
   id: string; name: string; slug: string; description: string; category: string;
   thumbnail: string; previewVideo: string; previewImages: string[];
-  price: number; currency: string; requiredImageCount: number; aspectRatio: string;
+  price: number; currency: string; creditCost: number; requiredImageCount: number; aspectRatio: string;
   duration: number; resolution: string; featured: boolean; trending: boolean;
   isNew: boolean; popular: boolean; active: boolean; createdAt: number;
 };
