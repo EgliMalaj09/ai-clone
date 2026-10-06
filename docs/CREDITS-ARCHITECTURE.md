@@ -1,6 +1,6 @@
 # Credits system — architecture design
 
-Status: **design proposal, not implemented.** Date: 6 October 2026.
+Status: **approved for implementation** with the owner's decisions of 6 October 2026 (§15). Date: 6 October 2026.
 Scope: let a signed-in customer buy credit packs and spend credits on template video generations. This document covers the rules, data model, connections, flows, user and admin journeys, safety, accounting and migration. Code comes later.
 
 ---
@@ -14,8 +14,8 @@ Scope: let a signed-in customer buy credit packs and spend credits on template v
 | Where credits are tracked | **Our own ledger in D1**, not in the payment provider | The provider only takes money; generation logic, holds and refunds live with us |
 | Ledger style | **Append-only entries, double-entry**, plus a cached balance per user | Industry standard for money-like balances (Modern Treasury) |
 | Spending | **Hold → capture / release**: credits are reserved when generation starts, charged when the video is delivered, returned automatically if it fails | Like a card authorization; failed generations never cost the customer (Kling does the same) |
-| Expiry | Each purchase is its own **lot** with its own expiry; spending uses the lot that expires first | OpenAI (1 year per purchase), Kling (2 years, shortest-validity first) |
-| Refund of money | Unused credits of a pack can be refunded; used credits cannot | Matches OpenAI/Kling "non-refundable except…" policies |
+| Expiry | **Credits never expire** (owner decision). If expiry is added later, per-purchase lots can be rebuilt from the purchase transactions | OpenAI (1 year per purchase) and Kling (2 years) use expiry; Runway reports non-expiring top-ups |
+| Refund of money | **No refunds** (owner decision). Failed generations still return their credits automatically. Chargebacks remove purchased credits | Matches the "non-refundable" policies of OpenAI and Kling |
 | Payment provider | Behind the existing `PaymentGateway` interface; **Stripe or a merchant of record** | Stripe does not officially support Albanian businesses (see §12) |
 | Integers only | Credits and money are stored as integers (credits, minor currency units) | No rounding errors |
 
@@ -44,11 +44,11 @@ Sources are listed in §16.
 2. **Packs.** Admin-defined, e.g. 500 credits for €4.99, 1 100 for €9.99 (+10% bonus), 3 000 for €24.99 (+20%). A pack has a price per currency.
 3. **Template cost.** Each template has `credit_cost`, e.g. Formula Driver = 300 credits. The cost is **snapshotted** on the generation when it starts, so later price edits never change a running job.
 4. **Can I generate?** Only if `available ≥ credit_cost`. Uploading photos also requires a positive balance (as you decided), which removes most abandoned uploads.
-5. **Spend order.** Promotional credits first, then purchased lots, each by earliest expiry (the Kling rule).
+5. **One balance.** Purchased, welcome and gifted credits form one balance (no expiry, so no spend order is needed).
 6. **Failed generation.** The hold is released; the customer gets every credit back, automatically.
-7. **Expiry.** Purchased lots expire after N months (open decision, §15). Promotional/welcome credits expire sooner (e.g. 30 days). Customers are warned before expiry.
+7. **No expiry.** Credits never expire. **Welcome credits** for new verified accounts are an admin setting, 0 by default.
 8. **No cash-out, no transfer** between accounts.
-9. **Money refunds.** A pack can be refunded only for its **unused** part (or under consumer law; see §12). Refunding a pack removes its remaining credits first.
+9. **No money refunds.** Packs are final; checkout asks the customer to consent to immediate delivery (§12). If a payment is reversed anyway (chargeback, or a refund made by hand in the payment provider), the purchased credits are removed.
 10. **Admin adjustments** (gifts, goodwill, corrections) are ledger entries with a reason and the admin's id, never direct edits.
 
 ---
@@ -66,7 +66,7 @@ flowchart LR
     CR[Credits service<br/>lib/server/credits.ts]
     PAY[Payments<br/>lib/server/payments.ts]
     Q[Generation queue<br/>lib/server/queue.ts]
-    MAINT[Hourly maintenance<br/>expiry, reconciliation]
+    MAINT[Hourly maintenance<br/>reconciliation, stuck holds]
   end
   subgraph Data
     D1[(D1 database<br/>ledger and balances)]
@@ -91,7 +91,7 @@ flowchart LR
   CR --> D1
   PAY --> D1
   MAINT --> CR
-  CR -- receipts, expiry warnings --> MAIL
+  CR -- receipts, low balance --> MAIL
 ```
 
 **What is new:** the credits service and its tables. **What is reused:** authentication, uploads, the checkout and webhook code (signature check, replay protection, refunds), the queue, AI providers, storage and the admin panel.
@@ -113,22 +113,18 @@ Double-entry means every movement takes credits *from* one account *to* another,
 | `system:issued` | system | Source of purchased credits (goes negative as credits are sold) |
 | `system:promo` | system | Source of free/welcome/goodwill credits |
 | `system:consumed` | system | Credits spent on delivered videos |
-| `system:expired` | system | Credits that expired unused |
-| `system:refunded` | system | Credits removed by a money refund or chargeback |
+| `system:refunded` | system | Credits removed because a payment was reversed |
 
 ### 5.2 Tables
 
 ```mermaid
 erDiagram
   users ||--|| credit_balances : has
-  users ||--o{ credit_lots : owns
   users ||--o{ credit_holds : places
-  credit_packages ||--o{ orders : "sold as"
-  orders ||--|| payments : "paid by"
-  orders ||--o| credit_lots : "creates"
+  users ||--o{ credit_purchases : makes
+  credit_packages ||--o{ credit_purchases : "sold as"
+  credit_purchases ||--o| credit_transactions : "grants"
   credit_transactions ||--|{ credit_entries : contains
-  credit_lots ||--o{ credit_allocations : "spent through"
-  credit_holds ||--o{ credit_allocations : "draws from"
   credit_holds ||--o| generations : "funds"
   templates ||--o{ generations : "run as"
 
@@ -148,15 +144,22 @@ erDiagram
     int version "optimistic lock"
     int updated_at
   }
-  credit_lots {
+  credit_purchases {
     text id PK
     text user_id FK
-    text source "purchase | promo | adjustment"
-    text order_id FK "null for promo"
-    int original
-    int remaining
-    int expires_at "null = never"
+    text package_id FK
+    int credits "pack credits + bonus, snapshot"
+    int amount "minor currency units"
+    text currency
+    text status "pending | paid | failed | reversed"
+    text provider "mock | stripe | ..."
+    text provider_session_id UK
+    text provider_transaction_id
+    text checkout_url
+    int checkout_attempt
+    text idempotency_key
     int created_at
+    int paid_at
   }
   credit_holds {
     text id PK
@@ -167,14 +170,9 @@ erDiagram
     int created_at
     int settled_at
   }
-  credit_allocations {
-    text hold_id FK
-    text lot_id FK
-    int amount
-  }
   credit_transactions {
     text id PK
-    text kind "purchase | hold | capture | release | expire | refund | adjust | promo"
+    text kind "purchase | hold | capture | release | reversal | adjust | welcome"
     text idempotency_key UK
     text reference_type "order | generation | admin"
     text reference_id
@@ -197,15 +195,16 @@ Changes to existing tables:
 |---|---|
 | `templates` | add `credit_cost` (integer) |
 | `generations` | add `credit_cost` (snapshot) and `hold_id`; drop the per-video price for new jobs |
-| `orders` | add `kind` (`credits` or the old `video`), `package_id`, `credits`; make `generation_id` optional, since a pack order has no generation |
-| `payments`, `refunds`, `webhook_events` | reused unchanged for pack purchases |
+| `orders`, `payments`, `refunds` | kept as history of the old per-video purchases; new pack purchases use `credit_purchases`, which holds its own payment fields. Changing `orders.generation_id` to optional would need a table rebuild that D1 migrations handle poorly |
+| `webhook_events` | reused unchanged for replay protection |
+| `app_settings` | new key `welcome_credits` (0 by default) |
 
 ### 5.3 Invariants (checked by tests and by an hourly reconciliation job)
 
 1. The entries of every transaction sum to **0**.
 2. `credit_balances.available` = sum of entries on `user:<id>:available`; same for `held`.
 3. `available ≥ 0` and `held ≥ 0`, except a negative `available` created **only** by a chargeback after spending (§7.5).
-4. Sum of `remaining` across a user's non-expired lots = `available + held`.
+4. `held` = sum of the user's `pending` holds.
 5. Every `idempotency_key` appears once, so a retried webhook or double-click can never grant or charge twice.
 6. Entries are **insert-only**: never updated or deleted. A correction is a new transaction.
 
@@ -249,7 +248,7 @@ sequenceDiagram
   U->>P: Pays
   P->>W: Webhook checkout.session.completed (signed)
   W->>W: Verify signature, timestamp, amount, currency, session id
-  W->>DB: batch: payment=paid, order=paid,<br/>lot +1 100 (expires in N months),<br/>transaction "purchase" key=session id,<br/>entries issued -1 100 / user available +1 100
+  W->>DB: batch: purchase=paid,<br/>transaction "purchase" key=purchase id,<br/>entries issued -1 100 / user available +1 100
   Note over W,DB: Same session id again → key exists → nothing happens
   U->>W: Returns to /credits?order=…
   W->>P: Verify session (in case the webhook is late)
@@ -269,17 +268,17 @@ sequenceDiagram
   participant AI as AI provider
   U->>W: Upload photo (requires balance > 0)
   U->>W: Generate "Formula Driver" (300 credits)
-  W->>DB: batch (version-checked): available -300 / held +300,<br/>hold(pending), allocations from earliest-expiring lots,<br/>generation(queued, credit_cost=300, hold_id)
+  W->>DB: batch (version-checked): available -300 / held +300,<br/>hold(pending), generation(queued, credit_cost=300, hold_id)
   alt not enough credits
     W-->>U: "You need 300 credits, you have 120" + Buy credits
   else hold placed
     W-->>U: Creation queued
     Q->>AI: Run workflow steps
     alt video delivered
-      Q->>DB: batch: hold=captured, held -300 / consumed +300, lots remaining -= allocations
+      Q->>DB: batch: hold=captured, held -300 / consumed +300
       Q-->>U: Video in My Creations
     else failed or timed out
-      Q->>DB: batch: hold=released, held -300 / available +300, allocations removed
+      Q->>DB: batch: hold=released, held -300 / available +300
       Q-->>U: "Generation failed. Your 300 credits were returned."
     end
   end
@@ -302,30 +301,28 @@ stateDiagram-v2
   end note
 ```
 
-### 7.4 Expiry (hourly maintenance)
+### 7.4 Expiry
 
-1. Find lots with `expires_at < now` and `remaining > 0` that have **no pending allocation**.
-2. For each lot: one transaction "expire", available `-remaining` → `system:expired`; set `remaining = 0`.
-3. 7 days and 1 day before expiry: email "You have 400 credits expiring on 12 March".
+Not used: credits never expire (owner decision). The hourly maintenance instead runs the reconciliation check (§5.3) and releases holds whose generation is no longer active.
 
-### 7.5 Refunds and chargebacks of a pack
+### 7.5 Reversed payments (chargebacks)
+
+There are no refunds by policy, but a bank can still reverse a payment (chargeback), or the owner may refund by hand in the payment provider's dashboard.
 
 ```mermaid
 flowchart TD
-  A[Refund or chargeback for a pack order] --> B{Credits of this lot<br/>still unused?}
-  B -- all unused --> C[Remove the whole lot<br/>available → system:refunded<br/>full money refund]
-  B -- partly used --> D[Remove the unused part<br/>refund proportional money, or<br/>refuse per policy]
-  B -- chargeback after spending --> E[Remove what is left,<br/>available may go negative,<br/>account blocked from generating until settled]
-  C --> F[Audit log + email]
+  A[Payment reversed:<br/>dispute or manual refund] --> B{Purchased credits<br/>still available?}
+  B -- yes --> C[Remove the purchased credits<br/>available → system:refunded<br/>purchase = reversed]
+  B -- partly spent --> D[Remove what is available;<br/>balance goes negative by the rest;<br/>generation blocked until the balance is positive]
+  C --> F[Audit log + admin alert]
   D --> F
-  E --> F
 ```
 
-The existing webhook handling for `charge.refunded` and `refund.updated` is reused; it calls the credits service instead of cancelling a single video. Disputes (`charge.dispute.created`) are added, which also closes an open TODO item.
+The existing webhook verification and replay protection are reused. `charge.refunded` and `charge.dispute.created` for a pack call the credits service.
 
 ### 7.6 Admin adjustment
 
-Admin enters a user, an amount (+/−) and a reason, and confirms with their password. That writes a transaction `adjust` with `actor_id` and the reason: positive amounts come from `system:promo`, negative ones go to `system:refunded`. The adjustment appears in the audit log and in the user's history.
+Admin enters a user, an amount (+/−) and a reason, and confirms with their password. That writes a transaction `adjust` with `actor_id` and the reason, moving credits between the user and `system:promo` (a removal cannot take the balance below zero). The adjustment appears in the audit log and in the user's history.
 
 ---
 
@@ -360,7 +357,7 @@ journey
 | `/credits` (new) | Packs with bonus labels, current balance, what each pack buys ("≈ 4 Formula Driver videos") |
 | Template page | "Generate — 300 credits"; if short: "You need 180 more credits" with a Buy button that returns here after payment |
 | My Creations | "300 credits reserved" while processing; "300 credits returned" on failure |
-| Account → Credits (new) | Balance, held credits, expiring soon, full history (purchase, spend, refund, expiry, gift), receipts |
+| Account → Credits (new) | Balance, held credits, full history (purchase, spend, returned, gift, reversal), receipts |
 
 ---
 
@@ -372,7 +369,7 @@ journey
 | **Templates** | Set `credit_cost`. The margin helper shows provider cost vs credit value: *value = credit_cost × (pack price ÷ pack credits)* |
 | **Users** | See a user's balance and history; add or remove credits with a reason |
 | **Credit ledger** (new) | Search transactions by user, type, order or generation; export CSV |
-| **Dashboard** | Credits sold, spent, expired and outstanding (the liability); revenue per pack; average credits per video |
+| **Dashboard** | Credits sold, spent and outstanding (the liability); revenue per pack; average credits per video |
 | **Operations** | Reconciliation status (invariants of §5.3), holds older than the deadline, negative balances |
 
 ---
@@ -381,7 +378,7 @@ journey
 
 | Method & path | Who | Purpose |
 |---|---|---|
-| `GET /api/credits` | user | Balance (`available`, `held`), expiring-soon summary |
+| `GET /api/credits` | user | Balance (`available`, `held`) |
 | `GET /api/credits/history?page=` | user | Paginated ledger entries for the user |
 | `GET /api/credit-packages` | public | Active packs and prices |
 | `POST /api/credits/checkout` | user | `{packageId, currency, idempotencyKey}` → checkout URL |
@@ -407,14 +404,14 @@ Every money-changing endpoint takes an **idempotency key**, reusing the pattern 
 | Balance drift / bugs | Insert-only entries, double-entry zero-sum, hourly reconciliation with an admin alert |
 | Card testing / fraud | Email verification before buying, per-user purchase rate limit, provider fraud tools (Stripe Radar), pack size limits for new accounts |
 | Chargeback after spending | Negative balance, generation blocked, admin alert |
-| Free-credit farming | Welcome credits only after email verification, one per account, short expiry, optional per-IP cap |
+| Free-credit farming | Welcome credits (0 by default) only after email verification, once per account |
 | Admin misuse | Password re-confirmation, mandatory reason, audit log |
 
 ---
 
 ## 12. Money, tax and legal (verify with an accountant and lawyer)
 
-- **Prepaid credits are a liability until used.** Money from a pack is not fully earned when it arrives; it is earned as credits are spent. Expired credits become income ("breakage"). The dashboard's "outstanding credits" figure supports this.
+- **Prepaid credits are a liability until used.** Money from a pack is not fully earned when it arrives; it is earned as credits are spent. With no expiry, unused credits stay a liability; ask your accountant how long before they may be treated as income ("breakage"). The dashboard's "outstanding credits" figure supports this.
 - **VAT on vouchers (EU Directive 2016/1065).** A *single-purpose voucher* (place of supply and VAT rate known when sold) is taxed when sold. A *multi-purpose voucher* is taxed when redeemed. Credits for one digital service sold to known countries are usually single-purpose, but confirm with an accountant.
 - **Consumer withdrawal rights (EU and similar).** Digital services normally need the customer's explicit consent to start right away, with acknowledgement that the withdrawal right is lost once the service is supplied. Unused credits may stay refundable. Put this in the checkout text and the Terms.
 - **Payment provider and Albania.** Stripe does **not** officially list Albania as a supported business country; reported workarounds involve a company and bank account in a supported country. Two options:
@@ -444,32 +441,35 @@ Bonus packs lower the value per credit (1 100 for €9.99 ≈ €0.0091). Check 
 |---|---|
 | Template has a money `price` | Template has a `credit_cost`; money prices move to packs |
 | Generate = checkout for one video (`orders.generation_id`) | Generate = hold credits; checkout only for packs |
-| Failed video → money refund through Stripe | Failed video → credits released (no Stripe call) |
+| Failed video → money refund through Stripe | Failed video → credits returned (no payment provider call) |
 | Unpaid "awaiting payment" orders | Do not exist anymore (closes TODO F2's second half) |
-| Refund/webhook code for orders | Reused for pack orders |
+| Webhook verification and replay protection | Reused for pack purchases |
 
 **Phases**
 
 1. **Database migration:** new tables, `templates.credit_cost`, `orders.kind`, `generations.hold_id`. No behavior change yet.
-2. **Credits service and invariants**, fully unit and integration tested: purchase, hold, capture, release, expiry, refund, adjustment, concurrency.
+2. **Credits service and invariants**, fully unit and integration tested: purchase, hold, capture, release, reversal, adjustment, welcome credits, concurrency.
 3. **Pack checkout** using the existing payment code, plus `/credits` and the balance badge.
 4. **Switch generation to holds** behind a setting, then turn off per-video checkout.
 5. **Admin pages:** packs, ledger, adjustments, reconciliation, dashboard figures.
-6. **Emails:** receipts, low-balance and expiry warnings.
+6. **Emails:** receipts and low-balance notices.
 7. **Cleanup:** remove the per-video purchase path and the unpaid-order handling; add the upload rule (balance > 0) and the 24-hour unused-photo sweep.
 
 The project is not live, so no customer balances need migrating. Existing test orders can stay as history.
 
 ---
 
-## 15. Open decisions for the owner
+## 15. Owner decisions (6 October 2026)
 
-1. **Expiry:** purchased credits valid for 12 months (OpenAI), 24 months (Kling), or never (as reported for Runway top-ups)?
-2. **Welcome credits:** give new verified users e.g. 100 free credits, enough for a preview but not a full video?
-3. **Refund policy:** refund unused credits on request within 14 days, or only where the law requires?
-4. **Packs and prices:** which sizes, bonuses and currencies (EUR, ALL, USD)?
-5. **Payment provider:** company in a Stripe country, or a merchant of record?
-6. **Subscriptions later?** Monthly credits fit the same lot model (a monthly lot that expires at period end), so the design leaves room for it.
+| Topic | Decision |
+|---|---|
+| Expiry | **Never** |
+| Welcome credits | **0**, configurable in admin settings |
+| Refund policy | **None**; failed generations still return credits; chargebacks remove purchased credits |
+| Packs | **To be decided**; packs are admin-managed data, so they can be set any time |
+| Payment provider | **To be decided**; behind the `PaymentGateway` interface (test checkout in demo mode, Stripe adapter included) |
+| Subscriptions | **Not for now** |
+| Pay-per-video checkout | Replaced by credits (every generation uses credits) |
 
 ---
 
