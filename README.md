@@ -44,4 +44,4 @@ GitHub Actions (`.github/workflows/ci.yml`) runs typecheck, lint, build and all 
 
 `pnpm test:production` checks encrypted credentials, production readiness, the ready-made workflow, and an end-to-end production run: a pack bought through a fake Stripe pays for a real-workflow generation.
 
-See [API reference](docs/API.md) for routes, [security review](docs/SECURITY.md) for findings and remaining limits, [operations](docs/OPERATIONS.md) for deployment, Stripe, AI integration and queue scheduling; [architecture](docs/ARCHITECTURE.md) for data, security and extension points.
+See [API reference](docs/API.md) for routes, [security review](docs/SECURITY.md) for findings and remaining limits, [operations](docs/OPERATIONS.md) for deployment, Stripe, AI integration and queue scheduling; [architecture](docs/ARCHITECTURE.md) for data, security and extension points. Before going live, work through the [launch checklist](docs/LAUNCH-CHECKLIST.md).

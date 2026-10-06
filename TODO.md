@@ -1,5 +1,7 @@
 # PROJECT STUDIO — Feature audit & TODO
 
+For the step-by-step launch plan, see [docs/LAUNCH-CHECKLIST.md](docs/LAUNCH-CHECKLIST.md).
+
 Audit date: 6 October 2026. This audit covers the source code under `app/`, `components/`, `lib/`, `db/`, `worker.ts` and the docs, plus a run of the project's own checks.
 
 ## 1. Check results
