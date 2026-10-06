@@ -11,7 +11,7 @@ import {authSchema,checkoutSchema,templateSchema} from './validation';
 import {checkPassword,clearCookie,constantEqual,getUser,hash,makeAuthToken,passwordHash,protectOrigin,rateLimit,requireUser,safeUser,sendAuthMail,sessionCookie} from './security';
 import {imageMime,mediaUrl,storage,validSignature} from './storage';
 import {confirmPayment,ensureCheckout,failPayment,refundOrder,stripeWebhook,verifyCheckout} from './payments';
-import {removeGeneration,tickGeneration,tickQueue} from './queue';
+import {removeGeneration,tickQueue} from './queue';
 import type {AdminTemplate,StudioUser} from '../contracts';
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});

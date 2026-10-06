@@ -1,7 +1,7 @@
 import {serviceConfig} from './connections';
 import {z} from 'zod';
 import type {StudioUser} from '../contracts';
-import {all,audit,batch,config,HttpError,must,now,one,run,runtime,stmt} from './data';
+import {all,audit,batch,HttpError,must,now,one,run,runtime,stmt} from './data';
 import {jsonBody,pageQuery} from './http';
 import {checkPassword,hash,passwordHash,rateLimit,sessionCookie} from './security';
 

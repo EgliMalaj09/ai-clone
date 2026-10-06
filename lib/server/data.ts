@@ -1,11 +1,14 @@
 import {liveWorkflow} from './workflow-presets';
 import {env} from 'cloudflare:workers';
 import {seedTemplates} from '../catalog';
-import type {AdminTemplate,PublicTemplate,StudioUser,WorkflowStep} from '../contracts';
+import type {AdminTemplate,PublicTemplate,WorkflowStep} from '../contracts';
+// D1 rows are dynamically shaped; each query's columns are read by name at the call site.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Row=Record<string,any>;
 export const now=()=>Date.now();
 export const uid=(prefix='')=>prefix+crypto.randomUUID().replace(/-/g,'');
-export const runtime=()=>env as unknown as Record<string,any>;
+// Text variables and secrets. Bindings such as DB and BUCKET are only checked for presence through this view.
+export const runtime=()=>env as unknown as Record<string,string|undefined>;
 export function config(){const e=runtime();const demo=e.DEMO_MODE==='true';return {demo,origin:e.APP_ORIGIN||'http://terminal.local:4173',secret:e.APP_SECRET||'',stripeKey:e.STRIPE_SECRET_KEY||'',webhookSecret:e.STRIPE_WEBHOOK_SECRET||'',falKey:e.FAL_KEY||'',replicateKey:e.REPLICATE_API_TOKEN||'',mailKey:e.RESEND_API_KEY||'',mailFrom:e.MAIL_FROM||'',cronSecret:e.QUEUE_SECRET||'',autoRefund:e.AUTO_REFUND==='true'};}
 export function db():D1Database{if(!env.DB)throw new Error('Database unavailable');return env.DB;}
 export const stmt=(sql:string,...args:unknown[])=>db().prepare(sql).bind(...args);
@@ -15,7 +18,7 @@ export const run=(sql:string,...args:unknown[])=>stmt(sql,...args).run();
 export const batch=(s:D1PreparedStatement[])=>db().batch(s);
 export class HttpError extends Error{constructor(public status:number,message:string){super(message)}}
 export function must(condition:unknown,message:string,status=400):asserts condition{if(!condition)throw new HttpError(status,message);}
-export const parse=<T=any>(v:string|undefined|null,fallback:T):T=>{try{return JSON.parse(v||'') as T}catch{return fallback}};
+export const parse=<T=unknown>(v:string|undefined|null,fallback:T):T=>{try{return JSON.parse(v||'') as T}catch{return fallback}};
 export async function audit(userId:string,action:string,targetId:string){await run('INSERT INTO audit_logs (id,user_id,action,target_id,created_at) VALUES (?,?,?,?,?)',uid(),userId,action,targetId,now());}
 export async function event(name:string,userId:string|null,metadata:Row={}){await run('INSERT INTO analytics_events (id,user_id,name,metadata,created_at) VALUES (?,?,?,?,?)',uid(),userId,name,JSON.stringify(metadata),now());}
 export function publicTemplate(t:Row):PublicTemplate{return {id:t.id,slug:t.slug,name:t.name,description:t.description,category:t.category,thumbnail:t.thumbnail,previewVideo:t.preview_video,previewImages:parse(t.preview_images,[]),price:t.price,currency:t.currency,requiredImageCount:t.required_image_count,aspectRatio:t.aspect_ratio,duration:t.duration,resolution:t.resolution,featured:!!t.featured,trending:!!t.trending,isNew:!!t.is_new,popular:!!t.popular,active:!!t.active,createdAt:t.created_at};}

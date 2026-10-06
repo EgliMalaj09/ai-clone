@@ -5,20 +5,21 @@ import {toast} from 'sonner';
 import {Skeleton} from '@/components/ui/skeleton';
 import {AlertDialog,AlertDialogTrigger,AlertDialogContent,AlertDialogHeader,AlertDialogTitle,AlertDialogDescription,AlertDialogFooter,AlertDialogCancel,AlertDialogAction} from '@/components/ui/alert-dialog';
 import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from '@/components/ui/select';
-export async function api<T=any>(path:string,method='GET',body?:unknown,signal?:AbortSignal):Promise<T>{const res=await fetch('/api/'+path,{method,signal,headers:body instanceof FormData?{}:body?{'Content-Type':'application/json'}:{},body:body instanceof FormData?body:body?JSON.stringify(body):undefined,credentials:'same-origin'});let d:any;try{d=await res.json()}catch{throw new Error('The studio could not be reached. Please try again.')}if(!res.ok)throw new Error(d.error||'The request could not be completed.');return d;}
-export function useAPI<T=any>(path:string|null){
- const [data,setData]=useState<T|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
+export async function api<T=unknown>(path:string,method='GET',body?:unknown,signal?:AbortSignal):Promise<T>{const res=await fetch('/api/'+path,{method,signal,headers:body instanceof FormData?{}:body?{'Content-Type':'application/json'}:{},body:body instanceof FormData?body:body?JSON.stringify(body):undefined,credentials:'same-origin'});let d:unknown;try{d=await res.json()}catch{throw new Error('The studio could not be reached. Please try again.')}if(!res.ok)throw new Error((d as {error?:string}|null)?.error||'The request could not be completed.');return d as T;}
+export function useAPI<T=unknown>(path:string|null){
+ // The stored result remembers which path it belongs to, so a new path reads as loading without setting state in an effect.
+ const [result,setResult]=useState<{path:string|null;data:T|null;error:string}>({path:null,data:null,error:''});
  const controller=useRef<AbortController|null>(null);
  // Resolves with the fresh value, or null when the request failed or was superseded.
  const refresh=useCallback(async():Promise<T|null>=>{
   controller.current?.abort();const request=new AbortController();controller.current=request;
-  if(!path){setLoading(false);setData(null);return null;}
-  try{const value=await api<T>(path,'GET',undefined,request.signal);if(!request.signal.aborted){setData(value);setError('');return value}return null}
-  catch(e){if(!request.signal.aborted)setError(e instanceof Error?e.message:'Please try again.');return null}
-  finally{if(!request.signal.aborted)setLoading(false)}
+  if(!path)return null;
+  try{const value=await api<T>(path,'GET',undefined,request.signal);if(!request.signal.aborted){setResult({path,data:value,error:''});return value}return null}
+  catch(e){if(!request.signal.aborted)setResult(r=>({path,data:r.path===path?r.data:null,error:e instanceof Error?e.message:'Please try again.'}));return null}
  },[path]);
- useEffect(()=>{setLoading(true);void refresh();return()=>controller.current?.abort()},[refresh]);
- return {data,error,loading,refresh,setData};
+ useEffect(()=>{void refresh();return()=>controller.current?.abort()},[refresh]);
+ const current=!!path&&result.path===path;
+ return {data:current?result.data:null,error:current?result.error:'',loading:!!path&&!current,refresh};
 }
 export function ErrorBox({message,retry}:{message:string;retry?:()=>void}){return <div className="error-box" role="alert"><AlertCircle size={19}/><span>{message}</span>{retry&&<button onClick={retry}>Try again</button>}</div>}
 export function Loading({rows=3}:{rows?:number}){return <div className="loading-stack" aria-label="Loading"><Skeleton className="h-8 w-52"/>{Array.from({length:rows},(_,i)=><Skeleton key={i} className="h-24 w-full rounded-xl"/>)}</div>}

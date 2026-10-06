@@ -1,5 +1,5 @@
 import {env} from 'cloudflare:workers';
-import {config,must,one,uid} from './data';
+import {config,must} from './data';
 import {constantEqual,sign} from './security';
 export interface ObjectStorage{put(key:string,body:ArrayBuffer|Uint8Array|ReadableStream,mime:string):Promise<void>;get(key:string,range?:string):Promise<R2ObjectBody|null>;delete(key:string):Promise<void>}
 export class R2Storage implements ObjectStorage{

@@ -1,4 +1,5 @@
 'use client';
+import type {ConnectionStatus} from '@/lib/api-types';
 import {useState} from 'react';
 import {ArrowUpRight,CheckCircle2,LockKeyhole,Plug,RefreshCw,ShieldCheck,AlertCircle} from 'lucide-react';
 import {toast} from 'sonner';
@@ -10,10 +11,9 @@ const groups=[
   {name:'Account email',description:'Send account verification and password reset links. Use a sending domain you have verified in Resend.',href:'https://resend.com/api-keys',link:'Open Resend',fields:[['RESEND_API_KEY','Resend sending API key','re_…'],['MAIL_FROM','Verified sender address','hello@mail.yourdomain.com']]},
 ];
 export default function Connections(){
-  const {data,error,loading,refresh}=useAPI('admin/connections');
+  const {data,error,loading,refresh}=useAPI<ConnectionStatus>('admin/connections');
   const [values,setValues]=useState<Record<string,string>>({}),[remove,setRemove]=useState<string[]>([]),[password,setPassword]=useState(''),[busy,setBusy]=useState(false),[failure,setFailure]=useState('');
-  if(loading)return <Loading/>;
-  if(error)return <ErrorBox message={error} retry={refresh}/>;
+  if(loading||!data)return error?<ErrorBox message={error} retry={refresh}/>:<Loading/>;
   const readiness=data.readiness;
   const changes=Object.fromEntries(Object.entries(values).filter(([key,value])=>value.trim()&&!remove.includes(key)));
   async function save(e:React.FormEvent){

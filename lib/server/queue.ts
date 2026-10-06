@@ -26,7 +26,7 @@ export async function tickGeneration(id:string){
    const asset=await one("SELECT id FROM generated_assets WHERE generation_id=? ORDER BY created_at DESC LIMIT 1",id);must(asset,'No output asset was saved.');
    const completed=await run("UPDATE generations SET status='completed',completed_at=?,error=NULL WHERE id=? AND lease_token=? AND status='finalizing' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM orders WHERE generation_id=? AND status='paid')",now(),id,token,id);if(completed.meta.changes)await event('generation_completed',g.user_id,{generationId:id});return;
   }
-  const step=steps[i];must(step,'Workflow has no executable step.');const p=providerFor(step.provider);const stepId=id+'_'+i;let record=await one('SELECT * FROM generation_steps WHERE id=?',stepId);
+  const step=steps[i];must(step,'Workflow has no executable step.');const p=providerFor(step.provider);const stepId=id+'_'+i;const record=await one('SELECT * FROM generation_steps WHERE id=?',stepId);
   if(record?.status==='completed'){await run("UPDATE generations SET current_step=current_step+1,status=?,next_run_at=? WHERE id=? AND lease_token=?",i+1>=steps.length?'finalizing':'preparing',now()+500,id,token);return;}
   if(record?.status==='submitting'&&!record.provider_job_id){
    // Do not submit again after an ambiguous network failure: the provider may have billed it.

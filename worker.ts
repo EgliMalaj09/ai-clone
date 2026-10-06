@@ -5,7 +5,7 @@ import {ensureSeed,one,now,run} from './lib/server/data';
 // Best-effort immediate delivery. Durable state remains in D1 if the Worker stops.
 // A scheduled queue dispatcher is required for reliable long-running production work.
 async function drainWindow(){const deadline=Date.now()+22000;while(Date.now()<deadline){await tickQueue();const pending=await one("SELECT id FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL LIMIT 1");if(!pending)break;await new Promise(r=>setTimeout(r,1000));}}
-export default {
+const worker={
  async fetch(request:Request,env:Cloudflare.Env,ctx:ExecutionContext){
   const response=await handler.fetch(request,env,ctx);
   const path=new URL(request.url).pathname;
@@ -14,3 +14,4 @@ export default {
  },
  async scheduled(_event:ScheduledController,_env:Cloudflare.Env,ctx:ExecutionContext){ctx.waitUntil((async()=>{await ensureSeed();await run("INSERT INTO app_settings (key,value) VALUES ('queue_dispatch_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(now()));await drainWindow()})());}
 };
+export default worker;

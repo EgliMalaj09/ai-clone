@@ -1,11 +1,12 @@
 'use client';
+import type {Sessions} from '@/lib/api-types';
 import {useState} from 'react';
 import {Download,KeyRound,LogOut,ShieldCheck} from 'lucide-react';
 import {toast} from 'sonner';
 import {api,useAPI,Busy,Confirm,ErrorBox,Field} from './shared';
 export function AccountSecurity({admin=false}:{admin?:boolean}){
  const [current,setCurrent]=useState(''),[password,setPassword]=useState(''),[repeat,setRepeat]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[deletePassword,setDeletePassword]=useState('');
- const sessions=useAPI('account/sessions');
+ const sessions=useAPI<Sessions>('account/sessions');
  async function change(e:React.FormEvent){
   e.preventDefault();setError('');if(password!==repeat){setError('The new passwords do not match.');return;}
   setBusy(true);try{await api('account/password','POST',{currentPassword:current,newPassword:password});setCurrent('');setPassword('');setRepeat('');await sessions.refresh();toast.success('Password changed. Other sessions have been signed out.')}catch(e){setError((e as Error).message)}finally{setBusy(false)}
