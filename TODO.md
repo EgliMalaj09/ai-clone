@@ -108,3 +108,6 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 - [ ] Template archive (soft delete) instead of hard delete.
 - [ ] Real provider cost reconciliation (actual model cost vs. estimate).
 - [ ] A/B test prices or previews per template.
+
+## 6. Credits system
+- [ ] Implement the credits system — design: `docs/CREDITS-ARCHITECTURE.md` (open decisions in §15).
