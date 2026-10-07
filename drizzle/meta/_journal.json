@@ -50,6 +50,13 @@
       "when": 1791302611062,
       "tag": "0006_higgsfield_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1791352041393,
+      "tag": "0007_first_tana_nile",
+      "breakpoints": true
     }
   ]
 }

@@ -17,7 +17,7 @@ const mf=new Miniflare({modules:moduleFiles.map(f=>({type:'ESModule',path:path.j
 const checks=[];
 function ok(name,value){assert(value,name);checks.push({name,passed:true});console.log('PASS',name)}
 async function request(route,{method='GET',data,cookie,expected=200}={}){const headers={origin:config.APP_ORIGIN,...(cookie?{cookie}:{}),...(data?{'content-type':'application/json'}:{})};const response=await mf.dispatchFetch(config.APP_ORIGIN+route,{method,headers,body:data!==undefined?JSON.stringify(data):undefined});const text=await response.text();let body;try{body=JSON.parse(text)}catch{body=text}if(expected!==null)assert.equal(response.status,expected,`${method} ${route}: ${text.slice(0,350)}`);return {response,body,cookie:response.headers.get('set-cookie')?.split(';')[0]};}
-const register=async(email)=>request('/api/auth/register',{method:'POST',data:{name:'Credit Tester',email,password:'Test-password-123'},expected:201});
+const register=async(email)=>request('/api/auth/register',{method:'POST',data:{name:'Credit Tester',email,password:'Test-password-123',acceptTerms:true,confirmAge:true},expected:201});
 
 // Production mode with a fake POK: payments confirmed only by reading the order, forged and duplicate webhooks,
 // wrong amounts, manual reversals and expired orders.
@@ -44,7 +44,7 @@ async function liveChecks(){
   await call('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Odd lek',credits:10,prices:{ALL:49950},active:true},expected:400});
   ok('Packs are priced in currencies POK accepts, and ALL in whole lek',true);
   const pack=(await call('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Starter',credits:500,prices:{EUR:499,ALL:50000},active:true},expected:201})).body.package;
-  const reg=await call('/api/auth/register',{method:'POST',data:{name:'Live Buyer',email:'live@credits.test',password:'Test-password-123'},expected:201});
+  const reg=await call('/api/auth/register',{method:'POST',data:{name:'Live Buyer',email:'live@credits.test',password:'Test-password-123',acceptTerms:true,confirmAge:true},expected:201});
   await call('/api/credits/checkout',{method:'POST',cookie:reg.cookie,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:403});
   ok('Live checkout requires a verified email',true);
   await db.prepare('UPDATE users SET email_verified=1 WHERE id=?').bind(reg.body.user.id).run();

@@ -25,11 +25,22 @@ try{
  for(const route of ['/','/explore','/template/formula-driver','/template/wedding-cinematic','/privacy','/terms','/login','/register','/creations','/favorites','/credits','/account','/admin']){const r=await request(route);ok('Route loads: '+route,typeof r.body==='string'&&r.body.includes('PROJECT'));}
  await request('/template/does-not-exist',{expected:404});await request('/missing-route',{expected:404});ok('Missing templates and routes return 404',true);
  await request('/api/admin/templates',{expected:401});ok('Admin API rejects anonymous access',true);
- const reg=await request('/api/auth/register',{method:'POST',data:{name:'Disposable QA User',email:'qa@studio.test',password:'Test-password-123'},expected:201});const userCookie=reg.cookie;ok('Registration creates a secure session',!!userCookie&&reg.response.headers.get('set-cookie').includes('HttpOnly')&&reg.response.headers.get('set-cookie').includes('SameSite=Lax'));
+ const reg=await request('/api/auth/register',{method:'POST',data:{name:'Disposable QA User',email:'qa@studio.test',password:'Test-password-123',acceptTerms:true,confirmAge:true},expected:201});const userCookie=reg.cookie;
+ const consentRow=await db.prepare('SELECT terms_version,terms_accepted_at,age_confirmed_at,marketing_opt_in,marketing_opt_in_at FROM users WHERE id=?').bind(reg.body.user.id).first();
+ ok('Sign-up records Terms acceptance, age confirmation and no marketing consent by default',!!consentRow.terms_version&&consentRow.terms_accepted_at>0&&consentRow.age_confirmed_at>0&&consentRow.marketing_opt_in===0&&consentRow.marketing_opt_in_at===null);
+ const noTerms=await request('/api/auth/register',{method:'POST',data:{name:'No Consent',email:'noterms@studio.test',password:'Test-password-123',confirmAge:true},expected:400});
+ ok('Sign-up is rejected without accepting the Terms',noTerms.body?.error&&!(await db.prepare("SELECT id FROM users WHERE email='noterms@studio.test'").first()));
+ const noAge=await request('/api/auth/register',{method:'POST',data:{name:'No Age',email:'noage@studio.test',password:'Test-password-123',acceptTerms:true},expected:400});
+ ok('Sign-up is rejected without confirming the minimum age',noAge.body?.error&&!(await db.prepare("SELECT id FROM users WHERE email='noage@studio.test'").first()));
+ const optIn=await request('/api/auth/register',{method:'POST',data:{name:'Opt In',email:'optin@studio.test',password:'Test-password-123',acceptTerms:true,confirmAge:true,marketingOptIn:true},expected:201});
+ const optRow=await db.prepare('SELECT marketing_opt_in,marketing_opt_in_at FROM users WHERE id=?').bind(optIn.body.user.id).first();
+ ok('Marketing opt-in is recorded with its timestamp when chosen',optRow.marketing_opt_in===1&&optRow.marketing_opt_in_at>0);
+ await db.prepare('DELETE FROM users WHERE id=?').bind(optIn.body.user.id).run();// keep later user-count assertions unaffected
+ ok('Registration creates a secure session',!!userCookie&&reg.response.headers.get('set-cookie').includes('HttpOnly')&&reg.response.headers.get('set-cookie').includes('SameSite=Lax'));
 await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regular user cannot access admin API',true);
  await request('/api/auth/login',{method:'POST',data:{email:'qa@studio.test',password:'Incorrect-123'},expected:401});ok('Wrong password is rejected',true);
  const login=await request('/api/auth/login',{method:'POST',data:{email:'qa@studio.test',password:'Test-password-123'}});ok('Email login works',!!login.cookie);
- const second=await request('/api/auth/register',{method:'POST',data:{name:'Other User',email:'other@studio.test',password:'Other-password-123'},expected:201});
+ const second=await request('/api/auth/register',{method:'POST',data:{name:'Other User',email:'other@studio.test',password:'Other-password-123',acceptTerms:true,confirmAge:true},expected:201});
  const adm=await request('/api/auth/login',{method:'POST',data:{email:'admin@studio.test',password:adminPassword}});const adminCookie=adm.cookie;ok('Administrator login succeeds',adm.body.user.role==='admin');
  const grant=(userId,amount)=>request(`/api/admin/users/${userId}/credits`,{method:'POST',cookie:adminCookie,data:{amount,reason:'QA credits',currentPassword:adminPassword,idempotencyKey:randomUUID()}});
  const noCredit=new FormData();noCredit.append('file',new File([await readFile('public/media/formula-driver.webp')],'photo.webp',{type:'image/webp'}));await request('/api/uploads',{method:'POST',cookie:userCookie,data:noCredit,expected:402});ok('Uploading requires credits',true);
@@ -104,7 +115,7 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{role:'admin'},expected:400});ok('Customer updates reject unknown fields such as role',true);
  ok('Customer purchases are listed per customer',Array.isArray((await request('/api/admin/users/'+second.body.user.id+'/purchases',{cookie:adminCookie})).body.purchases));
  // Content refusals (C2): each refusal returns the credits and adds a strike; the third blocks the account until an admin unblocks it.
- const refuser=await request('/api/auth/register',{method:'POST',data:{name:'Refusal Tester',email:'refusals@studio.test',password:'Test-password-123'},expected:201});const rc=refuser.cookie;
+ const refuser=await request('/api/auth/register',{method:'POST',data:{name:'Refusal Tester',email:'refusals@studio.test',password:'Test-password-123',acceptTerms:true,confirmAge:true},expected:201});const rc=refuser.cookie;
  await grant(refuser.body.user.id,3000);
  const traveler=templates.find(t=>t.slug==='time-traveler');
  const travelerAdmin=(await request('/api/admin/templates/'+traveler.id,{cookie:adminCookie})).body.template;
@@ -189,7 +200,7 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
   const moved=await m.prepare("SELECT * FROM template_media WHERE id='up_prev'").first();const left=(await m.prepare('SELECT id FROM user_uploads').all()).results.map(r=>r.id);
   ok('Migration moves existing previews with their ids and keeps customer photos',moved?.storage_key==='previews/usr_m/up_prev'&&moved.uploaded_by==='usr_m'&&left.length===1&&left[0]==='up_photo');
  }finally{await migration.dispose();}
- const clean=await request('/api/auth/register',{method:'POST',data:{name:'Delete Test',email:'delete@studio.test',password:'Delete-password-123'},expected:201});await grant(clean.body.user.id,10);const cleanUpload=await upload(clean.cookie);await request('/api/account',{method:'DELETE',cookie:clean.cookie,data:{password:'Delete-password-123'}});ok('Account deletion removes the user and uploads',!(await db.prepare('SELECT id FROM users WHERE id=?').bind(clean.body.user.id).first())&&!(await db.prepare('SELECT id FROM user_uploads WHERE id=?').bind(cleanUpload.body.id).first()));
+ const clean=await request('/api/auth/register',{method:'POST',data:{name:'Delete Test',email:'delete@studio.test',password:'Delete-password-123',acceptTerms:true,confirmAge:true},expected:201});await grant(clean.body.user.id,10);const cleanUpload=await upload(clean.cookie);await request('/api/account',{method:'DELETE',cookie:clean.cookie,data:{password:'Delete-password-123'}});ok('Account deletion removes the user and uploads',!(await db.prepare('SELECT id FROM users WHERE id=?').bind(clean.body.user.id).first())&&!(await db.prepare('SELECT id FROM user_uploads WHERE id=?').bind(cleanUpload.body.id).first()));
  await request('/api/auth/logout',{method:'POST',cookie:userCookie,data:{}});await request('/api/favorites',{cookie:userCookie,expected:401});ok('Sign-out invalidates the session',true);
  await writeFile('test-results/integration.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,checks},null,2));console.log('\n'+checks.length+' integration checks passed.');
 }catch(e){console.error('FAIL',e);await mkdir('test-results',{recursive:true});await writeFile('test-results/integration.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,error:String(e),checks},null,2));process.exitCode=1}finally{await mf.dispose()}

@@ -161,3 +161,10 @@
 .badge-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
 .user-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:20px;margin-bottom:20px;align-items:start}.user-columns>.panel{margin:0;min-width:0}@media(max-width:900px){.user-columns{grid-template-columns:minmax(0,1fr)}}
 .refusal-list{display:grid;gap:14px;margin-top:14px}.refusal-item{display:flex;gap:16px;align-items:flex-start;border-top:1px solid var(--line);padding-top:14px}.refusal-photos{display:flex;gap:8px;flex-wrap:wrap}.refusal-photos img{width:96px;height:96px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}.block-badge{display:inline-block;margin-top:6px}
+.consent-group{display:flex;flex-direction:column;gap:2px;margin:18px 0}
+.consent-group .consent{margin:7px 0}
+.consent-group .consent small{display:block;color:#a4aab4}
+.password-field{position:relative;display:block;width:100%}
+.password-field>input{width:100%;padding-right:44px}
+.password-toggle{position:absolute;top:50%;right:6px;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:none;background:transparent;color:#89919c;border-radius:8px}
+.password-toggle:hover{color:var(--ink)}

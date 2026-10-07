@@ -38,7 +38,7 @@ try{
   const admin=(await request('/api/auth/login',{method:'POST',data:{email:env.ADMIN_EMAIL,password}})).cookie;
   ok('Production administrator login works without external services',!!admin);
   await request('/api/admin/connections',{expected:401});ok('Anonymous access to connections is rejected');
-  await request('/api/auth/register',{method:'POST',data:{name:'Member',email:'member@studio.test',password:'Member-password-123'},expected:503});
+  await request('/api/auth/register',{method:'POST',data:{name:'Member',email:'member@studio.test',password:'Member-password-123',acceptTerms:true,confirmAge:true},expected:503});
   ok('Registration is explicitly closed until email is configured',!(await db.prepare("SELECT id FROM users WHERE email='member@studio.test'").first()));
   const template=(await request('/api/admin/templates/tpl_formula-driver',{cookie:admin})).body.template;
   ok('Production seed uses the Higgsfield image and video workflow',template.workflow.length===2&&template.workflow.every(s=>s.provider==='higgsfield')&&template.workflow[1].model==='kling-video/v3.0-turbo/image-to-video');
@@ -58,7 +58,7 @@ try{
   const original=stored.find(r=>r.key==='connection.HIGGSFIELD_API_KEY').value;
   await save({HIGGSFIELD_API_KEY:keys.HIGGSFIELD_API_KEY});
   ok('Repeated saves use fresh authenticated-encryption nonces',(await db.prepare("SELECT value FROM app_settings WHERE key='connection.HIGGSFIELD_API_KEY'").first()).value!==original);
-  const member=(await request('/api/auth/register',{method:'POST',data:{name:'Member',email:'member@studio.test',password:'Member-password-123'},expected:201}));
+  const member=(await request('/api/auth/register',{method:'POST',data:{name:'Member',email:'member@studio.test',password:'Member-password-123',acceptTerms:true,confirmAge:true},expected:201}));
   ok('Configured production registration requires email verification',member.body.verificationRequired&&!member.body.user.emailVerified&&requests.some(r=>r.host==='api.resend.com'));
   const verifyMail=mails[mails.length-1];
   ok('The verification email is branded HTML with a verify button and link, plus a plain-text fallback',verifyMail.subject==='Verify your Project Studio email'&&verifyMail.from===keys.MAIL_FROM&&verifyMail.to==='member@studio.test'&&/<a [^>]*href="[^"]*\/verify\?token=/.test(verifyMail.html)&&verifyMail.html.includes('Verify my email')&&verifyMail.html.includes('Project Studio')&&!verifyMail.html.includes('PROJECT STUDIO')&&verifyMail.text.includes('/verify?token=')&&verifyMail.text.includes('30 minutes'));

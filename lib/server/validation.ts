@@ -19,6 +19,16 @@ export const templateSchema=z.object({id:z.string().optional(),name:z.string().t
   vars.add(step.output);vars.add('previous_output');
  });});
 export const authSchema=z.object({email:z.string().trim().email().max(254).transform(s=>s.toLowerCase()),password:z.string().min(10,'Use at least 10 characters.').max(128),name:z.string().trim().min(2).max(80).optional()});
+// Sign-up requires a name and explicit, recorded consent (C20): accepting the Terms/Privacy, confirming the minimum age,
+// and an optional marketing-email opt-in.
+export const registerSchema=z.object({
+ email:z.string().trim().email().max(254).transform(s=>s.toLowerCase()),
+ password:z.string().min(10,'Use at least 10 characters.').max(128),
+ name:z.string().trim().min(2,'Please enter your name.').max(80),
+ acceptTerms:z.literal(true,{errorMap:()=>({message:'Please accept the Terms and Privacy Policy to continue.'})}),
+ confirmAge:z.literal(true,{errorMap:()=>({message:'Please confirm you meet the minimum age to continue.'})}),
+ marketingOptIn:z.boolean().optional().default(false),
+});
 export const generationSchema=z.object({templateId:z.string().max(150),uploadIds:z.array(z.string().max(100)).min(1).max(4),idempotencyKey:z.string().uuid(),expectedCost:z.number().int(),consent:z.literal(true)});
 
 /** Preview assets are deliberately public. Only studio media can be published; personal uploads are never reachable here. */

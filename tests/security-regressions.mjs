@@ -32,7 +32,7 @@ try{
  const unknown=await request('/api/auth/forgot',{method:'POST',data:{email:'unknown@studio.test'}});
  ok('Demo recovery never exposes a reset link or reveals account existence',forgot.text===unknown.text&&!forgot.text.includes('testLink')&&!forgot.text.includes('token='));
  ok('Demo reset request does not mint a usable token',(await db.prepare('SELECT COUNT(*) AS n FROM auth_tokens').first()).n===0);
- const user=await request('/api/auth/register',{method:'POST',data:{name:'Security QA',email:'qa@studio.test',password:'Initial-password-123'},expected:201});let cookie=user.cookie;
+ const user=await request('/api/auth/register',{method:'POST',data:{name:'Security QA',email:'qa@studio.test',password:'Initial-password-123',acceptTerms:true,confirmAge:true},expected:201});let cookie=user.cookie;
  const other=(await request('/api/auth/login',{method:'POST',data:{email:'qa@studio.test',password:'Initial-password-123'}})).cookie;
  const active=await request('/api/account/sessions',{cookie});ok('Session list identifies the current browser without token hashes',active.body.sessions.length===2&&active.body.sessions.filter(s=>s.current).length===1&&!active.text.includes('token_hash'));
  await request('/api/account/sessions',{method:'DELETE',cookie});ok('Revoke other sessions preserves this session',(await request('/api/me',{cookie})).body.user.id===user.body.user.id&&(await request('/api/me',{cookie:other})).body.user===null);
