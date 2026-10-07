@@ -16,6 +16,7 @@
     "test:integration": "node tests/integration.mjs",
     "setup:demo": "node scripts/init-demo.mjs",
     "queue:dispatch": "node scripts/dispatch-queue.mjs",
+    "seed:packs": "node scripts/seed-packs.mjs",
     "db:migrate:local": "node scripts/migrate-local.mjs",
     "test:security": "node tests/security-regressions.mjs",
     "queue:worker": "node scripts/dispatch-queue.mjs --continuous",
