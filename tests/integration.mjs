@@ -109,8 +109,30 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/admin/generations/'+failure.body.generationId+'/retry',{method:'POST',cookie:adminCookie,data:{}});
  ok('An admin retry reserves the credits again',(await balance(userCookie)).available===before-449&&(await request('/api/generations/'+failure.body.generationId,{cookie:userCookie})).body.generations[0].creditStatus==='pending');
  const retried=await waitDone(userCookie,failure.body.generationId);ok('A failed retry returns the credits again',retried.g.status==='failed'&&(await balance(userCookie)).available===before);
+
  await request('/api/admin/generations/'+failure.body.generationId+'/retry',{method:'POST',cookie:userCookie,data:{},expected:403});ok('Customers cannot retry through the admin API',true);
  const dashboard=(await request('/api/admin/dashboard',{cookie:adminCookie})).body;ok('Admin metrics reflect real database activity',dashboard.users===3&&dashboard.metrics.total>=4&&dashboard.metrics.failed>=1&&dashboard.credits.consumed>=299+449*2&&dashboard.credits.granted===2100);
+ // C21 — report a problem and the free redo
+ const rep=await request('/api/generations/'+generationId+'/report',{method:'POST',cookie:userCookie,data:{reason:'wrong_face',comment:'The face is not mine'},expected:201});ok('Customer can report a finished video',rep.body.report.status==='open');
+ await request('/api/generations/'+generationId+'/report',{method:'POST',cookie:userCookie,data:{reason:'glitches'},expected:409});ok('Only one open report per video',true);
+ await request('/api/generations/'+generationId+'/report',{method:'POST',cookie:second.cookie,data:{reason:'other'},expected:404});ok('A customer cannot report someone else’s video',true);
+ await request('/api/generations/'+generationId,{method:'DELETE',cookie:userCookie,expected:409});ok('A reported video cannot be deleted while under review',true);
+ await request('/api/uploads/'+u.body.id,{method:'DELETE',cookie:userCookie,expected:409});ok('A photo in a reported video cannot be deleted while under review',true);
+ const queue=await request('/api/admin/reports',{cookie:adminCookie});const myReport=queue.body.reports.find(r=>r.generationId===generationId);ok('The report appears in the admin queue as open',myReport&&myReport.status==='open');
+ const caseDetail=await request('/api/admin/reports/'+myReport.id,{cookie:adminCookie});ok('Report detail shows the video and the uploaded photo',!!caseDetail.body.video&&caseDetail.body.photos.length===1);
+ const balBefore=(await balance(userCookie)).available;
+ const resolve=await request('/api/admin/reports/'+myReport.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'approve'}});const redoId=resolve.body.redoGenerationId;ok('Approving the report starts a free redo',!!redoId);
+ const redo=await waitDone(userCookie,redoId);ok('The free redo completes and is marked as a redo',redo.g.status==='completed'&&redo.g.isRedo===true);
+ ok('The free redo costs the customer nothing',(await balance(userCookie)).available===balBefore);
+ ok('A goodwill credit is recorded in the ledger',(await request('/api/credits/history',{cookie:userCookie})).body.transactions.some(t=>t.kind==='goodwill'));
+ ok('The resolved report is approved with the redo linked',(await request('/api/admin/reports/'+myReport.id,{cookie:adminCookie})).body.report.redoGenerationId===redoId);
+ const rep2=await request('/api/generations/'+redoId+'/report',{method:'POST',cookie:userCookie,data:{reason:'mismatch'},expected:201});ok('A free redo can itself be reported',rep2.body.report.status==='open');
+ const report2=(await request('/api/admin/reports',{cookie:adminCookie})).body.reports.find(r=>r.generationId===redoId);
+ await request('/api/admin/reports/'+report2.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'reject_photo'},expected:400});ok('Rejecting as photo-not-suitable needs a guideline',true);
+ await request('/api/admin/reports/'+report2.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'reject_photo',guideline:'Face clearly visible and facing the camera'}});
+ const redoCard=(await request('/api/generations?status=completed',{cookie:userCookie})).body.generations.find(g=>g.id===redoId);
+ ok('A rejected report shows photo-not-suitable to the customer',redoCard.report.status==='rejected'&&redoCard.report.resolution==='photo_unsuitable'&&redoCard.report.guideline==='Face clearly visible and facing the camera');
+
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
  const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;
  ok('Customer page returns profile, credits, creations and activity',detail.user.email===second.body.user.email&&typeof detail.balance.available==='number'&&Array.isArray(detail.creations.recent)&&detail.activity.some(a=>a.action==='user.suspended'));

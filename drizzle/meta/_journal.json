@@ -57,6 +57,13 @@
       "when": 1791352041393,
       "tag": "0007_first_tana_nile",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1791365523446,
+      "tag": "0008_chief_nighthawk",
+      "breakpoints": true
     }
   ]
 }

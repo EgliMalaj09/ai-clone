@@ -3,8 +3,12 @@ import type {AdminTemplate,PublicTemplate,PhotoGuidelines} from './contracts';
 
 export type Pagination={page:number;limit:number;total:number;pages:number};
 
-export type Creation={id:string;templateName:string;templateSlug:string;thumbnail:string;status:string;creditCost:number;creditStatus:'pending'|'captured'|'released'|null;createdAt:number;startedAt:number|null;completedAt:number|null;error:string|null;assetId:string|null};
+export type Creation={id:string;templateName:string;templateSlug:string;thumbnail:string;status:string;creditCost:number;creditStatus:'pending'|'captured'|'released'|null;createdAt:number;startedAt:number|null;completedAt:number|null;error:string|null;assetId:string|null;isRedo:boolean;report:ReportSummary|null};
+export type ReportSummary={status:string;resolution:string|null;reason:string;guideline:string|null;adminReason:string|null;createdAt:number};
 export type CreationsPage={generations:Creation[];activeCount:number;pagination:Pagination};
+export type ReportRow={id:string;generationId:string;templateName:string;thumbnail:string;reason:string;comment:string;status:string;resolution:string|null;guideline:string|null;adminReason:string|null;redoGenerationId:string|null;email:string|null;userReportCount:number;flagged:boolean;createdAt:number;resolvedAt:number|null};
+export type ReportsPage={reports:ReportRow[];pagination:Pagination};
+export type ReportDetail={report:ReportRow;video:string|null;photos:string[];templateName:string;generationStatus:string;history:{id:string;generationId:string;reason:string;status:string;resolution:string|null;createdAt:number}[];redo:{id:string;status:string}|null};
 export type Balance={available:number;held:number};
 export type CreditPackage={id:string;name:string;credits:number;bonusCredits:number;totalCredits:number;prices:Record<string,number>;active:boolean;sortOrder:number};
 export type CreditPurchase={id:string;packageName:string;credits:number;amount:number;currency:string;status:'pending'|'paid'|'failed'|'reversed';provider:string;createdAt:number;paidAt:number|null;email?:string|null};

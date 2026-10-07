@@ -28,6 +28,30 @@ const COPY:Record<AuthMailType,{subject:(brand:string)=>string;heading:string;le
 // Business identity for the footer (D9). TODO(D9): confirm the legal name, address and contact before launch.
 const BUSINESS_NAME='VASIL XHAJA';
 
+export type ReportMailKind='approved'|'rejected_photo'|'rejected_other';
+/** Email sent when an admin resolves a reported video (C21.7). */
+export function reportMailContent(kind:ReportMailKind,{brand,templateName,detail,link,linkLabel,supportEmail}:{brand:string;templateName:string;detail?:string;link?:string;linkLabel?:string;supportEmail?:string}):MailContent{
+ const copy=kind==='approved'
+  ?{subject:`Good news about your “${templateName}” video`,heading:'We’re remaking your video',lead:`We reviewed your report about your “${templateName}” video and started a free redo with the same photo — at no credit cost. It will appear in My creations shortly.`}
+  :kind==='rejected_photo'
+  ?{subject:`About your “${templateName}” video`,heading:'We reviewed your report',lead:`We looked into your “${templateName}” video. The photo didn’t meet our photo guidelines${detail?` (${detail})`:''}, so we can’t offer a free redo this time. You can create a new video with a clearer photo.`}
+  :{subject:`About your “${templateName}” video`,heading:'We reviewed your report',lead:`We reviewed your report about your “${templateName}” video.${detail?` ${detail}`:''}`};
+ const support=supportEmail?.trim();
+ const text=[copy.heading,'',copy.lead,...(link?['',`${linkLabel||'Open'}: ${link}`]:[]),...(support?['',`Need help? Contact us at ${support}.`]:[]),'',`— ${brand}`].join('\n');
+ const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${escape(copy.subject)}</title></head>
+<body style="margin:0;padding:0;background:#0f1115;">
+ <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0f1115;padding:32px 16px;"><tr><td align="center">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;background:#171a21;border-radius:16px;border:1px solid #262b36;">
+   <tr><td style="padding:32px 32px 8px;"><span style="font-family:'Segoe UI',Arial,sans-serif;font-size:18px;font-weight:700;color:#fff;">${escape(brand)}</span></td></tr>
+   <tr><td style="padding:8px 32px 0;"><h1 style="margin:0 0 12px;font-family:'Segoe UI',Arial,sans-serif;font-size:22px;line-height:1.3;color:#fff;">${escape(copy.heading)}</h1>
+    <p style="margin:0 0 20px;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.6;color:#aeb6c4;">${escape(copy.lead)}</p></td></tr>
+   ${link?`<tr><td style="padding:0 32px 8px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:10px;background:#6366f1;"><a href="${escape(link)}" style="display:inline-block;padding:12px 26px;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:600;color:#fff;text-decoration:none;border-radius:10px;">${escape(linkLabel||'Open')}</a></td></tr></table></td></tr>`:''}
+   <tr><td style="padding:20px 32px 32px;"><hr style="border:none;border-top:1px solid #262b36;margin:0 0 16px;">${support?`<p style="margin:0 0 6px;font-family:'Segoe UI',Arial,sans-serif;font-size:12px;line-height:1.6;color:#6b7482;">Need help? Contact us at <a href="mailto:${escape(support)}" style="color:#8b8ff5;">${escape(support)}</a>.</p>`:''}<p style="margin:0;font-family:'Segoe UI',Arial,sans-serif;font-size:12px;color:#6b7482;">${escape(brand)}</p></td></tr>
+  </table>
+ </td></tr></table>
+</body></html>`;
+ return {subject:copy.subject,html,text};
+}
 /** Builds the subject, HTML and plain-text bodies for an authentication email. */
 export function authMailContent(type:AuthMailType,{brand,url,supportEmail}:{brand:string;url:string;supportEmail?:string}):MailContent{
  const c=COPY[type],safeUrl=escape(url),support=supportEmail?.trim();

@@ -15,12 +15,13 @@ import {checkPassword,clearCookie,constantEqual,getUser,hash,makeAuthToken,passw
 import {imageMime,mediaUrl,storage,validSignature} from './storage';
 import {pokWebhook} from './payments';
 import {removeGeneration,tickQueue} from './queue';
+import {createReport,listReports,reportDetail,resolveReport,reportsForGenerations,publicReport,hasOpenReport,uploadsLockedByReport,userHasOpenReport} from './reports';
 import {dispatcherStatus,recordDispatch} from './dispatcher';
 import {TERMS_VERSION,cleanGuidelineList,type AdminTemplate,type StudioUser} from '../contracts';
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});
 const body=jsonBody;
-const generationPublic=(g:Row)=>({id:g.id,templateName:g.template_name,templateSlug:g.template_slug,thumbnail:g.thumbnail,status:g.status,creditCost:g.credit_cost,creditStatus:g.credit_status??null,createdAt:g.created_at,startedAt:g.started_at,completedAt:g.completed_at,error:g.error,assetId:g.asset_id});
+const generationPublic=(g:Row)=>({id:g.id,templateName:g.template_name,templateSlug:g.template_slug,thumbnail:g.thumbnail,status:g.status,creditCost:g.credit_cost,creditStatus:g.credit_status??null,createdAt:g.created_at,startedAt:g.started_at,completedAt:g.completed_at,error:g.error,assetId:g.asset_id,isRedo:!!g.report_id});
 async function generationsFor(userId:string,url:URL,id?:string){
  const {page,limit,offset}=pageQuery(url,24),status=url.searchParams.get('status')||'all';
  const conditions=['g.user_id=?','g.deleted_at IS NULL'],args:unknown[]=[userId];
@@ -33,9 +34,11 @@ async function generationsFor(userId:string,url:URL,id?:string){
  if(id)must(rows.length,'Creation not found.',404);
  // Counted independently of the status filter so the client knows whether to keep polling.
  const active=await one("SELECT COUNT(*) AS total FROM generations WHERE user_id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing')",userId);
- return {generations:rows.map(generationPublic),activeCount:active?.total||0,pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
+ const reportsMap=await reportsForGenerations(rows.map(g=>g.id as string));
+ const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);return {...generationPublic(g),report:r?publicReport(r):null};});
+ return {generations,activeCount:active?.total||0,pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
 }
-async function deleteAccount(user:StudioUser){must(user.role!=='admin','An administrator cannot delete their own account here.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);
+async function deleteAccount(user:StudioUser){must(user.role!=='admin','An administrator cannot delete their own account here.',409);must(!await userHasOpenReport(user.id),'A video is under review. Please wait until the report is resolved before deleting the account.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);
  // Records go first, so a failed file removal leaves an unreferenced file rather than a record pointing at nothing.
  for(const o of objects)await storage.delete(o.storage_key).catch(e=>console.error('Account file removal needs a retry',o.storage_key,e instanceof Error?e.message:'unknown'));}
 
@@ -127,7 +130,7 @@ export async function handleAPI(req:Request){try{
    const id=uid('up_');const key=`uploads/${user.id}/${id}`;await storage.put(key,clean.bytes,mime);try{await run('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,created_at) VALUES (?,?,?,?,?,?,?)',id,user.id,key,mime,clean.bytes.length,file.name.slice(0,120),now());}catch(e){await storage.delete(key);throw e}await event('upload_completed',user.id,{uploadId:id});return json({id,url:'/api/media/'+id,mime,name:file.name},201);
   }
   if(method==='GET')return json({uploads:await all('SELECT id,name,mime,size,created_at FROM user_uploads WHERE user_id=? ORDER BY created_at DESC LIMIT 250',user.id)});
-  if(method==='DELETE'){const a=await one('SELECT * FROM user_uploads WHERE id=? AND user_id=?',p[1],user.id);must(a,'Upload not found.',404);const jobs=await all("SELECT input_ids FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL",user.id);must(!jobs.some(g=>parse<string[]>(g.input_ids,[]).includes(a.id)),'This photo is used by a pending generation. Delete or finish that creation first.',409);await storage.delete(a.storage_key);await run('DELETE FROM user_uploads WHERE id=?',a.id);return json({ok:true});}
+  if(method==='DELETE'){const a=await one('SELECT * FROM user_uploads WHERE id=? AND user_id=?',p[1],user.id);must(a,'Upload not found.',404);const jobs=await all("SELECT input_ids FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL",user.id);must(!jobs.some(g=>parse<string[]>(g.input_ids,[]).includes(a.id)),'This photo is used by a pending generation. Delete or finish that creation first.',409);must(!(await uploadsLockedByReport(user.id)).has(a.id),'This photo is part of a video under review. You can delete it once the report is resolved.',409);await storage.delete(a.storage_key);await run('DELETE FROM user_uploads WHERE id=?',a.id);return json({ok:true});}
  }
  if(p[0]==='favorites'){
   if(method==='GET')return json({ids:(await all('SELECT template_id FROM favorites WHERE user_id=?',user.id)).map(f=>f.template_id)});
@@ -136,7 +139,8 @@ export async function handleAPI(req:Request){try{
  if(p[0]==='generations'){
   if(method==='POST'&&!p[1]){await rateLimit('generate:'+user.id,30,3600000);return json(await startGeneration(user,await body(req)),201);}
   if(method==='GET')return json(await generationsFor(user.id,url,p[1]));
-  if(method==='DELETE'){await removeGeneration(p[1],user.id);return json({ok:true});}
+  if(method==='POST'&&p[2]==='report'){return json(await createReport(user,p[1],await body(req)),201);}
+  if(method==='DELETE'){must(!await hasOpenReport(p[1]),'This creation is under review. You can delete it once the report is resolved.',409);await removeGeneration(p[1],user.id);return json({ok:true});}
   if(method==='POST'&&p[2]==='share'){const a=await one("SELECT a.id FROM generated_assets a JOIN generations g ON g.id=a.generation_id WHERE g.id=? AND g.user_id=? AND g.deleted_at IS NULL AND g.status='completed' AND a.kind='output'",p[1],user.id);must(a,'Completed creation not found.',404);return json({url:await mediaUrl(a.id,now()+23*3600000)});}
  }
  if(p.join('/')==='queue/tick'&&method==='POST'){await rateLimit('tick:'+user.id,50);await tickQueue(user.id);return json({ok:true});}
@@ -197,6 +201,11 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
    const t={...b,id:existing?.id||uid('tpl_'),createdAt:existing?.createdAt||now()} as AdminTemplate;await batch(templateStatements(t,!!existing));await audit(user.id,existing?'template.update':'template.create',t.id);if(existing){const kept=new Set(templateMediaUrls(t));await releaseTemplateMedia(templateMediaUrls(existing).filter(u=>!kept.has(u)));}return json({template:t},existing?200:201);
   }
   if(method==='DELETE'){const existing=await getAdminTemplate(p[2]);must(existing&&existing.id===p[2],'Template not found.',404);await run('DELETE FROM templates WHERE id=?',p[2]);await audit(user.id,'template.delete',p[2]);await releaseTemplateMedia(templateMediaUrls(existing));return json({ok:true});}
+ }
+ if(p[1]==='reports'){
+  if(method==='GET'&&!p[2])return json(await listReports(new URL(req.url)));
+  if(method==='GET'&&p[2]&&!p[3])return json(await reportDetail(p[2]));
+  if(method==='POST'&&p[2]&&p[3]==='resolve')return json(await resolveReport(user,p[2],await body(req)));
  }
  if(p[1]==='generations'){
   if(method==='GET'&&p[2]){const g=await one('SELECT g.*,u.email,h.status AS credit_status FROM generations g LEFT JOIN users u ON u.id=g.user_id LEFT JOIN credit_holds h ON h.id=g.hold_id WHERE g.id=?',p[2]);must(g,'Generation not found.',404);const steps=await all('SELECT * FROM generation_steps WHERE generation_id=? ORDER BY step_order',g.id);return json({generation:g,steps});}

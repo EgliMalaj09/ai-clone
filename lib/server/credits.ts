@@ -4,7 +4,7 @@
 import {all,batch,HttpError,must,now,one,run,stmt,uid} from './data';
 import {pageQuery} from './http';
 
-export type CreditKind='purchase'|'welcome'|'adjust'|'hold'|'capture'|'release'|'reversal';
+export type CreditKind='purchase'|'welcome'|'adjust'|'goodwill'|'hold'|'capture'|'release'|'reversal';
 export const available=(userId:string)=>`user:${userId}:available`;
 export const held=(userId:string)=>`user:${userId}:held`;
 export const SYSTEM={issued:'system:issued',promo:'system:promo',consumed:'system:consumed',refunded:'system:refunded'} as const;
@@ -67,7 +67,7 @@ export async function post(p:Posting):Promise<PostResult>{
 }
 
 /** Add credits to a user's available balance from a system account. */
-export function grant(o:{userId:string;amount:number;kind:'purchase'|'welcome'|'adjust';key:string;source:string;referenceType?:string;referenceId?:string;actorId?:string;reason?:string;extra?:Posting['extra']}){
+export function grant(o:{userId:string;amount:number;kind:'purchase'|'welcome'|'adjust'|'goodwill';key:string;source:string;referenceType?:string;referenceId?:string;actorId?:string;reason?:string;extra?:Posting['extra']}){
  must(Number.isSafeInteger(o.amount)&&o.amount>0,'Credit amount must be positive.');
  return post({...o,moves:[{account:o.source,amount:-o.amount},{account:available(o.userId),amount:o.amount}]});
 }
@@ -124,7 +124,7 @@ export async function creditHistory(userId:string,url:URL){
  return {transactions:rows,pagination:{page,limit,total,pages:Math.max(1,Math.ceil(total/limit))}};
 }
 
-const kinds=['purchase','welcome','adjust','hold','capture','release','reversal'];
+const kinds=['purchase','welcome','adjust','goodwill','hold','capture','release','reversal'];
 export async function creditLedger(url:URL){
  const {page,limit,offset}=pageQuery(url,50);
  const search=(url.searchParams.get('search')||'').trim().slice(0,150),kind=url.searchParams.get('kind')||'all';

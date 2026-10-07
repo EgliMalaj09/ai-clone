@@ -202,3 +202,32 @@
 .pg-dont li svg{color:#d23b3b;flex:none;margin-top:2px}
 .pg-tips{display:inline-flex;align-items:center;gap:4px;margin-top:12px;font-size:12px}
 @media(max-width:520px){.pg-columns{grid-template-columns:1fr}}
+
+/* C21 — report a problem (customer) and the admin reports queue */
+.redo-badge{display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;background:#eafaf0;color:#1a8a4a;font-size:11px;font-weight:700;vertical-align:middle}
+.report-status{font-size:13px;font-weight:600;margin:4px 0 0}
+.report-status.open{color:#b26a00}
+.report-status.approved{color:#1a8a4a}
+.report-status.rejected{color:#c0564a}
+.report-modal-overlay{position:fixed;inset:0;background:#0c0f17b0;display:flex;align-items:center;justify-content:center;padding:20px;z-index:60}
+.report-modal{background:#fff;border-radius:16px;padding:26px;max-width:440px;width:100%;box-shadow:0 24px 60px #0003}
+.report-modal h2{font-size:21px;margin-bottom:6px}
+.report-modal p{color:var(--subtle);font-size:14px;margin-bottom:16px}
+.report-modal select,.report-modal textarea{width:100%}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+.report-flag{display:flex;align-items:center;gap:9px;color:#b26a00}
+.report-flag-icon{color:#c0564a;margin-left:6px;vertical-align:middle}
+.report-detail{margin-top:22px}
+.report-evidence{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:14px 0}
+.report-evidence h3{font-size:14px;margin-bottom:8px}
+.report-evidence video{width:100%;border-radius:12px;background:#000;aspect-ratio:9/16;max-height:360px;object-fit:contain}
+.report-photos{display:flex;flex-wrap:wrap;gap:10px}
+.report-photos img{width:120px;height:120px;object-fit:cover;border-radius:10px;border:1px solid var(--line)}
+.report-meta{display:flex;flex-wrap:wrap;gap:26px;padding:14px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-bottom:14px}
+.report-meta .eyebrow{display:block;margin-bottom:3px}
+.report-comment{font-style:italic;color:#49505b;margin-bottom:14px}
+.report-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:10px}
+.report-action{border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.report-action h3{display:flex;align-items:center;gap:7px;font-size:14px}
+.report-action p{font-size:12px;color:var(--subtle);margin:0;flex:1}
+@media(max-width:760px){.report-evidence,.report-actions{grid-template-columns:1fr}}

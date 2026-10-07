@@ -55,7 +55,20 @@ export const generations=sqliteTable('generations',{
  leaseToken:text('lease_token'),leaseUntil:integer('lease_until').notNull().default(0),nextRunAt:integer('next_run_at').notNull().default(0),attempts:integer('attempts').notNull().default(0),error:text('error'),internalError:text('internal_error'),
  createdAt:integer('created_at').notNull(),startedAt:integer('started_at'),completedAt:integer('completed_at'),deletedAt:integer('deleted_at'),
  creditCost:integer('credit_cost').notNull().default(0),holdId:text('hold_id'),
+ // Set when this generation is a free goodwill redo started from a report (C21), linking it back to the case.
+ reportId:text('report_id'),
 },t=>[index('idx_generations_user_date').on(t.userId,t.createdAt),index('idx_generation_queue').on(t.status,t.nextRunAt,t.leaseUntil),index('idx_generations_thumbnail').on(t.thumbnail)]);
+// Customer reports on finished videos and the admin's decision (C21). One open report per video; a good photo earns one free redo.
+export const generationReports=sqliteTable('generation_reports',{
+ id:text('id').primaryKey(),generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),userId:text('user_id').references(()=>users.id,{onDelete:'set null'}),
+ reason:text('reason').notNull(),comment:text('comment').notNull().default(''),
+ status:text('status').notNull().default('open'),// open | approved | rejected
+ resolution:text('resolution'),// generation_problem | photo_unsuitable | other
+ guideline:text('guideline'),// which photo guideline was broken, for photo_unsuitable
+ adminReason:text('admin_reason'),// customer-visible reason, for other
+ redoGenerationId:text('redo_generation_id'),// the free redo started on approval
+ createdAt:integer('created_at').notNull(),resolvedAt:integer('resolved_at'),resolvedBy:text('resolved_by'),
+},t=>[index('idx_reports_status').on(t.status,t.createdAt),index('idx_reports_generation').on(t.generationId)]);
 export const generationSteps=sqliteTable('generation_steps',{
  id:text('id').primaryKey(),generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),stepOrder:integer('step_order').notNull(),type:text('type').notNull(),provider:text('provider').notNull(),model:text('model').notNull(),status:text('status').notNull(),providerJobId:text('provider_job_id'),result:text('result'),error:text('error'),startedAt:integer('started_at').notNull(),completedAt:integer('completed_at'),
 },t=>[uniqueIndex('idx_generation_step_order').on(t.generationId,t.stepOrder)]);
