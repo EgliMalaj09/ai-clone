@@ -24,4 +24,15 @@ export const MINIMUM_AGE=13;
 export const categories=['All templates','Cinematic','Transformation','Action','Fashion','Couples','Fantasy','Social','Business','Travel','Anime','Sports','Lifestyle','Funny'];
 export const credits=(n:number)=>new Intl.NumberFormat('en-US').format(n)+' credit'+(n===1?'':'s');
 export const money=(amount:number,currency='USD')=>new Intl.NumberFormat('en-US',{style:'currency',currency}).format(amount/100);
+// Lowest price of one credit per currency (minor units, fractional), from the active packs. Lets guests see roughly what credits cost.
+export type CreditRef=Record<string,number>;
+/** Approximate real-money price of a credit cost, e.g. "≈ ALL 140". Uses lek when available, else euro; '' when unknown. */
+export const approxPrice=(creditCost:number,ref?:CreditRef)=>{
+ if(!ref||creditCost<=0)return '';
+ const currency=ref.ALL!==undefined?'ALL':ref.EUR!==undefined?'EUR':Object.keys(ref)[0];
+ if(!currency||!(ref[currency]>0))return '';
+ const raw=creditCost*ref[currency];// minor units
+ const step=currency==='ALL'?1000:10;// round to a tidy value: 10 lek, or 10 cents
+ return '≈ '+money(Math.max(step,Math.round(raw/step)*step),currency);
+};
 export const statusLabel=(s:string)=>({queued:'Queued',preparing:'Preparing',generating:'Generating',finalizing:'Finalizing',completed:'Completed',failed:'Failed',refused:'Refused',pending:'Pending',paid:'Paid',refunded:'Refunded',reversed:'Reversed',cancelled:'Cancelled',captured:'Spent',released:'Returned'}[s]??s);

@@ -4,7 +4,7 @@ import {headers} from 'next/headers';
 import {notFound} from 'next/navigation';
 import type {Metadata} from 'next';
 export const dynamic='force-dynamic';
-const titles:Record<string,string>={explore:'Explore templates',creations:'My creations',favorites:'Favorites',credits:'Credits',account:'Your account',login:'Sign in',register:'Create an account','forgot-password':'Forgot password','reset-password':'Choose a new password',verify:'Verify your email',privacy:'Privacy Policy',terms:'Terms of Service'};
+const titles:Record<string,string>={explore:'Explore templates',creations:'My creations',favorites:'Favorites',credits:'Credits',pricing:'Pricing',account:'Your account',login:'Sign in',register:'Create an account','forgot-password':'Forgot password','reset-password':'Choose a new password',verify:'Verify your email',privacy:'Privacy Policy',terms:'Terms of Service'};
 export async function generateMetadata({params}:{params:Promise<{path?:string[]}>}):Promise<Metadata>{
  const {path=[]}=await params;
  if(path[0]==='template'){
@@ -16,7 +16,7 @@ export async function generateMetadata({params}:{params:Promise<{path?:string[]}
 }
 export default async function Page({params,searchParams}:{params:Promise<{path?:string[]}>;searchParams:Promise<Record<string,string|undefined>>}){
  const {path=[]}=await params;const query=await searchParams;
- const single=['explore','creations','favorites','credits','account','login','register','forgot-password','reset-password','verify','privacy','terms'];
+ const single=['explore','creations','favorites','credits','pricing','account','login','register','forgot-password','reset-password','verify','privacy','terms'];
  const adminSections=['templates','media','generations','users','credit-packs','purchases','credits','providers','settings','operations','activity','connections'];
  const valid=!path.length||path.length===1&&single.includes(path[0])||path.length===2&&path[0]==='template'||path.length===3&&path[0]==='credits'&&path[1]==='checkout'||path[0]==='admin'&&(path.length===1||path.length===2&&adminSections.includes(path[1])||path.length===3&&['templates','users'].includes(path[1]));
  if(!valid)notFound();

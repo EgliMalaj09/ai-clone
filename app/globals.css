@@ -168,3 +168,25 @@
 .password-field>input{width:100%;padding-right:44px}
 .password-toggle{position:absolute;top:50%;right:6px;transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:34px;height:34px;border:none;background:transparent;color:#89919c;border-radius:8px}
 .password-toggle:hover{color:var(--ink)}
+
+/* C18 — public pricing page and approximate-price labels */
+.pricing-page{max-width:1080px;margin:0 auto;padding-bottom:40px}
+.pricing-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:8px 0 26px}
+.pricing-card{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:24px 20px;border:1px solid var(--line);border-radius:16px;background:#fff}
+.pricing-card.featured{border-color:var(--blue);box-shadow:0 10px 30px #3154f518}
+.pricing-flag{position:absolute;top:-11px;left:20px;background:var(--blue);color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:4px 10px;border-radius:999px}
+.pricing-card h2{font-size:18px;margin-top:4px}
+.pricing-amount{font-size:30px;font-weight:800;letter-spacing:-.04em}
+.pricing-credits{font-size:15px;font-weight:600;color:var(--ink)}
+.pricing-unit{font-size:12px;color:var(--subtle)}
+.pricing-card .button{margin-top:10px}
+.pricing-note{font-size:13px;color:var(--subtle);margin:0 0 22px}
+.pricing-perks{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.pricing-perks>div{display:flex;gap:12px;align-items:flex-start}
+.pricing-perks strong{display:block;margin-bottom:3px}
+.pricing-perks p{font-size:13px;color:var(--subtle)}
+.approx{font-style:normal;color:var(--subtle)}
+.card-approx{display:block;font-style:normal;font-size:12px;font-weight:500;color:var(--subtle);letter-spacing:0}
+.price-approx{font-size:14px;color:var(--subtle);font-weight:600}
+@media(max-width:860px){.pricing-grid{grid-template-columns:repeat(2,1fr)}.pricing-perks{grid-template-columns:1fr}}
+@media(max-width:520px){.pricing-grid{grid-template-columns:1fr}}

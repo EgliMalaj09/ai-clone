@@ -11,6 +11,24 @@ import {api,useAPI,ErrorBox,Busy,Loading,Empty,Confirm,Field,Pick,date,AccountNa
 import {Checkbox} from '@/components/ui/checkbox';
 import type {StudioUser} from '@/lib/contracts';
 import {credits,money,statusLabel} from '@/lib/contracts';
+/** Public pricing page: shows the credit packs and prices to everyone, before sign-up (C18). */
+export function PricingPage({user,demo}:{user:StudioUser|null;demo:boolean}){
+ const packs=useAPI<{packages:CreditPackage[]}>('credit-packages');
+ const [currency,setCurrency]=useState('');
+ const list=packs.data?.packages??[];
+ const currencies=[...new Set(list.flatMap(p=>Object.keys(p.prices)))];
+ const shown=currency||currencies[0]||'';
+ const sellable=list.filter(p=>p.prices[shown]);
+ const best=sellable.reduce((b,p)=>!b||p.prices[shown]/p.totalCredits<b.prices[shown]/b.totalCredits?p:b,null as CreditPackage|null);
+ const buyHref=user?'/credits':'/register?next='+encodeURIComponent('/credits');
+ return <div className="pricing-page"><div className="page-heading"><div><span className="eyebrow">SIMPLE, CREDIT-BASED PRICING</span><h1>Buy credits, create anytime.</h1><p>Credits pay for the videos you make. They never expire, and a failed video always returns its credits. No subscription.</p></div>{currencies.length>1&&<div style={{maxWidth:170}}><Pick label="Currency" value={shown} onChange={setCurrency} options={currencies}/></div>}</div>
+  {packs.loading?<Loading rows={1}/>:!sellable.length?<section className="panel"><p>Credit packs open soon. Check back shortly.</p></section>:<>
+   <div className="pricing-grid">{sellable.map(p=><div key={p.id} className={'pricing-card'+(best&&p.id===best.id?' featured':'')}>{best&&p.id===best.id&&<span className="pricing-flag">Best value</span>}<h2>{p.name}</h2><div className="pricing-amount">{money(p.prices[shown],shown)}</div><div className="pricing-credits">{credits(p.totalCredits)}</div>{p.bonusCredits>0&&<span className="pack-bonus">Includes {credits(p.bonusCredits)} bonus</span>}<span className="pricing-unit">{money(Math.round(p.prices[shown]/p.totalCredits*100)/100,shown)} per credit</span><a className={'button '+(best&&p.id===best.id?'primary':'secondary')+' full'} href={buyHref}>{user?'Buy '+p.name:'Get started'}<ArrowRight size={16}/></a></div>)}</div>
+   <p className="pricing-note">Each template shows its credit cost before you create. Prices shown in {shown}{currencies.includes('ALL')&&currencies.includes('EUR')?' — switch currency above':''}.</p>
+   <section className="panel pricing-perks"><div><Sparkles size={20}/><div><strong>{user?'Welcome credits':'10 free credits to start'}</strong><p>New accounts get 10 credits after verifying their email — enough to try a creation before you buy.</p></div></div><div><ShieldCheck size={20}/><div><strong>Only pay for results</strong><p>Credits are charged when your video is delivered. If a video fails, its credits come straight back.</p></div></div></section>
+   {!user&&<div className="closing-cta"><Sparkles/><h2>Ready to create?</h2><a href="/register" className="button primary">Create your account <ArrowRight size={18}/></a></div>}
+   {demo&&<p className="demo-note"><strong>Demo studio.</strong> The test checkout never charges a card.</p>}</>}</div>;
+}
 export function Creations({demo,user}:{demo:boolean;user:StudioUser|null}){
  const [filter,setFilter]=useState('all'),[page,setPage]=useState(1);const {data,error,loading,refresh}=useAPI<CreationsPage>('generations?'+new URLSearchParams({status:filter,page:String(page),limit:'24'}));
  // Poll only while work is in progress and the tab is visible, backing off while nothing changes.
