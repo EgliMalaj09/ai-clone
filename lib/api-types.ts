@@ -1,5 +1,5 @@
 // Response shapes of the JSON API as the browser receives them. Database rows keep their snake_case column names.
-import type {AdminTemplate,PublicTemplate} from './contracts';
+import type {AdminTemplate,PublicTemplate,PhotoGuidelines} from './contracts';
 
 export type Pagination={page:number;limit:number;total:number;pages:number};
 
@@ -41,7 +41,7 @@ export type AdminGeneration={id:string;user_id:string|null;template_name:string;
 export type GenerationStep={id:string;step_order:number;type:string;provider:string;model:string;status:string;error:string|null};
 export type AdminUser={id:string;email:string;name:string;role:string;status:string;content_strikes:number;blocked_at:number|null;email_verified:number;created_at:number;generation_count:number;purchase_count:number;credits:number;spending:{currency:string;amount:number}[]};
 export type Provider={id:string;name:string;enabled:number;configured:boolean};
-export type StudioSettings={welcomeCredits:number;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean;dispatcher:{at:number|null;source:'cron'|'external'|null;fresh:boolean}};
+export type StudioSettings={welcomeCredits:number;photoGuidelines:PhotoGuidelines;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean;dispatcher:{at:number|null;source:'cron'|'external'|null;fresh:boolean}};
 export type TemplateResult={template:AdminTemplate};
 export type AdminUserDetail={
  user:{id:string;name:string;email:string;role:string;status:string;email_verified:boolean;created_at:number;content_strikes:number;blocked_at:number|null};

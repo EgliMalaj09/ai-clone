@@ -190,3 +190,15 @@
 .price-approx{font-size:14px;color:var(--subtle);font-weight:600}
 @media(max-width:860px){.pricing-grid{grid-template-columns:repeat(2,1fr)}.pricing-perks{grid-template-columns:1fr}}
 @media(max-width:520px){.pricing-grid{grid-template-columns:1fr}}
+
+/* C31 — photo guidelines card in the upload area */
+.photo-guidelines{border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:4px 0 18px;background:#fbfbfd}
+.pg-head{display:flex;align-items:center;gap:8px;color:var(--ink);font-weight:600;margin-bottom:6px}
+.pg-count{font-size:13px;color:var(--subtle);margin:0 0 12px}
+.pg-columns{display:grid;grid-template-columns:1fr 1fr;gap:10px 22px}
+.pg-do,.pg-dont{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.pg-do li,.pg-dont li{display:flex;align-items:flex-start;gap:7px;font-size:13px;line-height:1.4;color:#49505b}
+.pg-do li svg{color:#1a8a4a;flex:none;margin-top:2px}
+.pg-dont li svg{color:#d23b3b;flex:none;margin-top:2px}
+.pg-tips{display:inline-flex;align-items:center;gap:4px;margin-top:12px;font-size:12px}
+@media(max-width:520px){.pg-columns{grid-template-columns:1fr}}

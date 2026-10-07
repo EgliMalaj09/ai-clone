@@ -9,14 +9,14 @@ import {deleteTemplateMedia,listTemplateMedia,releaseTemplateMedia,templateMedia
 import {queryCatalog} from './catalog-query';
 import {validateTemplateMedia} from './validation';
 import {operationsSummary,adminActivity,accountSecurity,adminRecords} from './operations';
-import {all,audit,batch,config,ensureSeed,event,getAdminTemplate,HttpError,must,now,one,parse,publicTemplate,run,stmt,templateStatements,uid,type Row} from './data';
+import {all,audit,batch,config,ensureSeed,event,getAdminTemplate,HttpError,must,now,one,parse,photoGuidelines,publicTemplate,run,stmt,templateStatements,uid,type Row} from './data';
 import {authSchema,registerSchema,generationSchema,templateSchema} from './validation';
 import {checkPassword,clearCookie,constantEqual,getUser,hash,makeAuthToken,passwordHash,protectOrigin,rateLimit,requireUser,safeUser,sendAuthMail,sessionCookie} from './security';
 import {imageMime,mediaUrl,storage,validSignature} from './storage';
 import {pokWebhook} from './payments';
 import {removeGeneration,tickQueue} from './queue';
 import {dispatcherStatus,recordDispatch} from './dispatcher';
-import {TERMS_VERSION,type AdminTemplate,type StudioUser} from '../contracts';
+import {TERMS_VERSION,cleanGuidelineList,type AdminTemplate,type StudioUser} from '../contracts';
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});
 const body=jsonBody;
@@ -249,9 +249,10 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='PATCH'){const b=await body(req);const enabled=z.boolean().parse(b.enabled);must(['mock','higgsfield','fal','replicate'].includes(p[2]),'Unknown provider.');await run('UPDATE provider_configurations SET enabled=?,updated_at=? WHERE id=?',Number(enabled),now(),p[2]);await audit(user.id,'provider.update',p[2]);return json({ok:true});}
  }
  if(p[1]==='settings'){
-  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus()});}
-  if(method==='PATCH'){const b=z.object({welcomeCredits:z.number().int().min(0).max(100000)}).parse(await body(req));
-   await run("INSERT INTO app_settings (key,value) VALUES ('welcome_credits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(b.welcomeCredits));await audit(user.id,'settings.update','welcome_credits');
+  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),photoGuidelines:await photoGuidelines(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus()});}
+  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({welcomeCredits:z.number().int().min(0).max(100000).optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional()}).parse(await body(req));
+   if(b.welcomeCredits!==undefined){await run("INSERT INTO app_settings (key,value) VALUES ('welcome_credits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(b.welcomeCredits));await audit(user.id,'settings.update','welcome_credits');}
+   if(b.photoGuidelines){const value={do:cleanGuidelineList(b.photoGuidelines.do),dont:cleanGuidelineList(b.photoGuidelines.dont)};must(value.do.length&&value.dont.length,'Add at least one “do” and one “don’t” guideline.');await run("INSERT INTO app_settings (key,value) VALUES ('photo_guidelines',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(value));await audit(user.id,'settings.update','photo_guidelines');}
    return json({ok:true});}
  }
  throw new HttpError(404,'Admin action not found.');
