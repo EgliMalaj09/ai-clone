@@ -6,10 +6,21 @@ import {settleHold} from './credits';
 import {demoVideos} from './demo-assets';
 import {sweepTemplateMedia} from './template-media';
 import {sweepPendingPurchases} from './credit-purchases';
+import {serviceConfig} from './connections';
+import {generationMailContent,type GenerationMailKind} from './email-templates';
+import {sendMail} from './security';
 
 const extensions:Record<string,string>={'video/mp4':'mp4','video/webm':'webm','image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
 
 const active=['queued','preparing','generating','finalizing'];
+/** Best-effort email when a creation finishes (C11.2); a mail problem never affects the creation or its credits. */
+async function notifyFinished(g:Row,kind:GenerationMailKind){
+ try{
+  const u=g.user_id?await one('SELECT email FROM users WHERE id=?',g.user_id):null;if(!u?.email)return;
+  const c=await serviceConfig();
+  await sendMail(u.email as string,generationMailContent(kind,{brand:c.brandName,templateName:g.template_name as string,credits:Number(g.credit_cost||0),link:c.origin+'/creations',supportEmail:c.mailFrom}),`generation-${kind}-${g.id}-${g.hold_id||''}`);
+ }catch(e){console.error('Creation email needs review',g.id,e instanceof Error?e.message:'unknown');}
+}
 export async function failGeneration(g:Row,error:string){
  const result=await run("UPDATE generations SET status='failed',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",'Your video could not be completed. Your credits were returned.',error.slice(0,2000),now(),g.id,g.lease_token);
  if(!result.meta.changes)return;
@@ -17,6 +28,7 @@ export async function failGeneration(g:Row,error:string){
  await event('generation_failed',g.user_id,{generationId:g.id});
  // A failed generation always returns its credits.
  if(g.hold_id)await settleHold(g.hold_id,'release').catch(()=>console.error('Credit release needs review; the hold sweep will retry',g.id));
+ await notifyFinished(g,'failed');
 }
 export const STRIKE_LIMIT=3;
 /** The AI provider refused the content: the video ends as "refused", its credits return, and the account gets a strike.
@@ -27,6 +39,7 @@ export async function refuseGeneration(g:Row,reason:string){
  await run("UPDATE generation_steps SET status='failed',error=? WHERE generation_id=? AND status NOT IN ('completed','cancelled')",reason.slice(0,2000),g.id);
  if(g.hold_id)await settleHold(g.hold_id,'release').catch(()=>console.error('Credit release needs review; the hold sweep will retry',g.id));
  await event('generation_refused',g.user_id,{generationId:g.id});
+ await notifyFinished(g,'refused');
  if(!g.user_id)return;
  const strikes=await one('UPDATE users SET content_strikes=content_strikes+1,blocked_at=CASE WHEN blocked_at IS NULL AND content_strikes+1>=? THEN ? ELSE blocked_at END WHERE id=? RETURNING content_strikes,blocked_at',STRIKE_LIMIT,now(),g.user_id);
  if(strikes&&Number(strikes.content_strikes)===STRIKE_LIMIT)await run('INSERT INTO audit_logs (id,user_id,action,target_id,created_at) VALUES (?,NULL,?,?,?)',uid(),'user.blocked',g.user_id,now());
@@ -43,7 +56,7 @@ export async function tickGeneration(id:string){
    const asset=await one("SELECT id FROM generated_assets WHERE generation_id=? ORDER BY created_at DESC LIMIT 1",id);must(asset,'No output asset was saved.');
    const completed=await run("UPDATE generations SET status='completed',completed_at=?,error=NULL WHERE id=? AND lease_token=? AND status='finalizing' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=? AND h.status='pending')",now(),id,token,g.hold_id);
    // Delivered: charge the reserved credits. If this is interrupted, the hold sweep captures it.
-   if(completed.meta.changes){await settleHold(g.hold_id,'capture').catch(()=>console.error('Credit capture needs review; the hold sweep will retry',id));await event('generation_completed',g.user_id,{generationId:id});}return;
+   if(completed.meta.changes){await settleHold(g.hold_id,'capture').catch(()=>console.error('Credit capture needs review; the hold sweep will retry',id));await event('generation_completed',g.user_id,{generationId:id});await notifyFinished(g,'ready');}return;
   }
   const step=steps[i];must(step,'Workflow has no executable step.');const p=providerFor(step.provider);const stepId=id+'_'+i;const record=await one('SELECT * FROM generation_steps WHERE id=?',stepId);
   if(record?.status==='completed'){await run("UPDATE generations SET current_step=current_step+1,status=?,next_run_at=? WHERE id=? AND lease_token=?",i+1>=steps.length?'finalizing':'preparing',now()+500,id,token);return;}

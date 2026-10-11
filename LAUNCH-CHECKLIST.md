@@ -106,7 +106,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C6.5 Already fixed: resend returns "already verified" for verified accounts (F13); `/reset-password` and `/verify` without a link show a clear "incomplete link" message with a way to request a new one (F14).
 - [ ] **C11 🟡 Other emails customers expect.**
   - [ ] C11.1 Receipt email after a credit purchase (skip if POK already sends one; check during T2).
-  - [ ] C11.2 "Your video is ready" and "Your video failed, credits returned" emails.
+  - [x] C11.2 "Your video is ready" and "Your video failed, credits returned" emails. ✅ Branded HTML + plain-text emails sent by the queue when a creation is delivered ("Watch my video") or fails/is refused (credits returned, amount shown). Best-effort and idempotent per attempt. English for now (Albanian with C10).
 - [ ] **C7 🟡 Error tracking (L10).** Send Worker errors to a tracker (e.g. Sentry) and log provider and webhook failures with the generation or purchase ID.
 - [x] **C8 🟡 Analytics (F9).** ✅ Page and template views are now recorded for guests too (the analytics endpoint moved to the public section with an IP rate limit; home/explore and template pages fire views regardless of sign-in), so the dashboard funnel includes anonymous visitors.
 - [x] **C9 🟡 Catalog scale (F7).** Paginate the storefront instead of loading all templates at once, so the catalog can grow after launch without code changes. ✅ The server renders the first 24 templates for the current filters; filter changes and "Show more templates" load further pages from `/api/templates`. Search also matches category names. Favorites stay a personal list.
@@ -365,6 +365,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C11.2 | Done | Creation finished emails: ready / failed / refused (credits returned), sent best-effort from the queue with one idempotency key per attempt; shared branded notice layout reused by report emails. 3 production checks |
 | 2026-10-12 | C9 (F7) | Done | Storefront paged on the server: first page (24) rendered with the page for the URL filters, filter changes refetch page 1, Show more appends pages; hero is its own top-3 query; favorites load only saved templates. 3 integration checks |
 | 2026-10-12 | C25, C30, X1, X2 | Moved | New pre-live phase (4B) at the end: C25 SEO basics become X1 Enhanced SEO (with P6), C30 branding becomes X2 Branding |
 | 2026-10-12 | C4.4 (F12) | Done | Audit re-run: next 16.3.8 + overrides for image-size/brace-expansion/fast-uri/sharp/source-map-js; 19 → 1 advisory (braces in lint/build tooling, no fix published). docs/SECURITY.md and dependency-audit.json updated |

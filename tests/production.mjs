@@ -101,6 +101,16 @@ try{
   ok('Public template payload excludes private prompt, workflow, cost and keys',!catalog.text.includes(template.hiddenPrompt)&&!catalog.text.includes('workflow')&&!catalog.text.includes('estimatedCost')&&Object.values(keys).every(k=>!catalog.text.includes(k)));
   const download=await mf.dispatchFetch(env.APP_ORIGIN+'/api/media/'+generation.assetId+'?download=1',{headers:{cookie:admin}});
   ok('Provider result is downloadable from private storage',download.status===200&&download.headers.get('content-disposition').includes('attachment')&&(await download.arrayBuffer()).byteLength===video.length);
+  // C11.2: the customer is emailed when a creation is delivered, and when one fails with its credits returned.
+  const readyMail=mails.find(m=>m.subject?.includes('is ready'));
+  ok('A delivered video sends a "your video is ready" email',readyMail&&readyMail.to===env.ADMIN_EMAIL&&readyMail.html.includes('/creations')&&readyMail.text.includes(template.name));
+  higgsfield.outcome('kling-video/v3.0-turbo/image-to-video','failed');
+  const failing=(await request('/api/generations',{method:'POST',cookie:admin,data:{...creation,idempotencyKey:randomUUID()},expected:201})).body;let failed;
+  const failUntil=Date.now()+30000;while(Date.now()<failUntil){await request('/api/queue/tick',{method:'POST',cookie:admin,data:{},expected:null});failed=(await request('/api/generations/'+failing.generationId,{cookie:admin})).body.generations[0];if(['completed','failed'].includes(failed.status))break;await new Promise(r=>setTimeout(r,700));}
+  higgsfield.outcome('kling-video/v3.0-turbo/image-to-video','completed');
+  const failMail=mails.find(m=>m.subject?.includes('could not be completed'));
+  ok('A failed video sends a "credits returned" email',failed.status==='failed'&&failMail&&failMail.text.includes('returned to your balance')&&failMail.text.includes(String(template.creditCost)));
+  ok('Only one email per finished creation',mails.filter(m=>m.subject?.includes('is ready')).length===1&&mails.filter(m=>m.subject?.includes('could not be completed')).length===1);
   const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
   await db.prepare("UPDATE credit_purchases SET provider='mock',status='pending' WHERE id=?").bind(stale.purchaseId).run();
   await request('/api/credits/purchases/'+stale.purchaseId+'/retry',{method:'POST',cookie:admin,data:{},expected:403});ok('A test purchase cannot reopen checkout after a production switch');
