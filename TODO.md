@@ -62,7 +62,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
   - The dev middleware `/__qa/responsive` in `vite.config.ts:59` is still there, although `docs/QA.md` says it was removed.
   - `app/chatgpt-auth.ts` is unused.
   - The CSP `frame-ancestors` in `worker.ts:13` allows `chatgpt.com`. Remove it unless the app is meant to be embedded in ChatGPT.
-- [ ] **F12 — Retry the `image-size` dependency update.** `docs/SECURITY.md` says it could be retried after 21 Sept 2026, and that date has passed. Run the audit again.
+- [x] **F12** — ✅ Done (C4.4, 12 Oct 2026): image-size 2.0.3+ via override, next 16.3.8; only `braces` (build tooling, no fix released) remains.
 
 ### Low priority
 - [x] **F13** — ✅ Fixed (C6.5): `/api/auth/resend` returns "already verified" without sending when the email is already verified.

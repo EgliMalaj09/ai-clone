@@ -90,7 +90,7 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] C4.1 Admin MFA (L5), e.g. TOTP for the admin account.
   - [x] C4.2 ✅ passwordHash embeds the iteration count and checkPassword reads it from the stored hash, so iterations can be raised later without breaking existing logins (F16).
   - [x] C4.3 ✅ Removed `app/chatgpt-auth.ts` (dead) and `chatgpt.com` from the CSP; `/__qa/responsive` already gone.
-  - [ ] C4.4 Re-run the dependency audit and update `image-size` (F12).
+  - [x] C4.4 Re-run the dependency audit and update `image-size` (F12). ✅ next/eslint-config-next 16.3.8; overrides lift image-size ≥2.0.3, brace-expansion, fast-uri, sharp, source-map-js. Audit: 0 critical, 1 high (`braces`, build-tooling only, no patched release yet).
   - [x] C4.5 ✅ The "Studio admin" footer and mobile-menu links are gated to role==='admin' (F19).
   - [ ] C4.6 Run `/security-review` on the final branch.
 - [x] **C5 🟡 Reliability fixes.** ✅
@@ -344,6 +344,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C4.4 (F12) | Done | Audit re-run: next 16.3.8 + overrides for image-size/brace-expansion/fast-uri/sharp/source-map-js; 19 → 1 advisory (braces in lint/build tooling, no fix published). docs/SECURITY.md and dependency-audit.json updated |
 | 2026-10-11 | C8 | Done | Anonymous page/template views recorded: analytics endpoint moved to the public route section (optional user, IP rate limit); client fires homepage_view on home/explore and template_view on template pages for guests too. 1 integration check |
 | 2026-10-11 | C4.2, C5, C28 | Done | PBKDF2 iteration count now stored in and read from the hash (F16); pager hidden on empty/single-page lists (C28). Verified F15/F17/F18/F19 were already fixed (image extensions, deletion order, user count, admin-only footer link). 3 integration checks added |
 | 2026-10-11 | C19 | Done | Exchange-rate settings (USD→EUR/ALL, defaults 0.92 / 85, admin-editable); AI costs converted into the selling currency for dashboard financials, profitable templates and the admin template margin column; dashboard defaults to EUR, no USD column. lib/server/rates.ts. 4 integration checks; security financials assertion updated |
