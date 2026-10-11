@@ -150,7 +150,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C21.6 ✅ While a report is open, the reported video, its photos, and the account can't be deleted.
   - [x] C21.7 ✅ Branded email to the customer on approve/reject (best-effort; sends when email is configured).
   - [x] C21.8 ✅ Queue flags customers with 4+ reports; a free redo can itself be reported and re-decided.
-  - [~] C21.9 Policy added to the Terms ("Reporting a bad result"). FAQ page is C26 (not built yet).
+  - [x] C21.9 ✅ Policy in the Terms ("Reporting a bad result") and in the FAQ (C26).
 - [~] **C31 🔴 Photo guidelines in the upload section.** Core done: guidelines card + required checkbox in the upload area (C31.1, C31.3), editable studio-wide in admin (C31.4). Remaining: side-by-side example photos (C31.2) and per-template custom text + Albanian (C31.4).
   - [x] C31.1 ✅ Photo guidelines card in every template's upload area (before uploading): a photo-count line driven by the template's required photos, plus ✓ do / ✕ don't lists.
   - [~] C31.2 Do/don't guidance shown as a clear ✓/✕ two-column card. Side-by-side **example photos** still to add (needs real example images, like P4).
@@ -162,7 +162,10 @@ These come first, because the code and infrastructure work depends on them.
 - [ ] **C24 🟡 Marketing tracking (from D15).** Meta and/or TikTok pixel plus server-side conversion events for sign-up and purchase, UTM campaign capture at sign-up, and a cookie consent banner (required once trackers are added).
 - [x] ~~**C25 🟡 SEO basics.**~~ Moved to **X1 Enhanced SEO** in the pre-live phase, done together at the end.
 - [x] **C26 🟡 Help pages.** A Contact/Support page and an FAQ (how it works, photo tips, credits, failed videos, privacy, deleting data), linked from the footer with your social accounts. ✅ `/faq` (grouped, expandable questions: how it works, photos, credits, failures, privacy, deleting data) and `/contact` (support email/phone/response time, business name, social links). Support details and social links are set in Admin → Settings; footer links Help & FAQ, Contact and the social accounts. See DECISIONS.md #1–2.
-- [ ] **C27 🟡 Template page details.** Photo tips with good and bad example photos, what the customer receives (length, resolution, format, any watermark), and related templates at the bottom.
+- [~] **C27 🟡 Template page details.** Photo tips with good and bad example photos, what the customer receives (length, resolution, format, any watermark), and related templates at the bottom.
+  - [x] C27.1 ✅ "What you receive" box: length, MP4 + resolution, format and where it fits (e.g. vertical for Stories/TikTok), no watermark, ready in minutes with an email.
+  - [x] C27.2 ✅ "You might also like": 4 related templates, same category first.
+  - [ ] C27.3 Good and bad **example photos** next to the photo tips (needs real example images, same as C31.2/P4).
 - [x] **C28 🟡 Polish.** ✅ The pager is hidden on empty and single-page lists (no more "0 results · Page 1 of 1" with buttons). Empty states already use the Empty component; broader copy review continues as pages change.
 - [ ] **C29 🟡 Accessibility and browsers.** Keyboard navigation, colour contrast and labels; video playback and uploads on iPhone Safari, Android Chrome and desktop Safari/Firefox/Edge.
 - [x] ~~**C30 🔴 Branding everywhere.**~~ Moved to **X2 Branding** in the pre-live phase.
@@ -367,6 +370,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C27.1, C27.2, C21.9 | Done | Template page: What you receive box and related templates (same category first). Example photos (C27.3) wait for real images. FAQ now covers the report/free-redo rule (C21.9). 1 integration check |
 | 2026-10-12 | C26 | Done | Help & FAQ and Contact pages, footer links, admin-editable support details and social links (validated https). 4 integration checks. New DECISIONS.md records choices made for soft-blocked items |
 | 2026-10-12 | C13.1 | Done | money() shows fractional amounts exactly instead of rounding (ALL whole amounts keep no decimals); ALL packs already limited to whole lek. C13.2 (POK minimums) waits on POK |
 | 2026-10-12 | C14 | Done | Account export adds signed 23-hour download links for every upload and generated file (grouped per creation), consents, refusal count and reports; Account page text updated. 2 integration checks |

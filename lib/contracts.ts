@@ -48,6 +48,8 @@ export const photoCountLine=(count:number)=>count>1?`Upload ${count} photos — 
 /** Keeps only non-empty, trimmed, length-capped lines; used for admin-edited guidelines. */
 export const cleanGuidelineList=(lines:string[],max=12)=>lines.map(l=>l.trim()).filter(Boolean).slice(0,max);
 export const categories=['All templates','Cinematic','Transformation','Action','Fashion','Couples','Fantasy','Social','Business','Travel','Anime','Sports','Lifestyle','Funny'];
+/** How a template's output is described to the customer (C27): orientation and where it fits. */
+export const formatLabel=(ratio:string)=>({'9:16':'Vertical 9:16 — Stories, Reels, TikTok','16:9':'Landscape 16:9 — YouTube, TV','1:1':'Square 1:1 — feed posts','4:5':'Portrait 4:5 — Instagram feed'} as Record<string,string>)[ratio]||ratio;
 export const credits=(n:number)=>new Intl.NumberFormat('en-US').format(n)+' credit'+(n===1?'':'s');
 /** Formats minor units exactly (C13): lek shows no decimals for whole amounts, but a fractional amount is never rounded away (299.50 stays 299.50). */
 export const money=(amount:number,currency='USD')=>{const whole=Number.isInteger(amount/100);return new Intl.NumberFormat('en-US',{style:'currency',currency,...(whole?{}:{minimumFractionDigits:2,maximumFractionDigits:2})}).format(amount/100);};
