@@ -27,7 +27,7 @@ import {langFromCookie,translate,type Lang} from '../i18n';
 const fieldMessages:Record<string,string>={email:'Enter a valid email address.',password:'Use a password with 10 to 128 characters.',newPassword:'Use a password with 10 to 128 characters.',name:'Enter a name with 2 to 80 characters.',acceptTerms:'Accept the Terms and Privacy Policy to continue.',confirmAge:'Confirm your age to continue.'};
 const zodDefault=/^(String must|Invalid|Required|Expected|Number must)/;
 const fieldMessage=(lang:Lang,path:string,message:string)=>fieldMessages[path]?translate(lang,zodDefault.test(message)?fieldMessages[path]:message):`${path}: ${message}`;
-import {TERMS_VERSION,cleanGuidelineList,type AdminTemplate,type StudioUser} from '../contracts';
+import {TERMS_VERSION,cleanGuidelineList,isStaff,type AdminTemplate,type StudioUser} from '../contracts';
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});
 const body=jsonBody;
@@ -48,7 +48,7 @@ async function generationsFor(userId:string,url:URL,id?:string){
  const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);return {...generationPublic(g),report:r?publicReport(r):null};});
  return {generations,activeCount:active?.total||0,pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
 }
-async function deleteAccount(user:StudioUser){must(user.role!=='admin','An administrator cannot delete their own account here.',409);must(!await userHasOpenReport(user.id),'A video is under review. Please wait until the report is resolved before deleting the account.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);
+async function deleteAccount(user:StudioUser){must(!isStaff(user.role),'A staff account cannot be deleted here. Ask an administrator to change its role first.',409);must(!await userHasOpenReport(user.id),'A video is under review. Please wait until the report is resolved before deleting the account.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);
  // Records go first, so a failed file removal leaves an unreferenced file rather than a record pointing at nothing.
  for(const o of objects)await storage.delete(o.storage_key).catch(e=>reportError('storage','Account file removal needs a retry',{error:e,context:{key:o.storage_key as string}}));}
 
@@ -127,7 +127,7 @@ export async function handleAPI(req:Request){try{
  }
  if(p[0]==='media'&&method==='GET'){
   const id=p[1];let a=await one('SELECT * FROM template_media WHERE id=?',id);const isPublic=!!a;if(!a)a=await one('SELECT * FROM user_uploads WHERE id=?',id);if(!a)a=await one('SELECT * FROM generated_assets WHERE id=?',id);must(a,'File not found.',404);
-  const user=await getUser(req.headers);const signed=await validSignature(id,url);must(isPublic||signed||user?.id===a.user_id||user?.role==='admin','You do not have access to this file.',403);
+  const user=await getUser(req.headers);const signed=await validSignature(id,url);must(isPublic||signed||user?.id===a.user_id||isStaff(user?.role),'You do not have access to this file.',403);
   const obj=await storage.get(a.storage_key,req.headers.get('range')||undefined);must(obj,'The file is unavailable.',404);const h=new Headers({'Content-Type':a.mime,'X-Content-Type-Options':'nosniff','Cache-Control':isPublic?'public,max-age=3600':'private,no-store','Accept-Ranges':'bytes','Referrer-Policy':'no-referrer'});obj.writeHttpMetadata(h);h.set('Content-Type',a.mime);if(url.searchParams.get('download')==='1'){h.set('Content-Disposition',`attachment; filename="project-studio-${id.slice(-10)}.${a.mime.startsWith('video')?'mp4':a.mime==='image/webp'?'webp':a.mime==='image/png'?'png':'jpg'}"`);if(user)await event('video_downloaded',user.id,{assetId:id});}
   if(req.headers.has('range')&&obj.range&&'offset' in obj.range){const offset=obj.range.offset||0;const length=obj.range.length||obj.size;h.set('Content-Range',`bytes ${offset}-${offset+length-1}/${obj.size}`);h.set('Content-Length',String(length));return new Response(obj.body,{status:206,headers:h});}h.set('Content-Length',String(obj.size));return new Response(obj.body,{headers:h});
  }
@@ -182,7 +182,19 @@ export async function handleAPI(req:Request){try{
 
 /** An https link to a social profile, or empty to hide it. */
 const socialLink=z.union([z.literal(''),z.string().trim().max(200).url().refine(u=>u.startsWith('https://'),'Social links must start with https://.')]);
+/** Support staff (V10) may look after customers: users, creations, reports and operations; never money, keys, settings or the catalog. */
+function supportMay(method:string,p:string[],url:URL){
+ if(p[1]==='users'){if(method==='GET')return true;if(method==='POST'&&p[3]==='reset-link')return true;return false;}
+ if(p[1]==='generations')return method==='GET'||method==='POST'&&p[3]==='retry';
+ if(p[1]==='reports')return true;
+ if(p[1]==='operations')return method==='GET'||p[2]==='dispatch';
+ return p[1]==='me'&&url.pathname.length>0;
+}
 async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req.method;
+ if(user.role==='support'){const u=new URL(req.url);let ok=supportMay(method,p,u);
+  // Support may also mark an email verified or unblock refusals, but not suspend, rename, change roles or delete.
+  if(!ok&&p[1]==='users'&&method==='PATCH'&&p[2]&&!p[3]){const b=((await req.clone().json().catch(()=>null))||{}) as Record<string,unknown>;ok=Object.keys(b).length>0&&Object.keys(b).every(k=>k==='emailVerified'||k==='unblock');}
+  must(ok,'This needs an administrator. Support accounts can help customers but cannot change money, keys, settings or templates.',403);}
  if(p[1]==='media'){if(method==='POST'&&!p[2])return json(await uploadTemplateMedia(req,user),201);if(method==='GET'&&!p[2])return json(await listTemplateMedia());if(method==='DELETE'&&p[2]){await deleteTemplateMedia(p[2],user);return json({ok:true});}}
  if(p[1]==='workflows'&&p[2]==='preset'&&method==='POST'){const b=z.object({name:z.string().min(2).max(100),slug:z.string().max(120),description:z.string().max(2000),requiredImageCount:z.number().int().min(1).max(4),aspectRatio:z.enum(['9:16','16:9','1:1','4:5']),duration:z.union([z.literal(5),z.literal(10)]),estimatedCost:z.number().int().min(0)}).parse(await body(req));return json(liveWorkflow(b));}
  if(p[1]==='connections'&&p.length===2){if(method==='GET')return json(await connectionStatus());if(method==='PATCH')return json(await updateConnections(req,user));}
@@ -277,9 +289,11 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   // V11: send the customer a password reset link (in their language); in the demo without email, the link is shown to the admin instead.
   if(method==='POST'&&p[3]==='reset-link'){await rateLimit('admin-reset:'+user.id,20,3600000);const target=await one('SELECT id,email,status,locale FROM users WHERE id=?',p[2]);must(target,'User not found.',404);must(target.status==='active','Reactivate the account before sending a reset link.',409);const c=await serviceConfig();const token=await makeAuthToken(target.id as string,'reset');await audit(user.id,'user.reset-link',target.id as string);if(c.mailKey&&c.mailFrom){await sendAuthMail(target.email as string,token,'reset',target.locale==='en'?'en':'sq');return json({sent:true});}must(c.demo,'Email delivery is not configured. Add it in Connections first.',503);return json({sent:false,url:`${c.origin}/reset-password?token=${token}`});}
   if(method==='GET'&&p[3]==='purchases'){must(await one('SELECT id FROM users WHERE id=?',p[2]),'User not found.',404);return json(await listPurchases(p[2],new URL(req.url)));}
-  if(method==='PATCH'){const b=z.object({status:z.enum(['active','suspended']).optional(),name:z.string().trim().min(2).max(80).optional(),emailVerified:z.literal(true).optional(),unblock:z.literal(true).optional()}).strict().parse(await body(req));
-   const target=await one('SELECT id,role,email_verified FROM users WHERE id=?',p[2]);must(target,'User not found.',404);must(b.status||b.name||b.emailVerified||b.unblock,'Choose something to change.');
-   if(b.status){must(target.role!=='admin','Administrator accounts cannot be suspended here.',409);await batch([stmt('UPDATE users SET status=? WHERE id=?',b.status,p[2]),...(b.status==='suspended'?[stmt('DELETE FROM sessions WHERE user_id=?',p[2])]:[])]);await audit(user.id,'user.'+b.status,p[2]);}
+  if(method==='PATCH'){const b=z.object({status:z.enum(['active','suspended']).optional(),name:z.string().trim().min(2).max(80).optional(),emailVerified:z.literal(true).optional(),unblock:z.literal(true).optional(),role:z.enum(['user','support','admin']).optional(),currentPassword:z.string().min(1).max(128).optional()}).strict().parse(await body(req));
+   const target=await one('SELECT id,role,email_verified FROM users WHERE id=?',p[2]);must(target,'User not found.',404);must(b.status||b.name||b.emailVerified||b.unblock||b.role,'Choose something to change.');
+   // V10: only an administrator changes roles, never their own, with their password, and the studio always keeps one administrator.
+   if(b.role&&b.role!==target.role){must(user.role==='admin','This needs an administrator.',403);must(target.id!==user.id,'You can’t change your own role.',409);const me=await one('SELECT password_hash FROM users WHERE id=?',user.id);must(b.currentPassword&&me&&await checkPassword(b.currentPassword,me.password_hash),'Your administrator password is incorrect.',403);if(target.role==='admin'){const others=await one("SELECT COUNT(*) AS n FROM users WHERE role='admin' AND status='active' AND id!=?",target.id);must(Number(others?.n||0)>0,'The studio needs at least one administrator.',409);}await batch([stmt('UPDATE users SET role=? WHERE id=?',b.role,target.id),stmt('DELETE FROM sessions WHERE user_id=?',target.id)]);await audit(user.id,'user.role-'+b.role,target.id as string);}
+   if(b.status){must(!isStaff(target.role as string),'Staff accounts cannot be suspended here. Change the role to customer first.',409);await batch([stmt('UPDATE users SET status=? WHERE id=?',b.status,p[2]),...(b.status==='suspended'?[stmt('DELETE FROM sessions WHERE user_id=?',p[2])]:[])]);await audit(user.id,'user.'+b.status,p[2]);}
    if(b.name){await run('UPDATE users SET name=? WHERE id=?',b.name,p[2]);await audit(user.id,'user.rename',p[2]);}
    // Unblocking also resets the refusal count, for photos the provider flagged by mistake.
    if(b.unblock){await run('UPDATE users SET content_strikes=0,blocked_at=NULL WHERE id=?',p[2]);await audit(user.id,'user.unblock',p[2]);}

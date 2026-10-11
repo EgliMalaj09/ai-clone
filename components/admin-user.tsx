@@ -9,30 +9,31 @@ import {Pager} from './admin-operations';
 import {AdjustCredits,ReversePurchase,kindLabel,signed} from './admin-credits';
 import {credits,money,statusLabel} from '@/lib/contracts';
 import type {AdminUserDetail,CreditHistory,CreditPurchase,Pagination} from '@/lib/api-types';
+import {isStaff,type StudioUser} from '@/lib/contracts';
 
 const megabytes=(bytes:number)=>(bytes/1048576).toFixed(1)+' MB';
-const actionLabel=(a:string)=>({'user.suspended':'Suspended','user.active':'Reactivated','user.rename':'Name changed','user.verify-email':'Email marked as verified','user.delete':'Deleted','credits.adjust':'Credits adjusted','credits.reverse-purchase':'Purchase reversed','user.blocked':'Blocked after 3 content refusals','user.unblock':'Unblocked (refusals reset)','user.reset-link':'Password reset link sent','account.2fa-enabled':'Two-step sign-in turned on','account.2fa-disabled':'Two-step sign-in turned off','account.password-changed':'Password changed','account.exported':'Downloaded their data'} as Record<string,string>)[a]||a;
+const actionLabel=(a:string)=>({'user.suspended':'Suspended','user.active':'Reactivated','user.rename':'Name changed','user.verify-email':'Email marked as verified','user.delete':'Deleted','credits.adjust':'Credits adjusted','credits.reverse-purchase':'Purchase reversed','user.blocked':'Blocked after 3 content refusals','user.unblock':'Unblocked (refusals reset)','user.reset-link':'Password reset link sent','account.2fa-enabled':'Two-step sign-in turned on','account.2fa-disabled':'Two-step sign-in turned off','account.password-changed':'Password changed','account.exported':'Downloaded their data','user.role-user':'Role set to customer','user.role-support':'Role set to support','user.role-admin':'Role set to administrator'} as Record<string,string>)[a]||a;
 
-export default function UserDetail({id}:{id:string}){
+export default function UserDetail({id,viewer}:{id:string;viewer?:StudioUser|null}){
  const {data,error,loading,refresh}=useAPI<AdminUserDetail>('admin/users/'+id);
  const [historyPage,setHistoryPage]=useState(1),[purchasePage,setPurchasePage]=useState(1);
  const history=useAPI<CreditHistory>(`admin/users/${id}/credits?page=${historyPage}`);
  const purchases=useAPI<{purchases:CreditPurchase[];pagination:Pagination}>(`admin/users/${id}/purchases?page=${purchasePage}`);
- const [name,setName]=useState<string|null>(null),[busy,setBusy]=useState(false);
+ const [name,setName]=useState<string|null>(null),[busy,setBusy]=useState(false),[role,setRole]=useState<string|null>(null),[rolePassword,setRolePassword]=useState('');const viewerIsAdmin=viewer?.role==='admin';
  if(loading||!data)return error?<ErrorBox message={error} retry={refresh}/>:<Loading/>;
- const {user}=data,isAdmin=user.role==='admin';
+ const {user}=data,isAdmin=isStaff(user.role);
  const reloadAll=()=>{void refresh();void history.refresh();void purchases.refresh();};
  async function update(change:Record<string,unknown>,done:string){setBusy(true);try{await api('admin/users/'+id,'PATCH',change);toast.success(done);setName(null);reloadAll()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
  return <>
   <a className="back-link" href="/admin/users"><ArrowLeft size={15}/>All customers</a>
   <div className="admin-heading"><div><span className="eyebrow">CUSTOMER</span><h1>{user.name}</h1><p>{user.email}</p>
-   <div className="badge-row"><span className={'status '+(user.status==='active'?'completed':'failed')}>{user.status==='active'?'Active':'Suspended'}</span><span className={'status '+(user.email_verified?'completed':'pending')}>{user.email_verified?'Email verified':'Email not verified'}</span>{isAdmin&&<span className="status pending">Administrator</span>}{user.two_factor&&<span className="status completed">Two-step sign-in on</span>}<span className="status">Emails in {user.locale==='en'?'English':'Albanian'}</span>{user.blocked_at?<span className="status blocked">Blocked: 3 content refusals</span>:user.content_strikes>0&&<span className="status pending">Content refusals: {user.content_strikes} of 3</span>}</div></div>
+   <div className="badge-row"><span className={'status '+(user.status==='active'?'completed':'failed')}>{user.status==='active'?'Active':'Suspended'}</span><span className={'status '+(user.email_verified?'completed':'pending')}>{user.email_verified?'Email verified':'Email not verified'}</span>{isAdmin&&<span className="status pending">{user.role==='support'?'Support':'Administrator'}</span>}{user.two_factor&&<span className="status completed">Two-step sign-in on</span>}<span className="status">Emails in {user.locale==='en'?'English':'Albanian'}</span>{user.blocked_at?<span className="status blocked">Blocked: 3 content refusals</span>:user.content_strikes>0&&<span className="status pending">Content refusals: {user.content_strikes} of 3</span>}</div></div>
    <div className="button-row">
     {(user.blocked_at||user.content_strikes>0)&&<button className="button secondary small" disabled={busy} onClick={()=>update({unblock:true},user.blocked_at?'Customer unblocked':'Refusals reset')}><RotateCcw size={16}/>{user.blocked_at?'Unblock':'Reset refusals'}</button>}
     {!user.email_verified&&<button className="button secondary small" disabled={busy} onClick={()=>update({emailVerified:true},'Email marked as verified')}><BadgeCheck size={16}/>Mark email verified</button>}
     {user.status==='active'&&<Confirm title={'Send '+user.name+' a password reset link?'} description="They get an email with a link that works for 30 minutes. Their current password keeps working until they choose a new one." onConfirm={async()=>{const r=await api<{sent:boolean;url?:string}>('admin/users/'+id+'/reset-link','POST',{});if(r.url){await navigator.clipboard?.writeText(r.url).catch(()=>{});toast.success('Demo studio: no email is sent. The reset link was copied: '+r.url)}else toast.success('Password reset link sent');reloadAll()}}><button className="button secondary small" disabled={busy}><KeyRound size={16}/>Send reset link</button></Confirm>}
-    {!isAdmin&&<button className="button secondary small" disabled={busy} onClick={()=>update({status:user.status==='active'?'suspended':'active'},user.status==='active'?'Customer suspended':'Customer reactivated')}>{user.status==='active'?<><Ban size={16}/>Suspend</>:<><RotateCcw size={16}/>Reactivate</>}</button>}
-    {!isAdmin&&<Confirm title={'Delete '+user.name+'?'} description="The account, its personal files and its credit balance will be permanently removed. Purchase and ledger records are kept without the account link." onConfirm={async()=>{await api('admin/users/'+id,'DELETE');toast.success('Customer deleted');window.location.assign('/admin/users')}}><button className="button danger-outline small"><Trash2 size={16}/>Delete</button></Confirm>}
+    {!isAdmin&&viewerIsAdmin&&<button className="button secondary small" disabled={busy} onClick={()=>update({status:user.status==='active'?'suspended':'active'},user.status==='active'?'Customer suspended':'Customer reactivated')}>{user.status==='active'?<><Ban size={16}/>Suspend</>:<><RotateCcw size={16}/>Reactivate</>}</button>}
+    {!isAdmin&&viewerIsAdmin&&<Confirm title={'Delete '+user.name+'?'} description="The account, its personal files and its credit balance will be permanently removed. Purchase and ledger records are kept without the account link." onConfirm={async()=>{await api('admin/users/'+id,'DELETE');toast.success('Customer deleted');window.location.assign('/admin/users')}}><button className="button danger-outline small"><Trash2 size={16}/>Delete</button></Confirm>}
    </div></div>
 
   <div className="metric-grid">
@@ -47,8 +48,12 @@ export default function UserDetail({id}:{id:string}){
     <form onSubmit={e=>{e.preventDefault();if(name!==null)void update({name},'Name updated')}}>
      <Field label="Name"><input value={name??user.name} minLength={2} maxLength={80} required onChange={e=>setName(e.target.value)}/></Field>
      <Field label="Email address" hint="The email address can't be changed here."><input value={user.email} readOnly/></Field>
-     <button className="button primary small" disabled={busy||name===null||name.trim()===user.name}>{busy?<Busy/>:'Save name'}</button>
+     <button className="button primary small" disabled={busy||!viewerIsAdmin||name===null||name.trim()===user.name}>{busy?<Busy/>:'Save name'}</button>
     </form>
+    {viewerIsAdmin&&viewer?.id!==user.id&&<form className="role-form" onSubmit={e=>{e.preventDefault();if(role&&role!==user.role)void update({role,currentPassword:rolePassword},'Role updated').then(()=>{setRole(null);setRolePassword('')})}}><h3>Role</h3><p className="panel-note">Support can look after customers (users, creations, reports, operations) but not money, keys, settings or templates. Administrators can do everything. Changing the role signs the account out.</p>
+     <Field label="Role"><select value={role??user.role} onChange={e=>setRole(e.target.value)}><option value="user">Customer</option><option value="support">Support</option><option value="admin">Administrator</option></select></Field>
+     {role&&role!==user.role&&<Field label="Your administrator password"><input type="password" autoComplete="current-password" required value={rolePassword} onChange={e=>setRolePassword(e.target.value)}/></Field>}
+     <button className="button secondary small" disabled={busy||!role||role===user.role||!rolePassword}>Change role</button></form>}
    </section>
    <section className="panel"><div className="panel-heading"><h2>Credits</h2><AdjustCredits userId={user.id} name={user.name} balance={data.balance.available} onDone={reloadAll}/></div>
     {history.loading?<Loading rows={2}/>:history.error||!history.data?<ErrorBox message={history.error} retry={history.refresh}/>:history.data.transactions.length?<Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Type</TableHead><TableHead>Change</TableHead><TableHead>Balance</TableHead><TableHead>Details</TableHead></TableRow></TableHeader><TableBody>{history.data.transactions.map(t=><TableRow key={t.id}>

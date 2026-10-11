@@ -25,6 +25,11 @@ export type AdminTemplate = PublicTemplate & {
 export type StudioUser = {id:string;name:string;email:string;role:string;status:string;createdAt:number;avatar:string|null;emailVerified:boolean;contentStrikes:number;blocked:boolean;twoFactor?:boolean;locale?:'sq'|'en'};
 // The published version of the Terms and Privacy Policy. Bump this whenever the legal pages change
 // so new sign-ups record which version they accepted (C20.1). Keep it in sync with the legal pages (P3).
+/** Roles (V10): customers ('user'), support staff with limited admin access, and administrators. */
+export type Role='user'|'support'|'admin';
+export const isStaff=(role?:string|null)=>role==='admin'||role==='support';
+/** What the support role may do in the admin: help customers, never money, keys, settings or the catalog. */
+export const SUPPORT_SECTIONS=['users','generations','reports','operations'];
 export const TERMS_VERSION='2026-10-07';
 // Minimum age customers confirm at sign-up (D13).
 export const MINIMUM_AGE=13;

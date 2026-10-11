@@ -134,6 +134,22 @@ try{
  await request('/api/account/mfa/disable',{method:'POST',cookie:viaRecovery.cookie,data:{password:'Two-step-password-1',code:enabled.recoveryCodes[1]}});
  const plain=await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}});
  ok('Turning it off (password + recovery code) restores password sign-in',!!plain.cookie&&!plain.body.mfaRequired);
+ // V10: roles. Support helps customers but cannot touch money, keys, settings or templates; only an admin changes roles, with a password.
+ const supportUser=await request('/api/auth/register',{method:'POST',data:{name:'Support Person',email:'support@studio.test',password:'Support-password-1',acceptTerms:true,confirmAge:true},expected:201});const supportId=supportUser.body.user.id;
+ await request('/api/admin/users/'+supportId,{method:'PATCH',cookie:admin,data:{role:'support'},expected:403});
+ await request('/api/admin/users/'+supportId,{method:'PATCH',cookie:admin,data:{role:'support',currentPassword:adminPassword}});
+ const sc=(await request('/api/auth/login',{method:'POST',data:{email:'support@studio.test',password:'Support-password-1'}})).cookie;
+ const supportCan=[await request('/api/admin/users',{cookie:sc}),await request('/api/admin/generations',{cookie:sc}),await request('/api/admin/reports',{cookie:sc}),await request('/api/admin/operations',{cookie:sc})].every(r=>r.response.status===200);
+ const supportCannot=[await request('/api/admin/connections',{cookie:sc,expected:403}),await request('/api/admin/settings',{cookie:sc,expected:403}),await request('/api/admin/dashboard',{cookie:sc,expected:403}),await request('/api/admin/templates',{cookie:sc,expected:403}),await request('/api/admin/export/users',{cookie:sc,expected:403}),await request('/api/admin/credits/ledger',{cookie:sc,expected:403})].every(r=>r.response.status===403);
+ const someone=(await db.prepare("SELECT id FROM users WHERE role='user' LIMIT 1").first()).id;
+ await request('/api/admin/users/'+someone,{method:'PATCH',cookie:sc,data:{status:'suspended'},expected:403});await request('/api/admin/users/'+someone,{method:'PATCH',cookie:sc,data:{role:'admin'},expected:403});
+ await request('/api/admin/users/'+someone+'/credits',{method:'POST',cookie:sc,data:{amount:5,reason:'support try',currentPassword:'x',idempotencyKey:randomUUID()},expected:403});
+ ok('Support can help customers but not reach money, keys, settings, templates or roles',supportCan&&supportCannot);
+ const adminId=(await request('/api/me',{cookie:admin})).body.user.id;
+ await request('/api/admin/users/'+adminId,{method:'PATCH',cookie:admin,data:{role:'user',currentPassword:adminPassword},expected:409});
+ ok('An admin cannot change their own role, so the studio keeps an administrator',(await db.prepare('SELECT role FROM users WHERE id=?').bind(adminId).first()).role==='admin');
+ await request('/api/admin/users/'+supportId,{method:'PATCH',cookie:admin,data:{role:'user',currentPassword:adminPassword}});
+ await request('/api/admin/users',{cookie:sc,expected:401});ok('Changing a role signs that account out',true);
  const headers=(await request('/')).response.headers;ok('Security response headers are present',headers.get('content-security-policy')?.includes("object-src 'none'")&&headers.get('x-content-type-options')==='nosniff');
  await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,network:'POK responses simulated locally; no external payments or messages sent',checks},null,2));console.log('\n'+checks.length+' security and operational checks passed.');
 }catch(e){console.error('FAIL',e);await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,error:String(e),checks},null,2));process.exitCode=1}finally{await mf.dispose()}

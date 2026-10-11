@@ -193,7 +193,7 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/admin/users/'+second.body.user.id,{cookie:userCookie,expected:403});ok('Customers cannot open the customer page API',true);
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{name:'Renamed Customer'}});
  ok('Admin renames a customer',(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body.user.name==='Renamed Customer');
- await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{role:'admin'},expected:400});ok('Customer updates reject unknown fields such as role',true);
+ await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{role:'admin'},expected:403});await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{credits:5},expected:400});ok('A role change needs the admin password, and unknown fields are rejected',true);
  ok('Customer purchases are listed per customer',Array.isArray((await request('/api/admin/users/'+second.body.user.id+'/purchases',{cookie:adminCookie})).body.purchases));
  // Content refusals (C2): each refusal returns the credits and adds a strike; the third blocks the account until an admin unblocks it.
  const refuser=await request('/api/auth/register',{method:'POST',data:{name:'Refusal Tester',email:'refusals@studio.test',password:'Test-password-123',acceptTerms:true,confirmAge:true},expected:201});const rc=refuser.cookie;

@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 5 | 45 |
+| 3B. Version 1 features | 6 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -285,7 +285,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V45 🟡 Buy one video without a pack.** On a template page, "Buy this video" pays the price of that one video through POK (no credit pack needed), for customers who want to try once. Notes for later: price per template in ALL/EUR (higher per video than packs, so packs stay the better deal); the purchase grants exactly that template's credit cost and starts the creation, so the credits ledger stays the single system; no refunds (D4) and the same report/free redo rule (D12) apply.
 
 **Admin side**
-- [ ] **V10 🟡 Roles.** Promote other admins and add a support role with limited access.
+- [x] **V10 🟡 Roles.** Promote other admins and add a support role with limited access. ✅ Roles: Customer, Support, Administrator. An admin changes a role on the customer page (with their password; not their own; the studio always keeps an admin; the account is signed out). Support sees Users, Generations, Reports and Operations and can send reset links, mark emails verified, unblock, retry and resolve reports, but nothing with money, keys, settings, templates, exports or roles. See DECISIONS.md #9.
 - [x] **V11 🟡 Admin password reset.** Send a reset link to a customer from Admin → Users.
 - [x] **V12 🟡 CSV exports.** Credit purchases, the credit ledger and users. ✅ Export CSV buttons on Credit purchases, Credit ledger and Users (UTF-8 with BOM for Excel, formula-safe cells, logged in Activity).
 - [x] **V13 🟡 Template management.** Drag-and-drop ordering, bulk publish/unpublish and scheduled publishing.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V10 | Done | Roles user/support/admin: requireUser lets staff into the admin, adminAPI allow-list for support, role change via PATCH users (admin password, not self, keep one admin, sessions cleared), filtered sidebar, role panel. 3 security checks |
 | 2026-10-12 | V13, V14 | Done | Templates: drag-and-drop (and arrow) ordering saved as sort_order for Recommended; select + bulk publish/unpublish/archive (publish checks the same rules as saving); scheduled publishing (publish_at, validated, published by the dispatcher every minute, logged); Delete now archives, with an Archive view to Restore or delete permanently. Migration 0013. 5 integration checks |
 | 2026-10-12 | V12 | Done | lib/server/exports.ts: /api/admin/export/{purchases,ledger,users} CSV (admin only, rate-limited, audited, formula injection neutralised); buttons in the three admin pages. 2 integration checks |
 | 2026-10-12 | V11, V31 | Done | Admin → customer page: Send reset link (emailed in the customer's language; demo shows/copies the link), reports list, two-step and email-language badges, more activity labels. 1 integration + 1 production check |
