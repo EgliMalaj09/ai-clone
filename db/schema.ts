@@ -10,6 +10,9 @@ export const users=sqliteTable('users',{
  // and marketing-email consent with the time it was given (required before sending marketing, C20.3).
  termsVersion:text('terms_version'),termsAcceptedAt:integer('terms_accepted_at'),ageConfirmedAt:integer('age_confirmed_at'),
  marketingOptIn:integer('marketing_opt_in').notNull().default(0),marketingOptInAt:integer('marketing_opt_in_at'),
+ // Two-step sign-in (C4.1): encrypted TOTP secret (and one being set up), when it was turned on, the last code step used
+ // (no code works twice) and hashes of the one-time recovery codes.
+ totpSecret:text('totp_secret'),totpPending:text('totp_pending'),totpEnabledAt:integer('totp_enabled_at'),totpLastStep:integer('totp_last_step').notNull().default(0),totpRecovery:text('totp_recovery').notNull().default('[]'),
 });
 export const accounts=sqliteTable('accounts',{
  id:text('id').primaryKey(),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),

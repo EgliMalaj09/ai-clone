@@ -105,6 +105,35 @@ try{
  await request('/api/account',{method:'DELETE',cookie,data:{password:winningPassword}});ok('Account deletion removes storage and identity',await bucket.get(storageKey)===null&&!await db.prepare('SELECT id FROM users WHERE id=?').bind(user.body.user.id).first());
  await request('/api/admin/users/'+(await request('/api/me',{cookie:admin})).body.user.id,{method:'PATCH',cookie:admin,data:{status:'suspended'},expected:409});ok('Admin cannot accidentally suspend the administrator account');
  const html=await request('/admin/operations',{cookie:admin});ok('Authenticated admin operations page renders',html.text.includes('Keep everything moving')||html.text.includes('Workspace'));
+ // C4.1: two-step sign-in. TOTP per RFC 6238 is computed here independently of the app.
+ const b32=t=>{const A='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';let bits=0,v=0;const out=[];for(const c of t.replace(/\s/g,'')){v=(v<<5)|A.indexOf(c);bits+=5;if(bits>=8){out.push((v>>>(bits-8))&255);bits-=8;}}return Buffer.from(out);};
+ const totp=(secret,step)=>{const c=Buffer.alloc(8);c.writeBigUInt64BE(BigInt(step));const m=createHmac('sha1',b32(secret)).update(c).digest();const o=m[19]&15;return String((((m[o]&127)<<24)|(m[o+1]<<16)|(m[o+2]<<8)|m[o+3])%1000000).padStart(6,'0');};
+ const mfaUser=await request('/api/auth/register',{method:'POST',data:{name:'Two Step',email:'twostep@studio.test',password:'Two-step-password-1',acceptTerms:true,confirmAge:true},expected:201});const mc=mfaUser.cookie;
+ await request('/api/account/mfa/setup',{method:'POST',cookie:mc,data:{password:'wrong-password-1'},expected:403});
+ const setup=(await request('/api/account/mfa/setup',{method:'POST',cookie:mc,data:{password:'Two-step-password-1'}})).body;const step=Math.floor(Date.now()/30000);
+ ok('Setup returns a base32 key and an otpauth link',/^[A-Z2-7 ]+$/.test(setup.secret)&&setup.uri.startsWith('otpauth://totp/')&&setup.uri.includes('secret='));
+ await request('/api/account/mfa/enable',{method:'POST',cookie:mc,data:{code:totp(setup.secret,step+5)},expected:400});
+ const enabled=(await request('/api/account/mfa/enable',{method:'POST',cookie:mc,data:{code:totp(setup.secret,step)}})).body;
+ const stored=await db.prepare("SELECT totp_secret,totp_recovery FROM users WHERE email='twostep@studio.test'").first();
+ ok('Two-step sign-in turns on with 8 recovery codes and an encrypted secret',enabled.recoveryCodes.length===8&&stored.totp_secret&&!stored.totp_secret.includes(setup.secret.replace(/ /g,''))&&!stored.totp_recovery.includes(enabled.recoveryCodes[0]));
+ const first=await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}});
+ ok('A correct password alone no longer signs in',first.body.mfaRequired===true&&first.body.ticket&&!first.cookie);
+ await request('/api/auth/mfa',{method:'POST',data:{ticket:first.body.ticket,code:totp(setup.secret,step)},expected:401});
+ ok('A code that was already used is refused',true);
+ const second=await request('/api/auth/mfa',{method:'POST',data:{ticket:first.body.ticket,code:totp(setup.secret,step+1)}});
+ ok('The ticket plus a fresh code signs in',!!second.cookie&&second.body.user.twoFactor===true);
+ await request('/api/auth/mfa',{method:'POST',data:{ticket:first.body.ticket,code:totp(setup.secret,step+1)},expected:400});ok('A sign-in ticket works only once',true);
+ const again=(await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}})).body;
+ for(let i=0;i<5;i++)await request('/api/auth/mfa',{method:'POST',data:{ticket:again.ticket,code:'000000'},expected:401});
+ await request('/api/auth/mfa',{method:'POST',data:{ticket:again.ticket,code:enabled.recoveryCodes[0]},expected:429});ok('Guessing codes is rate limited per sign-in attempt',true);
+ const third=(await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}})).body;
+ const viaRecovery=await request('/api/auth/mfa',{method:'POST',data:{ticket:third.ticket,code:enabled.recoveryCodes[0].toLowerCase()}});
+ const fourth=(await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}})).body;
+ await request('/api/auth/mfa',{method:'POST',data:{ticket:fourth.ticket,code:enabled.recoveryCodes[0]},expected:401});
+ ok('A recovery code signs in once',!!viaRecovery.cookie);
+ await request('/api/account/mfa/disable',{method:'POST',cookie:viaRecovery.cookie,data:{password:'Two-step-password-1',code:enabled.recoveryCodes[1]}});
+ const plain=await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}});
+ ok('Turning it off (password + recovery code) restores password sign-in',!!plain.cookie&&!plain.body.mfaRequired);
  const headers=(await request('/')).response.headers;ok('Security response headers are present',headers.get('content-security-policy')?.includes("object-src 'none'")&&headers.get('x-content-type-options')==='nosniff');
  await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,network:'POK responses simulated locally; no external payments or messages sent',checks},null,2));console.log('\n'+checks.length+' security and operational checks passed.');
 }catch(e){console.error('FAIL',e);await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,error:String(e),checks},null,2));process.exitCode=1}finally{await mf.dispose()}

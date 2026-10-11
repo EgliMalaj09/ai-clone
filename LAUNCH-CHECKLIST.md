@@ -88,7 +88,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C3.1 Cron trigger `* * * * *` in `vite.config.ts` → `dist/server/wrangler.json`; the Worker's `scheduled()` runs every minute. External `/api/queue/dispatch` with `QUEUE_SECRET` kept as a fallback.
   - [x] C3.2 Admin → Operations shows the dispatcher heartbeat and its source (cron / external); a cron run reopens sales after a stale heartbeat (tested in `tests/production.mjs`).
 - [ ] **C4 🟡 Security hardening.**
-  - [ ] C4.1 Admin MFA (L5), e.g. TOTP for the admin account.
+  - [x] C4.1 Admin MFA (L5), e.g. TOTP for the admin account. ✅ Two-step sign-in with an authenticator app (TOTP) in Account, for admins and customers: encrypted secret, each code works once, 8 one-time recovery codes, 5-minute sign-in ticket with attempt limits, turning on signs out other browsers. Admin pages show a reminder until it is on. See DECISIONS.md #5.
   - [x] C4.2 ✅ passwordHash embeds the iteration count and checkPassword reads it from the stored hash, so iterations can be raised later without breaking existing logins (F16).
   - [x] C4.3 ✅ Removed `app/chatgpt-auth.ts` (dead) and `chatgpt.com` from the CSP; `/__qa/responsive` already gone.
   - [x] C4.4 Re-run the dependency audit and update `image-size` (F12). ✅ next/eslint-config-next 16.3.8; overrides lift image-size ≥2.0.3, brace-expansion, fast-uri, sharp, source-map-js. Audit: 0 critical, 1 high (`braces`, build-tooling only, no patched release yet).
@@ -370,6 +370,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C4.1 (L5) | Done | TOTP two-step sign-in (lib/server/mfa.ts, migration 0011): setup with key + otpauth link, enable with code, recovery codes, login ticket step, disable/regenerate with password + code; admin reminder banner. Also fixed a pre-existing hydration mismatch (dates now formatted in Europe/Tirane on server and browser). 7 security checks |
 | 2026-10-12 | C7 (L10) | Done | lib/server/errors.ts reportError(): structured log + error_events (migration 0010, pruned after 30 days) + optional Sentry envelope; all console.error sites moved over with IDs; Operations shows Recent errors and a readiness line; SENTRY_DSN connection with validation. 3 production checks |
 | 2026-10-12 | C12 (F8) | Done | Replicate: version IDs for community models (POST /v1/predictions with version), model reference validated on template save, output picked from any shape (video preferred), aborted status handled; image steps default to an image key. 3 provider checks |
 | 2026-10-12 | C31.4 | Mostly done | Per-template photo tips: new templates.photo_tips column (migration 0009), textarea in the template editor, shown in the template's guidelines card. Albanian waits for C10. 1 integration check |

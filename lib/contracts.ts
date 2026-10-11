@@ -17,7 +17,7 @@ export type AdminTemplate = PublicTemplate & {
   estimatedCost: number; currency: string; provider: string; model: string; generationType: string;
   hiddenPrompt: string; negativePrompt: string; settings: Record<string,unknown>; workflow: WorkflowStep[];
 };
-export type StudioUser = {id:string;name:string;email:string;role:string;status:string;createdAt:number;avatar:string|null;emailVerified:boolean;contentStrikes:number;blocked:boolean};
+export type StudioUser = {id:string;name:string;email:string;role:string;status:string;createdAt:number;avatar:string|null;emailVerified:boolean;contentStrikes:number;blocked:boolean;twoFactor?:boolean};
 // The published version of the Terms and Privacy Policy. Bump this whenever the legal pages change
 // so new sign-ups record which version they accepted (C20.1). Keep it in sync with the legal pages (P3).
 export const TERMS_VERSION='2026-10-07';
