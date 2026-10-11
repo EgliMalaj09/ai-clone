@@ -146,6 +146,20 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{maintenance:{creationsPaused:false,purchasesPaused:false,message:''}}});
  const resumed=await generate(userCookie,curFormula,[(await upload(userCookie)).body.id]);await waitDone(userCookie,resumed.body.generationId);ok('Creation works again after maintenance is lifted',true);
 
+ // C23 — spending safety limits
+ await grant(reg.body.user.id,10000);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{limits:{concurrent:1,daily:0,studioDailyCost:0}}});
+ ok('Spending limits are saved and returned',(await request('/api/admin/settings',{cookie:adminCookie})).body.limits.concurrent===1);
+ const lim1=await generate(userCookie,curFormula,[(await upload(userCookie)).body.id]);
+ await generate(userCookie,curFormula,[(await upload(userCookie)).body.id],{expected:429});ok('A second concurrent video is blocked per customer',true);
+ await waitDone(userCookie,lim1.body.generationId);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{limits:{concurrent:0,daily:1,studioDailyCost:0}}});
+ await generate(userCookie,curFormula,[(await upload(userCookie)).body.id],{expected:429});ok('The per-customer daily limit blocks further videos',true);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{limits:{concurrent:0,daily:0,studioDailyCost:1}}});
+ await generate(userCookie,curFormula,[(await upload(userCookie)).body.id],{expected:503});ok('The studio-wide daily AI cost cap pauses creation',true);
+ ok('The spend cap records an alert event',!!(await db.prepare("SELECT id FROM analytics_events WHERE name='spend_cap_reached'").first()));
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{limits:{concurrent:3,daily:20,studioDailyCost:0}}});
+
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
  const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;
  ok('Customer page returns profile, credits, creations and activity',detail.user.email===second.body.user.email&&typeof detail.balance.available==='number'&&Array.isArray(detail.creations.recent)&&detail.activity.some(a=>a.action==='user.suspended'));

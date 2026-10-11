@@ -16,6 +16,7 @@ import {imageMime,mediaUrl,storage,validSignature} from './storage';
 import {pokWebhook} from './payments';
 import {removeGeneration,tickQueue} from './queue';
 import {createReport,listReports,reportDetail,resolveReport,reportsForGenerations,publicReport,hasOpenReport,uploadsLockedByReport,userHasOpenReport} from './reports';
+import {assertWithinLimits,spendingLimits} from './limits';
 import {dispatcherStatus,recordDispatch} from './dispatcher';
 import {TERMS_VERSION,cleanGuidelineList,type AdminTemplate,type StudioUser} from '../contracts';
 
@@ -58,6 +59,7 @@ async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(u
  must(b.uploadIds.length===t.requiredImageCount&&new Set(b.uploadIds).size===b.uploadIds.length,`Upload ${t.requiredImageCount} different photo${t.requiredImageCount>1?'s':''}.`);
  for(const id of b.uploadIds)must(await one('SELECT id FROM user_uploads WHERE id=? AND user_id=?',id,user.id),'An uploaded photo is unavailable or belongs to another account.',403);
  await assertGeneratable(t);
+ await assertWithinLimits(user.id);
  const balance=await balanceOf(user.id);must(balance.available>=t.creditCost,`You need ${t.creditCost} credits for this video and have ${balance.available}.`,402);
  const generationId=uid('gen_'),created=now();
  const snapshot={name:t.name,slug:t.slug,aspectRatio:t.aspectRatio,duration:t.duration,steps:t.workflow.map(s=>({...s,prompt:s.prompt||t.hiddenPrompt,negativePrompt:s.negativePrompt||t.negativePrompt,settings:{...t.settings,...s.settings}}))};
@@ -258,11 +260,12 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='PATCH'){const b=await body(req);const enabled=z.boolean().parse(b.enabled);must(['mock','higgsfield','fal','replicate'].includes(p[2]),'Unknown provider.');await run('UPDATE provider_configurations SET enabled=?,updated_at=? WHERE id=?',Number(enabled),now(),p[2]);await audit(user.id,'provider.update',p[2]);return json({ok:true});}
  }
  if(p[1]==='settings'){
-  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),photoGuidelines:await photoGuidelines(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus(),maintenance:await maintenanceStatus()});}
-  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({welcomeCredits:z.number().int().min(0).max(100000).optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional()}).parse(await body(req));
+  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),photoGuidelines:await photoGuidelines(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus(),maintenance:await maintenanceStatus(),limits:await spendingLimits()});}
+  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({welcomeCredits:z.number().int().min(0).max(100000).optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional(),limits:z.object({concurrent:z.number().int().min(0).max(100),daily:z.number().int().min(0).max(1000),studioDailyCost:z.number().int().min(0).max(1000000000)}).optional()}).parse(await body(req));
    if(b.welcomeCredits!==undefined){await run("INSERT INTO app_settings (key,value) VALUES ('welcome_credits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(b.welcomeCredits));await audit(user.id,'settings.update','welcome_credits');}
    if(b.photoGuidelines){const value={do:cleanGuidelineList(b.photoGuidelines.do),dont:cleanGuidelineList(b.photoGuidelines.dont)};must(value.do.length&&value.dont.length,'Add at least one “do” and one “don’t” guideline.');await run("INSERT INTO app_settings (key,value) VALUES ('photo_guidelines',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(value));await audit(user.id,'settings.update','photo_guidelines');}
    if(b.maintenance){const up=(k:string,v:string)=>run("INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",k,v);await up('maintenance_purchases',b.maintenance.purchasesPaused?'1':'0');await up('maintenance_creations',b.maintenance.creationsPaused?'1':'0');await up('maintenance_message',b.maintenance.message);await audit(user.id,'settings.update','maintenance');}
+   if(b.limits){const up=(k:string,v:number)=>run("INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",k,String(v));await up('limit_user_concurrent',b.limits.concurrent);await up('limit_user_daily',b.limits.daily);await up('limit_studio_daily_cost',b.limits.studioDailyCost);await audit(user.id,'settings.update','limits');}
    return json({ok:true});}
  }
  throw new HttpError(404,'Admin action not found.');

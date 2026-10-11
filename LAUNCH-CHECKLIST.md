@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 9 | 32 |
+| 1. Codebase | 10 | 32 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -155,7 +155,7 @@ These come first, because the code and infrastructure work depends on them.
   - [~] C31.4 Studio-wide guidelines editable in Admin → Settings (Do/Don't lists). Per-template photo **count** already adapts (e.g. 2 photos for couples). Per-template custom **text** and Albanian still to add (Albanian with C10).
   - [x] ~~C31.5 Automatic photo checks before credits are spent.~~ Dropped by decision (C2): the AI platform checks content.
 - [x] **C22 🔴 Maintenance switch and banner.** ✅ Admin → Settings → Maintenance mode: separate toggles to pause new video creation and/or new credit purchases, with an optional custom message. Paused actions return 503 with the message; a site-wide banner shows it. Work already running keeps going. No deploy needed.
-- [ ] **C23 🔴 Spending safety limits.** Per customer: a maximum number of videos running at once and per day. Studio-wide: a daily AI spending cap that pauses creation and alerts you, so a bug or abuse can't empty your fal.ai balance.
+- [x] **C23 🔴 Spending safety limits.** ✅ Admin → Settings → Spending safety limits: per-customer caps on videos running at once (default 3) and per day (default 20), and a studio-wide daily AI-cost cap (off by default) that pauses creation and records a `spend_cap_reached` alert event. 0 means no limit. Enforced before any credits are reserved.
 - [ ] **C24 🟡 Marketing tracking (from D15).** Meta and/or TikTok pixel plus server-side conversion events for sign-up and purchase, UTM campaign capture at sign-up, and a cookie consent banner (required once trackers are added).
 - [ ] **C25 🟡 SEO basics.** `robots.txt`, `sitemap.xml` with all templates, an Open Graph image for the homepage, and structured data for templates.
 - [ ] **C26 🟡 Help pages.** A Contact/Support page and an FAQ (how it works, photo tips, credits, failed videos, privacy, deleting data), linked from the footer with your social accounts.
@@ -344,6 +344,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-11 | C23 | Done | Spending safety limits: per-customer concurrent (default 3) and daily (default 20) caps + studio-wide daily estimated-AI-cost cap (off by default, records spend_cap_reached event). New lib/server/limits.ts enforced in startGeneration before reserving credits; admin panel + settings API. 5 integration checks |
 | 2026-10-11 | C22 | Done | Maintenance mode in Admin → Settings: toggles to pause creation and/or purchases + custom message; app_settings-backed, gates checkout and generation (503), storefront banner + closed buttons via publicAvailability. 5 integration checks |
 | 2026-10-11 | Checklist | Moved | Checklist now lives in the repo at LAUNCH-CHECKLIST.md (was in Downloads) so it persists and is versioned |
 | 2026-10-11 | C16, C17, C4.3 | Done | CSP frame-ancestors self-only + removed dead app/chatgpt-auth.ts; legal date -> Version TERMS_VERSION; 404 title; C16.1–C16.3 already clean; titles were already proper |
