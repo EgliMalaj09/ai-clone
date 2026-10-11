@@ -1,11 +1,12 @@
 import {serviceConfig} from './connections';
 import {z} from 'zod';
 import type {StudioUser} from '../contracts';
-import {all,audit,batch,HttpError,must,now,one,run,runtime,stmt} from './data';
+import {all,audit,batch,HttpError,must,now,one,run,runtime,stmt,type Row} from './data';
 import {jsonBody,pageQuery} from './http';
 import {balanceOf,reconcileCredits} from './credits';
 import {checkPassword,hash,passwordHash,rateLimit,sessionCookie} from './security';
 import {dispatcherStatus} from './dispatcher';
+import {mediaUrl} from './storage';
 
 const response=(data:unknown,headers:Record<string,string>={})=>Response.json(data,{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 const pageInfo=(total:number,page:number,limit:number)=>({total,page,limit,pages:Math.max(1,Math.ceil(total/limit))});
@@ -39,16 +40,23 @@ export async function accountSecurity(req:Request,path:string[],user:StudioUser)
   }
   if(path[1]==='export'&&req.method==='GET'){
     await rateLimit('account-export:'+user.id,3,3600000);
-    const [uploads,generations,purchases,favorites,credits,creditTransactions]=await Promise.all([
-      all('SELECT id,name,mime,size,created_at FROM user_uploads WHERE user_id=?',user.id),
-      all('SELECT id,template_name,status,credit_cost,created_at,completed_at FROM generations WHERE user_id=? AND deleted_at IS NULL',user.id),
+    const [uploads,generations,assets,reports,consents,purchases,favorites,credits,creditTransactions]=await Promise.all([
+      all('SELECT id,name,mime,size,created_at FROM user_uploads WHERE user_id=? ORDER BY created_at',user.id),
+      all('SELECT id,template_name,status,credit_cost,created_at,completed_at FROM generations WHERE user_id=? AND deleted_at IS NULL ORDER BY created_at',user.id),
+      all('SELECT a.id,a.generation_id,a.kind,a.mime,a.size,a.created_at FROM generated_assets a JOIN generations g ON g.id=a.generation_id WHERE a.user_id=? AND g.deleted_at IS NULL ORDER BY a.created_at',user.id),
+      all('SELECT id,generation_id,reason,comment,status,resolution,guideline,admin_reason,created_at,resolved_at FROM generation_reports WHERE user_id=? ORDER BY created_at',user.id),
+      one('SELECT terms_version,terms_accepted_at,age_confirmed_at,marketing_opt_in,marketing_opt_in_at,content_strikes,blocked_at FROM users WHERE id=?',user.id),
       all('SELECT id,package_name,credits,amount,currency,status,created_at,paid_at FROM credit_purchases WHERE user_id=?',user.id),
       all('SELECT template_id,created_at FROM favorites WHERE user_id=?',user.id),
       balanceOf(user.id),
       all("SELECT t.id,t.kind,t.reason,t.created_at,e.amount FROM credit_transactions t JOIN credit_entries e ON e.transaction_id=t.id AND e.account='user:'||t.user_id||':available' WHERE t.user_id=? ORDER BY t.created_at",user.id),
     ]);
+    // C14: the files themselves, as signed download links (the longest a signed link may live is 24 hours).
+    const expires=now()+23*3600000,download=async(id:string)=>(await mediaUrl(id,expires))+'&download=1';
+    const photos=await Promise.all(uploads.map(async u=>({...u,downloadUrl:await download(u.id as string)})));
+    const files=await Promise.all(assets.map(async a=>({...a,downloadUrl:await download(a.id as string)} as Row)));
     await audit(user.id,'account.exported',user.id);
-    return response({exportedAt:new Date().toISOString(),profile:user,uploads,generations,creditPurchases:purchases,favorites,credits:{...credits,transactions:creditTransactions}},{'Content-Disposition':'attachment; filename="project-studio-account.json"'});
+    return response({exportedAt:new Date().toISOString(),downloadLinksExpireAt:new Date(expires).toISOString(),profile:user,consents:consents?{termsVersion:consents.terms_version,termsAcceptedAt:consents.terms_accepted_at,ageConfirmedAt:consents.age_confirmed_at,marketingOptIn:!!consents.marketing_opt_in,marketingOptInAt:consents.marketing_opt_in_at}:null,contentRefusals:{count:Number(consents?.content_strikes||0),blockedAt:consents?.blocked_at??null},uploads:photos,generations:generations.map(g=>({...g,files:files.filter(f=>f.generation_id===g.id)})),reports,creditPurchases:purchases,favorites,credits:{...credits,transactions:creditTransactions}},{'Content-Disposition':'attachment; filename="project-studio-account.json"'});
   }
   throw new HttpError(404,'Account action not found.');
 }

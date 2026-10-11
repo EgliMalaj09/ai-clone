@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 15 | 30 |
+| 1. Codebase | 16 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -122,7 +122,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C32.6 Contract tests with a fake Higgsfield, like the fal and Replicate ones.
 - [ ] **C12 🟡 Replicate adapter (F8).** Support versioned community models and reliable output-type detection, so any model can be used later without code changes.
 - [ ] **C13 🟡 Money display and minimums (F20).** Show ALL prices correctly (no rounding of 299.50 → 300) and confirm POK's minimum amounts for ALL and EUR in the pack validator.
-- [ ] **C14 🟡 Complete account export.** Include the customer's photos and videos (or download links), not only metadata, for privacy requests.
+- [x] **C14 🟡 Complete account export.** Include the customer's photos and videos (or download links), not only metadata, for privacy requests. ✅ The JSON export now includes signed download links (23 h) for every photo and every generated file per creation, plus consents (Terms version, age, marketing), refusal/block status and reports.
 - [x] **C15 🔴 Fix: `/verify` without a link.** ✅ Opening `/verify` or `/reset-password` without a token now shows "This verification/reset link is incomplete" with a button to send a new one, instead of hanging.
 - [x] **C16 🔴 Remove leftover and outdated text.** ✅
   - [x] C16.1 ✅ Site description already uses credits language.
@@ -365,6 +365,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C14 | Done | Account export adds signed 23-hour download links for every upload and generated file (grouped per creation), consents, refusal count and reports; Account page text updated. 2 integration checks |
 | 2026-10-12 | C11.2 | Done | Creation finished emails: ready / failed / refused (credits returned), sent best-effort from the queue with one idempotency key per attempt; shared branded notice layout reused by report emails. 3 production checks |
 | 2026-10-12 | C9 (F7) | Done | Storefront paged on the server: first page (24) rendered with the page for the URL filters, filter changes refetch page 1, Show more appends pages; hero is its own top-3 query; favorites load only saved templates. 3 integration checks |
 | 2026-10-12 | C25, C30, X1, X2 | Moved | New pre-live phase (4B) at the end: C25 SEO basics become X1 Enhanced SEO (with P6), C30 branding becomes X2 Branding |
