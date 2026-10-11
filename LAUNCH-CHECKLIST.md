@@ -121,7 +121,9 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] C32.8 **Owner, at the end (Phase 4):** with your Higgsfield key in Admin → Connections, make 2–3 real videos and confirm: the model field names (`image_urls` for Seedream edit, `image_url` and `duration` for Kling), the host results are downloaded from, and the real cost per video.
   - [x] C32.6 Contract tests with a fake Higgsfield, like the fal and Replicate ones.
 - [ ] **C12 🟡 Replicate adapter (F8).** Support versioned community models and reliable output-type detection, so any model can be used later without code changes.
-- [ ] **C13 🟡 Money display and minimums (F20).** Show ALL prices correctly (no rounding of 299.50 → 300) and confirm POK's minimum amounts for ALL and EUR in the pack validator.
+- [~] **C13 🟡 Money display and minimums (F20).** Show ALL prices correctly (no rounding of 299.50 → 300) and confirm POK's minimum amounts for ALL and EUR in the pack validator.
+  - [x] C13.1 ✅ Prices are shown exactly: whole lek without decimals, any fractional amount with two decimals (never rounded). Pack prices in ALL are whole lek (POK charges lek as whole numbers).
+  - [ ] C13.2 **Needs POK:** confirm POK's minimum charge for ALL and EUR (check during T2) and set it in the pack validator (today: at least 0.50).
 - [x] **C14 🟡 Complete account export.** Include the customer's photos and videos (or download links), not only metadata, for privacy requests. ✅ The JSON export now includes signed download links (23 h) for every photo and every generated file per creation, plus consents (Terms version, age, marketing), refusal/block status and reports.
 - [x] **C15 🔴 Fix: `/verify` without a link.** ✅ Opening `/verify` or `/reset-password` without a token now shows "This verification/reset link is incomplete" with a button to send a new one, instead of hanging.
 - [x] **C16 🔴 Remove leftover and outdated text.** ✅
@@ -365,6 +367,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C13.1 | Done | money() shows fractional amounts exactly instead of rounding (ALL whole amounts keep no decimals); ALL packs already limited to whole lek. C13.2 (POK minimums) waits on POK |
 | 2026-10-12 | C14 | Done | Account export adds signed 23-hour download links for every upload and generated file (grouped per creation), consents, refusal count and reports; Account page text updated. 2 integration checks |
 | 2026-10-12 | C11.2 | Done | Creation finished emails: ready / failed / refused (credits returned), sent best-effort from the queue with one idempotency key per attempt; shared branded notice layout reused by report emails. 3 production checks |
 | 2026-10-12 | C9 (F7) | Done | Storefront paged on the server: first page (24) rendered with the page for the URL filters, filter changes refetch page 1, Show more appends pages; hero is its own top-3 query; favorites load only saved templates. 3 integration checks |

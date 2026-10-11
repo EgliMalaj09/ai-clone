@@ -72,7 +72,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 - [x] **F17** — ✅ Fixed earlier: account deletion deletes DB rows first, then R2 files with a retry-logged loop.
 - [x] **F18** — ✅ Fixed earlier: dashboard user count is a plain COUNT(*), no phantom status filter.
 - [x] **F19** — ✅ Fixed earlier: the "Studio admin" footer and mobile links are admin-only.
-- [ ] **F20** — Prices in `ALL` display with 0 decimals (`lib/contracts.ts:20`), so e.g. 299.50 shows as 300. Confirm the minimum Stripe amounts for ALL/EUR/GBP, since the validator only enforces `price >= 50`.
+- [~] **F20** — (Display fixed in C13.1; POK minimums still to confirm.) Prices in `ALL` display with 0 decimals (`lib/contracts.ts:20`), so e.g. 299.50 shows as 300. Confirm the minimum Stripe amounts for ALL/EUR/GBP, since the validator only enforces `price >= 50`.
 
 ## 4. Not implemented, needed before a public launch
 

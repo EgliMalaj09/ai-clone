@@ -44,7 +44,8 @@ export const photoCountLine=(count:number)=>count>1?`Upload ${count} photos — 
 export const cleanGuidelineList=(lines:string[],max=12)=>lines.map(l=>l.trim()).filter(Boolean).slice(0,max);
 export const categories=['All templates','Cinematic','Transformation','Action','Fashion','Couples','Fantasy','Social','Business','Travel','Anime','Sports','Lifestyle','Funny'];
 export const credits=(n:number)=>new Intl.NumberFormat('en-US').format(n)+' credit'+(n===1?'':'s');
-export const money=(amount:number,currency='USD')=>new Intl.NumberFormat('en-US',{style:'currency',currency}).format(amount/100);
+/** Formats minor units exactly (C13): lek shows no decimals for whole amounts, but a fractional amount is never rounded away (299.50 stays 299.50). */
+export const money=(amount:number,currency='USD')=>{const whole=Number.isInteger(amount/100);return new Intl.NumberFormat('en-US',{style:'currency',currency,...(whole?{}:{minimumFractionDigits:2,maximumFractionDigits:2})}).format(amount/100);};
 // Lowest price of one credit per currency (minor units, fractional), from the active packs. Lets guests see roughly what credits cost.
 export type CreditRef=Record<string,number>;
 /** Approximate real-money price of a credit cost, e.g. "≈ ALL 140". Uses lek when available, else euro; '' when unknown. */
