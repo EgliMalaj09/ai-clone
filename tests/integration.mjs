@@ -235,7 +235,7 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  // Creation/file deletion proves bytes are removed, rather than merely hidden.
  const assetKey=outputs.results[0].storage_key;await request('/api/generations/'+generationId,{method:'DELETE',cookie:userCookie});ok('Delete creation removes the video from object storage',await bucket.get(assetKey)===null);await request('/api/media/'+result.g.assetId,{cookie:userCookie,expected:404});
  const orphan=await upload(userCookie);const orphanDb=await db.prepare('SELECT storage_key FROM user_uploads WHERE id=?').bind(orphan.body.id).first();await request('/api/uploads/'+orphan.body.id,{method:'DELETE',cookie:userCookie});ok('Delete upload removes stored bytes',await bucket.get(orphanDb.storage_key)===null);
- const dup=await request('/api/admin/templates/'+testTemplate.id+'/duplicate',{method:'POST',cookie:adminCookie,data:{},expected:201});ok('Admin duplicates a template as a draft',!dup.body.template.active&&dup.body.template.id!==testTemplate.id);await request('/api/admin/templates/'+dup.body.template.id,{method:'DELETE',cookie:adminCookie});ok('Admin removes a template',!(await request('/api/admin/templates',{cookie:adminCookie})).body.templates.some(t=>t.id===dup.body.template.id));
+ const dup=await request('/api/admin/templates/'+testTemplate.id+'/duplicate',{method:'POST',cookie:adminCookie,data:{},expected:201});ok('Admin duplicates a template as a draft',!dup.body.template.active&&dup.body.template.id!==testTemplate.id);await request('/api/admin/templates/'+dup.body.template.id,{method:'DELETE',cookie:adminCookie});await request('/api/admin/templates/'+dup.body.template.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});ok('Admin removes a template',!(await request('/api/admin/templates',{cookie:adminCookie})).body.templates.some(t=>t.id===dup.body.template.id));
  // Template preview media is studio-owned and kept apart from customer photos.
  const webp=await readFile('public/media/formula-driver.webp'),mp4=await readFile('public/media/formula-driver.mp4');
  const mediaForm=(name,type,bytes)=>{const form=new FormData();form.append('file',new File([bytes],name,{type}));return form};
@@ -259,7 +259,7 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/admin/media/'+ma.body.id,{method:'DELETE',cookie:adminCookie,expected:409});ok('Media in use cannot be deleted from the library',true);
  const library=(await request('/api/admin/media',{cookie:adminCookie})).body;const libA=library.media.find(m=>m.id===ma.body.id);
  ok('Media library shows which templates use each file',libA.usedBy.length===1&&libA.usedBy[0].id===mediaCopy.id&&libA.removableAt===null&&library.usage.count>=6);
- await request('/api/admin/templates/'+mediaCopy.id,{method:'DELETE',cookie:adminCookie});
+ await request('/api/admin/templates/'+mediaCopy.id,{method:'DELETE',cookie:adminCookie});await request('/api/admin/templates/'+mediaCopy.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
  ok('Deleting the last template using a preview removes the file and its bytes',!await keyOf(ma.body.id)&&!await bucket.get(aKey));
  ok('Previews still used by another template are kept',!!await keyOf(mb.body.id)&&!!await keyOf(mv.body.id)&&!!await keyOf(mc.body.id));
  await db.prepare('UPDATE generations SET thumbnail=? WHERE id=?').bind(me.body.url,generationId).run();
@@ -269,7 +269,7 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('Sweep keeps media used by a template or as a past creation poster',!!await keyOf(mb.body.id)&&!!await keyOf(me.body.id));
  const mf2=await adminMedia('delete-me.webp','image/webp',webp);const fKey=await keyOf(mf2.body.id);await request('/api/admin/media/'+mf2.body.id,{method:'DELETE',cookie:adminCookie});
  ok('Unused media can be deleted from the library',!await keyOf(mf2.body.id)&&!await bucket.get(fKey));
- await request('/api/admin/templates/'+mediaTemplate.id,{method:'DELETE',cookie:adminCookie});
+ await request('/api/admin/templates/'+mediaTemplate.id,{method:'DELETE',cookie:adminCookie});await request('/api/admin/templates/'+mediaTemplate.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
  // Migration 0002 moves existing previews out of customer uploads without changing their ids.
  const migration=new Miniflare({modules:true,script:'export default {fetch(){return new Response(null)}}',d1Databases:{M:'migration-check'}});
  try{const m=await migration.getD1Database('M');const files=(await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort();
@@ -317,6 +317,27 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('Admin CSV exports for users, ledger and purchases',usersCsv.response.headers.get('content-type').startsWith('text/csv')&&usersCsv.response.headers.get('content-disposition').includes('studio-users-')&&usersCsv.text.includes('qa@studio.test')&&ledgerCsv.text.split('\r\n')[0].includes('Transaction ID')&&purchasesCsv.text.split('\r\n')[0].includes('Purchase ID'));
  ok('CSV cells cannot run as spreadsheet formulas',usersCsv.text.includes(`"'=HYPERLINK(""x"")"`)&&!/(^|,)=HYPERLINK/m.test(usersCsv.text));
  await request('/api/account',{method:'PATCH',cookie:userCookie,data:{name:'Disposable QA User'}});
+ // V13/V14: archive instead of delete, restore, permanent delete only from the archive, manual order, bulk actions, scheduled publishing.
+ const arch=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Archive Test',slug:'qa-archive-test',active:true,creditCost:300},expected:201})).body.template;
+ await request('/api/admin/templates/'+arch.id+'?permanent=1',{method:'DELETE',cookie:adminCookie,expected:409});
+ await request('/api/admin/templates/'+arch.id,{method:'DELETE',cookie:adminCookie});
+ const archList=(await request('/api/admin/templates',{cookie:adminCookie})).body;const archivedRow=archList.templates.find(t=>t.id===arch.id);
+ ok('Deleting archives the template and hides it from the catalog',archivedRow.archivedAt&&!archivedRow.active&&!(await request('/api/templates?limit=100')).body.templates.some(t=>t.id===arch.id)&&(await request('/template/qa-archive-test',{expected:404})));
+ await request('/api/admin/templates/'+arch.id,{method:'PATCH',cookie:adminCookie,data:{...arch,active:true},expected:409});
+ await request('/api/admin/templates/'+arch.id+'/restore',{method:'POST',cookie:adminCookie,data:{}});
+ const bulkResult=(await request('/api/admin/templates/bulk',{method:'POST',cookie:adminCookie,data:{ids:[arch.id],action:'publish'}})).body;
+ ok('Restore brings it back as a draft and bulk publish puts it live',bulkResult.done===1&&(await request('/api/templates?limit=100')).body.templates.some(t=>t.id===arch.id));
+ const catalogIds=(await request('/api/admin/templates',{cookie:adminCookie})).body.templates.filter(t=>!t.archivedAt).map(t=>t.id);
+ await request('/api/admin/templates/order',{method:'POST',cookie:adminCookie,data:{ids:[arch.id,...catalogIds.filter(id=>id!==arch.id)]}});
+ ok('Manual order puts a template first under Recommended',(await request('/api/templates?limit=5')).body.templates[0].id===arch.id);
+ const scheduled={...arch,active:false,publishAt:Date.now()+1500};
+ await request('/api/admin/templates/'+arch.id,{method:'PATCH',cookie:adminCookie,data:{...arch,active:false,publishAt:Date.now()-3600000},expected:400});
+ await request('/api/admin/templates/'+arch.id,{method:'PATCH',cookie:adminCookie,data:scheduled});
+ const hiddenBefore=!(await request('/api/templates?limit=100')).body.templates.some(t=>t.id===arch.id);
+ await new Promise(r=>setTimeout(r,1700));await request('/api/admin/operations/dispatch',{method:'POST',cookie:adminCookie,data:{}});
+ ok('A scheduled template goes live at its time',hiddenBefore&&(await request('/api/templates?limit=100')).body.templates.some(t=>t.id===arch.id));
+ await request('/api/admin/templates/bulk',{method:'POST',cookie:adminCookie,data:{ids:[arch.id],action:'archive'}});await request('/api/admin/templates/'+arch.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
+ ok('A template is deleted for good only from the archive',!(await request('/api/admin/templates',{cookie:adminCookie})).body.templates.some(t=>t.id===arch.id));
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

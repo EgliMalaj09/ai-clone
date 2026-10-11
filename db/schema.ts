@@ -38,6 +38,8 @@ export const templates=sqliteTable('templates',{
  creditCost:integer('credit_cost').notNull().default(0),
  // Extra photo tips for this template only (C31.4), one per line, shown under the studio-wide guidelines.
  photoTips:text('photo_tips').notNull().default(''),
+ // Catalog management (V13/V14): manual order (lower first), a scheduled publish time, and archive instead of delete.
+ sortOrder:integer('sort_order').notNull().default(0),publishAt:integer('publish_at'),archivedAt:integer('archived_at'),
 },t=>[index('idx_templates_active_category').on(t.active,t.category)]);
 export const templateWorkflows=sqliteTable('template_workflows',{
  id:text('id').primaryKey(),templateId:text('template_id').notNull().unique().references(()=>templates.id,{onDelete:'cascade'}),version:integer('version').notNull().default(1),

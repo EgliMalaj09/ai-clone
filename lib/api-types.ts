@@ -41,7 +41,7 @@ export type Operations={demo:boolean;checkedAt:number;heartbeat:number|null;disp
  failures:{id:string;template_name:string;error:string|null;internal_error:string|null;completed_at:number|null;credit_status:string|null}[]};
 export type ActivityPage={activity:{id:string;action:string;target_id:string|null;created_at:number;email:string|null}[];pagination:Pagination};
 
-export type AdminTemplateRow=PublicTemplate&{estimatedCost:number;costCurrency:string;creditValue:number|null;provider:string;model:string};
+export type AdminTemplateRow=PublicTemplate&{estimatedCost:number;costCurrency:string;creditValue:number|null;provider:string;model:string;publishAt:number|null;archivedAt:number|null};
 export type AdminGeneration={id:string;user_id:string|null;template_name:string;credit_cost:number;currency:string;estimated_cost:number;credit_status?:string|null;status:string;created_at:number;started_at:number|null;completed_at:number|null;error:string|null;internal_error:string|null;deleted_at:number|null;email:string|null};
 export type GenerationStep={id:string;step_order:number;type:string;provider:string;model:string;status:string;error:string|null};
 export type AdminUser={id:string;email:string;name:string;role:string;status:string;content_strikes:number;blocked_at:number|null;email_verified:number;created_at:number;generation_count:number;purchase_count:number;credits:number;spending:{currency:string;amount:number}[]};

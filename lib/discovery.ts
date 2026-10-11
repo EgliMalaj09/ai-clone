@@ -29,7 +29,7 @@ export function matchesTemplate(t:PublicTemplate,f:Pick<Filters,'category'|'sear
 }
 // Mirrors the server catalog order (lib/server/catalog-query.ts).
 const comparators:Record<Sort,(a:PublicTemplate,b:PublicTemplate)=>number>={
- featured:(a,b)=>Number(b.featured)-Number(a.featured)||Number(b.trending)-Number(a.trending)||b.createdAt-a.createdAt,
+ featured:(a,b)=>(a.sortOrder??0)-(b.sortOrder??0)||Number(b.featured)-Number(a.featured)||Number(b.trending)-Number(a.trending)||b.createdAt-a.createdAt,
  newest:(a,b)=>b.createdAt-a.createdAt,
  'price-low':(a,b)=>a.creditCost-b.creditCost,
  'price-high':(a,b)=>b.creditCost-a.creditCost,

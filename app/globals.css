@@ -295,3 +295,6 @@ summary:focus-visible,[tabindex]:focus-visible,[role=checkbox]:focus-visible,[ro
 .language-switch button{border:0;background:transparent;padding:4px 10px;border-radius:999px;font-size:12px;color:#68707a;cursor:pointer}
 .language-switch button.active{background:var(--ink);color:#fff}
 .sheet-language{margin:18px 16px 0}
+.bulk-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:10px 14px;margin:0 0 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.dragging-row{opacity:.45}
+tr[draggable=true]{cursor:grab}

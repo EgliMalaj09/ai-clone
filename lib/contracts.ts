@@ -6,6 +6,8 @@ export type PublicTemplate = {
   isNew: boolean; popular: boolean; active: boolean; createdAt: number;
   /** Extra photo tips for this template only (C31.4), one per line. */
   photoTips: string;
+  /** Manual catalog position (V13); lower comes first in Recommended. */
+  sortOrder?: number;
 };
 export type WorkflowStep = {
   id: string; type: 'image'|'transform'|'video'|'upscale'|'process'; provider: string;
@@ -16,6 +18,9 @@ export type WorkflowStep = {
 export type AdminTemplate = PublicTemplate & {
   estimatedCost: number; currency: string; provider: string; model: string; generationType: string;
   hiddenPrompt: string; negativePrompt: string; settings: Record<string,unknown>; workflow: WorkflowStep[];
+  /** Scheduled publishing (V13): the template goes live at this time. */
+  publishAt?: number|null;
+  archivedAt?: number|null;
 };
 export type StudioUser = {id:string;name:string;email:string;role:string;status:string;createdAt:number;avatar:string|null;emailVerified:boolean;contentStrikes:number;blocked:boolean;twoFactor?:boolean;locale?:'sq'|'en'};
 // The published version of the Terms and Privacy Policy. Bump this whenever the legal pages change
