@@ -83,7 +83,7 @@ export async function tickGeneration(id:string){
   const result=await p.getStatus(record.provider_job_id);if(result.status==='processing'){await run('UPDATE generations SET next_run_at=? WHERE id=? AND lease_token=?',now()+1500,id,token);return;}
   if(result.status==='refused'){await refuseGeneration(g,result.error||'Refused by the provider content rules.');return;}
   if(result.status==='failed'){await failGeneration(g,result.error||'Provider failed.');return;}
-  must(result.url,'The provider returned no output.');const assetId='asset_'+stepId;let mime=result.mime||'video/mp4';const key=`generated/${g.user_id}/${id}/${i}.${extensions[mime]||(mime.startsWith('video')?'mp4':'png')}`;let size=0;
+  must(result.url,'The provider returned no output.');const assetId='asset_'+stepId;let mime=result.mime||(['image','transform'].includes(step.type)?'image/png':'video/mp4');const key=`generated/${g.user_id}/${id}/${i}.${extensions[mime]||(mime.startsWith('video')?'mp4':'png')}`;let size=0;
   if(step.provider==='mock'){
     // Demo output is a bundled concept clip, never a claimed transformation of an upload.
     const b64=demoVideos[snapshot.slug]||demoVideos['formula-driver'];const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));size=bytes.length;

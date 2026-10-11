@@ -25,10 +25,24 @@ export class FalProvider implements AIProvider{
  async cancelJob(jobId:string){const j=parse<Row>(jobId,{});await falFetch(j.cancel,'PUT');}
 }
 async function replicateFetch(path:string,method='GET',body?:Row){const c=await serviceConfig();must(c.replicateKey,'Replicate API token is not configured.',503);const r=await fetch('https://api.replicate.com/v1/'+path,{method,headers:{Authorization:`Bearer ${c.replicateKey}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(15000),redirect:'manual'});if(!r.ok)throw new Error('Replicate returned HTTP '+r.status);return r.json() as Promise<Row>;}
+/** A Replicate model reference (C12/F8): an official "owner/model", a community "owner/model:version", or a bare 64-character version ID. */
+export function replicateTarget(model:string):{path:string;version?:string}{
+ const m=model.trim().match(/^(?:([\w.-]+\/[\w.-]+)(?::([a-f0-9]{64}))?|([a-f0-9]{64}))$/);
+ must(m,'Use a Replicate model as owner/model, owner/model:version or a 64-character version ID.');
+ const version=m[2]||m[3];return version?{path:'predictions',version}:{path:`models/${m[1]}/predictions`};
+}
+const mediaTypes:[RegExp,string][]=[[/\.(mp4|mov|m4v)$/i,'video/mp4'],[/\.webm$/i,'video/webm'],[/\.png$/i,'image/png'],[/\.jpe?g$/i,'image/jpeg'],[/\.webp$/i,'image/webp']];
+/** The media type a result URL announces by its file extension; undefined when it doesn't say (the stored file is sniffed anyway). */
+export const mimeFromUrl=(url:string)=>{let path=url;try{path=new URL(url).pathname}catch{/* not a URL */}return mediaTypes.find(([re])=>re.test(path))?.[1];};
+/** Picks the result file from any Replicate output shape: a URL, a list of URLs, a file object, or a map of named outputs. Video wins over images. */
+export function replicateOutput(output:unknown):string|undefined{
+ const urls:string[]=[];const walk=(v:unknown,depth=0)=>{if(depth>4||urls.length>20)return;if(typeof v==='string'){if(/^https:\/\//.test(v))urls.push(v);}else if(Array.isArray(v))v.forEach(x=>walk(x,depth+1));else if(v&&typeof v==='object')Object.values(v).forEach(x=>walk(x,depth+1));};
+ walk(output);return urls.find(u=>mimeFromUrl(u)?.startsWith('video/'))||urls.find(u=>mimeFromUrl(u))||urls[0];
+}
 export class ReplicateProvider implements AIProvider{
  async generateImage(r:AIRequest){return this.generateVideo(r)}
- async generateVideo(r:AIRequest){const m=r.step.model;must(/^[\w.-]+\/[\w.-]+$/.test(m),'Use a Replicate owner/model identifier.');const d=await replicateFetch(`models/${m}/predictions`,'POST',{input:r.input});return d.id;}
- async getStatus(jobId:string):Promise<ProviderStatus>{must(/^[\w-]+$/.test(jobId),'Invalid provider job ID.');const r=await replicateFetch('predictions/'+jobId);if(['failed','canceled'].includes(r.status)){const error=String(r.error||'Provider cancelled the job');return {status:isRefusal(error)?'refused':'failed',error};}if(r.status!=='succeeded')return {status:'processing'};const output=Array.isArray(r.output)?r.output[0]:r.output;const url=typeof output==='string'?output:output?.url;return url?{status:'completed',url,mime:/\.(mp4|webm)(\?|$)/.test(url)?'video/mp4':'image/png'}:{status:'failed',error:'Unsupported provider output.'};}
+ async generateVideo(r:AIRequest){const t=replicateTarget(r.step.model);const d=await replicateFetch(t.path,'POST',t.version?{version:t.version,input:r.input}:{input:r.input});must(typeof d.id==='string','Replicate did not return a prediction ID.');return d.id;}
+ async getStatus(jobId:string):Promise<ProviderStatus>{must(/^[\w-]+$/.test(jobId),'Invalid provider job ID.');const r=await replicateFetch('predictions/'+jobId);if(['failed','canceled','aborted'].includes(r.status)){const error=String(r.error||'Provider cancelled the job');return {status:isRefusal(error)?'refused':'failed',error};}if(r.status!=='succeeded')return {status:'processing'};const url=replicateOutput(r.output);return url?{status:'completed',url,mime:mimeFromUrl(url)}:{status:'failed',error:'Unsupported provider output.'};}
  async cancelJob(id:string){must(/^[\w-]+$/.test(id),'Invalid job ID.');await replicateFetch(`predictions/${id}/cancel`,'POST');}
 }
 // Higgsfield (https://higgsfield.ai): POST /<model> queues a job; GET /requests/<id>/status reports

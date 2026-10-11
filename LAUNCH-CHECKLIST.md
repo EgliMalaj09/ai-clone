@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 17 | 30 |
+| 1. Codebase | 18 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -120,7 +120,7 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] C32.5 Estimated AI cost per template from Higgsfield prices, for the margin calculation (C19). Needs Higgsfield's prices per model; set them per template in the editor after the first real runs.
   - [ ] C32.8 **Owner, at the end (Phase 4):** with your Higgsfield key in Admin → Connections, make 2–3 real videos and confirm: the model field names (`image_urls` for Seedream edit, `image_url` and `duration` for Kling), the host results are downloaded from, and the real cost per video.
   - [x] C32.6 Contract tests with a fake Higgsfield, like the fal and Replicate ones.
-- [ ] **C12 🟡 Replicate adapter (F8).** Support versioned community models and reliable output-type detection, so any model can be used later without code changes.
+- [x] **C12 🟡 Replicate adapter (F8).** Support versioned community models and reliable output-type detection, so any model can be used later without code changes. ✅ Accepts official `owner/model`, community `owner/model:version` and bare version IDs (validated on save); the result file is picked from any output shape (URL, list, file object, named outputs; video first), and the stored file type is sniffed from its bytes.
 - [~] **C13 🟡 Money display and minimums (F20).** Show ALL prices correctly (no rounding of 299.50 → 300) and confirm POK's minimum amounts for ALL and EUR in the pack validator.
   - [x] C13.1 ✅ Prices are shown exactly: whole lek without decimals, any fractional amount with two decimals (never rounded). Pack prices in ALL are whole lek (POK charges lek as whole numbers).
   - [ ] C13.2 **Needs POK:** confirm POK's minimum charge for ALL and EUR (check during T2) and set it in the pack validator (today: at least 0.50).
@@ -175,7 +175,7 @@ These come first, because the code and infrastructure work depends on them.
 - [ ] **I1 🔴 Hosting account.** Cloudflare account (or the Sites project) with Workers, D1 and R2 enabled, on a paid plan if you expect real traffic.
 - [ ] **I2 🔴 Production database (D1).**
   - [ ] I2.1 Create the production D1 database and bind it as `DB`.
-  - [ ] I2.2 Apply all migrations in `drizzle/` (0000–0004) through the hosting workflow.
+  - [ ] I2.2 Apply all migrations in `drizzle/` (0000 onwards, currently up to 0009) through the hosting workflow.
   - [ ] I2.3 Check the tables exist and the starter templates are seeded.
 - [ ] **I3 🔴 File storage (R2).**
   - [ ] I3.1 Create the production bucket and bind it as `BUCKET`. Keep it private; the app serves signed links.
@@ -370,6 +370,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C12 (F8) | Done | Replicate: version IDs for community models (POST /v1/predictions with version), model reference validated on template save, output picked from any shape (video preferred), aborted status handled; image steps default to an image key. 3 provider checks |
 | 2026-10-12 | C31.4 | Mostly done | Per-template photo tips: new templates.photo_tips column (migration 0009), textarea in the template editor, shown in the template's guidelines card. Albanian waits for C10. 1 integration check |
 | 2026-10-12 | C27.1, C27.2, C21.9 | Done | Template page: What you receive box and related templates (same category first). Example photos (C27.3) wait for real images. FAQ now covers the report/free-redo rule (C21.9). 1 integration check |
 | 2026-10-12 | C26 | Done | Help & FAQ and Contact pages, footer links, admin-editable support details and social links (validated https). 4 integration checks. New DECISIONS.md records choices made for soft-blocked items |

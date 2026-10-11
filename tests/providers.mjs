@@ -24,8 +24,10 @@ const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15
   if(u.pathname.startsWith('/cancel/'))return MFResponse.json({ok:true});
  }
  if(u.hostname==='api.replicate.com'){
-  if(req.method==='POST'){const {input}=await req.json();inputs.push(input);const id='rep_'+(++serial);jobs.set(id,input);return MFResponse.json({id,status:'starting'});}
-  return MFResponse.json({status:'succeeded',output:'https://replicate.delivery/example.mp4'});
+  if(req.method==='POST'){const body=await req.json();inputs.push(body.input);replicateCalls.push({path:u.pathname,version:body.version});const id='rep_'+(++serial);jobs.set(id,body.input);return MFResponse.json({id,status:'starting'});}
+  // Community models often return named outputs (e.g. a poster image and the video); the adapter must pick the video.
+  const job=jobs.get(u.pathname.split('/').at(-1));
+  return MFResponse.json({status:'succeeded',output:job?.shape==='named'?{poster:'https://replicate.delivery/poster.webp',video:['https://replicate.delivery/clip.mp4?token=1']}:'https://replicate.delivery/example.mp4'});
  }
  if(u.hostname==='v3.fal.media'||u.hostname==='replicate.delivery'){
   const bytes=u.pathname.endsWith('.webp')?image:video;
@@ -33,6 +35,7 @@ const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15
  }
  throw new Error('No external network allowed: '+u.hostname);
 }});
+const replicateCalls=[];
 const checks=[];const ok=(name,value=true)=>{assert(value,name);checks.push({name,passed:true});console.log('PASS',name)};
 async function request(route,{method='GET',data,cookie,expected=200}={}){
  const r=await mf.dispatchFetch(env.APP_ORIGIN+route,{method,headers:{origin:env.APP_ORIGIN,...(cookie?{cookie}:{}),...(data?{'content-type':'application/json'}:{})},body:data?JSON.stringify(data):undefined});const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}if(expected!==null)assert.equal(r.status,expected,route+': '+text.slice(0,200));return {body,cookie:r.headers.get('set-cookie')?.split(';')[0]};
@@ -83,6 +86,14 @@ try{
  higgsfield.outcome('bytedance/seedream/v4/edit','completed');higgsfield.outcome('kling-video/v3.0-turbo/image-to-video','completed');
  const rep={...second,id:'rep_video',provider:'replicate',model:'studio/fixture',inputs:{image:'{{user_image_1}}'}};
  await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:[rep]}});const repOrder=(await start()).body;ok('Replicate adapter completes an asynchronous video prediction',(await finish(cookie,repOrder.generationId)).status==='completed');
+ // C12: community models run by version ID, and named/array outputs resolve to the video file.
+ const version='a'.repeat(64);
+ const bad=await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:[{...rep,model:'not a model'}]},expected:400});ok('An invalid Replicate model reference is rejected on save',String(bad.body.error).includes('Replicate model'));
+ await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:[{...rep,model:'someone/community-model:'+version,settings:{shape:'named'}}]}});
+ const community=await finish(cookie,(await start()).body.generationId);const call=replicateCalls.at(-1);
+ ok('A community Replicate model is run by its version ID',community.status==='completed'&&call.path==='/v1/predictions'&&call.version===version);
+ const saved=await db.prepare("SELECT mime,storage_key FROM generated_assets WHERE generation_id=? AND kind='output'").bind(community.id).first();
+ ok('A named Replicate output with a poster and a video stores the video',saved.mime==='video/mp4'&&saved.storage_key.endsWith('.mp4'));
  await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:[{...second,id:'unsafe_video',inputs:{image:'{{user_image_1}}'},settings:{unsafe:true}}]}});const before=(await balance()).available;const unsafe=(await start()).body;ok('Unsafe provider output fails without fetching the private host',(await finish(cookie,unsafe.generationId)).status==='failed'&&!requests.some(r=>r.host==='127.0.0.1'));ok('The failed provider job returns its credits',(await balance()).available===before);
  await mkdir('test-results',{recursive:true});await writeFile('test-results/providers.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,network:'All Fal, Replicate and media HTTP responses are local fixtures; no paid inference performed',checks},null,2));console.log('\n'+checks.length+' provider contract checks passed.');
 }catch(e){console.error('FAIL',e);await mkdir('test-results',{recursive:true});await writeFile('test-results/providers.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,error:String(e),checks},null,2));process.exitCode=1}finally{await mf.dispose()}
