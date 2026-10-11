@@ -52,7 +52,8 @@ export type SpendingLimits={concurrent:number;daily:number;studioDailyCost:numbe
 export type Maintenance={purchasesPaused:boolean;creationsPaused:boolean;message:string};
 export type TemplateResult={template:AdminTemplate};
 export type AdminUserDetail={
- user:{id:string;name:string;email:string;role:string;status:string;email_verified:boolean;created_at:number;content_strikes:number;blocked_at:number|null};
+ user:{id:string;name:string;email:string;role:string;status:string;email_verified:boolean;created_at:number;content_strikes:number;blocked_at:number|null;two_factor:boolean;locale:string};
+ reports:{id:string;template_name:string;reason:string;status:string;resolution:string|null;created_at:number}[];
  refusals:{id:string;template_name:string;created_at:number;reason:string|null;photos:string[]}[];
  balance:Balance;sessions:{active:number;lastSignIn:number|null};uploads:{count:number;bytes:number};
  creations:{total:number;completed:number;failed:number;recent:{id:string;template_name:string;status:string;credit_cost:number;created_at:number;completed_at:number|null;error:string|null;credit_status:string|null}[]};

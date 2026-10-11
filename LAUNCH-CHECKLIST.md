@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 0 | 45 |
+| 3B. Version 1 features | 2 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -262,9 +262,9 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V30 🟡 Removal request form.** A public form for someone who finds themselves in a video they didn't agree to, going to the admin report queue (C21) with a fast takedown.
 
 **Found by walking through your admin work**
-- [ ] **V31 🟡 Customer detail page.** One page per customer with their purchases, credit history, creations, reports and actions (adjust credits, reset link, suspend), for fast support.
+- [x] **V31 🟡 Customer detail page.** One page per customer with their purchases, credit history, creations, reports and actions (adjust credits, reset link, suspend), for fast support.
   - [x] V31.1 Customer page built: profile (rename), credits with adjust and history, purchases with Reverse, creations, activity; suspend/reactivate, mark email verified, delete. Adjust credits only here.
-  - [ ] V31.2 Still to add when those features exist: reports (C21), refusals and block status (C2), send reset link (V11).
+  - [x] V31.2 Still to add when those features exist: reports (C21), refusals and block status (C2), send reset link (V11).
 - [ ] **V32 🟡 Free test runs for admins.** Run a template with real AI from the editor without spending credits, to check quality before publishing.
 - [ ] **V33 🟡 Prompt history.** Every saved change to a template's prompt and workflow is kept, so you can compare and roll back.
 - [ ] **V34 🟡 Template statistics.** Per template: views, creations, success rate, average generation time and credits earned.
@@ -286,7 +286,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 
 **Admin side**
 - [ ] **V10 🟡 Roles.** Promote other admins and add a support role with limited access.
-- [ ] **V11 🟡 Admin password reset.** Send a reset link to a customer from Admin → Users.
+- [x] **V11 🟡 Admin password reset.** Send a reset link to a customer from Admin → Users.
 - [ ] **V12 🟡 CSV exports.** Credit purchases, the credit ledger and users.
 - [ ] **V13 🟡 Template management.** Drag-and-drop ordering, bulk publish/unpublish and scheduled publishing.
 - [ ] **V14 🟡 Template archive.** Archive (soft delete) instead of permanent delete.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V11, V31 | Done | Admin → customer page: Send reset link (emailed in the customer's language; demo shows/copies the link), reports list, two-step and email-language badges, more activity labels. 1 integration + 1 production check |
 | 2026-10-12 | C10, C6.3 | Done | i18n: lib/i18n.ts + lib/i18n-sq.ts (≈600 lines), useI18n/LanguageSwitch, Albanian legal pages, translated metadata/404/error/loading, API errors and field messages per language (admin English), emails per users.locale (migration 0012), language cookie no longer counts as a signed-in cookie for the origin check. tests: test:i18n coverage + 6 integration + 1 production check; test helpers send studio_lang=en |
 | 2026-10-12 | C29.1, C29.2 | Done | Contrast raised to WCAG AA across globals.css (124 colours, hue kept), stronger focus styles, skip link, prefers-reduced-motion. Real-device checks stay with T5/T9. 1 integration check |
 | 2026-10-12 | C4.1 (L5) | Done | TOTP two-step sign-in (lib/server/mfa.ts, migration 0011): setup with key + otpauth link, enable with code, recovery codes, login ticket step, disable/regenerate with password + code; admin reminder banner. Also fixed a pre-existing hydration mismatch (dates now formatted in Europe/Tirane on server and browser). 7 security checks |

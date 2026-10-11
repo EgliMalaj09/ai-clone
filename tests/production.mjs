@@ -121,6 +121,10 @@ try{
   await request('/api/auth/register',{method:'POST',lang:null,data:{name:'Klient Shqip',email:'shqip@studio.test',password:'Fjalekalim-123',acceptTerms:true,confirmAge:true},expected:201});
   const sqMail=mails.find(m=>m.to==='shqip@studio.test');
   ok('An Albanian visitor gets the verification email in Albanian',sqMail&&sqMail.subject.startsWith('Verifiko email-in')&&sqMail.html.includes('lang="sq"')&&sqMail.text.includes('Hape këtë lidhje'));
+  // V11: with email configured, the admin's reset link is emailed to the customer, not shown.
+  const shqip=await db.prepare("SELECT id FROM users WHERE email='shqip@studio.test'").first();
+  const sentLink=(await request('/api/admin/users/'+shqip.id+'/reset-link',{method:'POST',cookie:admin,data:{}})).body;
+  ok('An admin reset link is emailed in the customer’s language',sentLink.sent===true&&!sentLink.url&&mails.some(m=>m.to==='shqip@studio.test'&&m.subject.startsWith('Rivendos fjalëkalimin')));
   const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
   await db.prepare("UPDATE credit_purchases SET provider='mock',status='pending' WHERE id=?").bind(stale.purchaseId).run();
   await request('/api/credits/purchases/'+stale.purchaseId+'/retry',{method:'POST',cookie:admin,data:{},expected:403});ok('A test purchase cannot reopen checkout after a production switch');

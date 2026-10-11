@@ -302,6 +302,14 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const adminSq=await request('/api/admin/templates/missing-template',{cookie:adminCookie,lang:'sq',expected:404});ok('Admin API errors stay in English',adminSq.body.error==='Template not found.');
  ok('Albanian legal pages and FAQ',(await request('/terms',{lang:null})).text.includes('Fotot dhe lejet e tua')&&(await request('/faq',{lang:null})).text.includes('A skadojnë kreditet?'));
  await request('/account',{cookie:userCookie,lang:'en'});ok('A signed-in customer’s language is remembered for emails',(await db.prepare("SELECT locale FROM users WHERE email='qa@studio.test'").first()).locale==='en');
+ // V11/V31.2: an admin sends a reset link from the customer page (demo: the link is returned instead of emailed); the page lists reports.
+ const resetUser=await request('/api/auth/register',{method:'POST',data:{name:'Reset Me',email:'resetme@studio.test',password:'Reset-password-1',acceptTerms:true,confirmAge:true},expected:201});
+ await request('/api/admin/users/'+resetUser.body.user.id+'/reset-link',{method:'POST',cookie:userCookie,data:{},expected:403});
+ const resetLink=(await request('/api/admin/users/'+resetUser.body.user.id+'/reset-link',{method:'POST',cookie:adminCookie,data:{}})).body;
+ await request('/api/auth/reset',{method:'POST',data:{token:new URL(resetLink.url).searchParams.get('token'),password:'Brand-new-password-2'}});
+ const relogged=await request('/api/auth/login',{method:'POST',data:{email:'resetme@studio.test',password:'Brand-new-password-2'}});
+ const resetDetail=(await request('/api/admin/users/'+resetUser.body.user.id,{cookie:adminCookie})).body;
+ ok('Admin reset link lets the customer choose a new password and is logged',resetLink.sent===false&&!!relogged.cookie&&resetDetail.activity.some(a=>a.action==='user.reset-link')&&Array.isArray(resetDetail.reports)&&resetDetail.user.two_factor===false);
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

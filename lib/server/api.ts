@@ -80,19 +80,20 @@ async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(u
 
 /** Everything an administrator needs about one customer on a single page. */
 async function adminUserDetail(id:string){
- const u=await one('SELECT id,name,email,role,status,email_verified,created_at,content_strikes,blocked_at FROM users WHERE id=?',id);must(u,'User not found.',404);
- const [sessions,uploads,count,generations,refused,activity]=await Promise.all([
+ const u=await one('SELECT id,name,email,role,status,email_verified,created_at,content_strikes,blocked_at,totp_enabled_at,locale FROM users WHERE id=?',id);must(u,'User not found.',404);
+ const [sessions,uploads,count,generations,refused,activity,reports]=await Promise.all([
   one('SELECT COUNT(*) AS active,MAX(expires_at) AS latest FROM sessions WHERE user_id=? AND expires_at>?',id,now()),
   one('SELECT COUNT(*) AS count,COALESCE(SUM(size),0) AS bytes FROM user_uploads WHERE user_id=?',id),
   one("SELECT COUNT(*) AS total,SUM(status='completed') AS completed,SUM(status='failed') AS failed FROM generations WHERE user_id=? AND deleted_at IS NULL",id),
   all("SELECT g.id,g.template_name,g.status,g.credit_cost,g.created_at,g.completed_at,g.error,h.status AS credit_status FROM generations g LEFT JOIN credit_holds h ON h.id=g.hold_id WHERE g.user_id=? AND g.deleted_at IS NULL ORDER BY g.created_at DESC LIMIT 20",id),
   all("SELECT id,template_name,created_at,internal_error,input_ids FROM generations WHERE user_id=? AND status='refused' AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 20",id),
   all('SELECT a.id,a.action,a.created_at,actor.email AS actor_email FROM audit_logs a LEFT JOIN users actor ON actor.id=a.user_id WHERE a.target_id=? OR a.user_id=? ORDER BY a.created_at DESC LIMIT 20',id,id),
+  all('SELECT r.id,r.reason,r.status,r.resolution,r.created_at,g.template_name FROM generation_reports r JOIN generations g ON g.id=r.generation_id WHERE r.user_id=? ORDER BY r.created_at DESC LIMIT 20',id),
  ]);
  // Refused photos stay viewable for review while the customer keeps them; deleted ones are simply not listed.
  const photoIds=[...new Set(refused.flatMap(r=>parse<string[]>(r.input_ids,[])))];
  const kept=new Set(photoIds.length?(await all(`SELECT id FROM user_uploads WHERE user_id=? AND id IN (${photoIds.map(()=>'?').join(',')})`,id,...photoIds)).map(r=>r.id as string):[]);
- return {user:{id:u.id,name:u.name,email:u.email,role:u.role,status:u.status,created_at:u.created_at,email_verified:!!u.email_verified,content_strikes:Number(u.content_strikes||0),blocked_at:u.blocked_at??null},balance:await balanceOf(id),
+ return {user:{id:u.id,name:u.name,email:u.email,role:u.role,status:u.status,created_at:u.created_at,email_verified:!!u.email_verified,content_strikes:Number(u.content_strikes||0),blocked_at:u.blocked_at??null,two_factor:!!u.totp_enabled_at,locale:u.locale||'sq'},balance:await balanceOf(id),reports,
   refusals:refused.map(r=>({id:r.id,template_name:r.template_name,created_at:r.created_at,reason:r.internal_error,photos:parse<string[]>(r.input_ids,[]).filter(p=>kept.has(p)).map(p=>'/api/media/'+p)})),
   // Sessions last seven days, so the newest expiry tells when the customer last signed in.
   sessions:{active:Number(sessions?.active||0),lastSignIn:sessions?.latest?Number(sessions.latest)-7*86400000:null},
@@ -259,6 +260,8 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
  }
  if(p[1]==='users'){
   if(method==='GET'&&p[2]&&!p[3])return json(await adminUserDetail(p[2]));
+  // V11: send the customer a password reset link (in their language); in the demo without email, the link is shown to the admin instead.
+  if(method==='POST'&&p[3]==='reset-link'){await rateLimit('admin-reset:'+user.id,20,3600000);const target=await one('SELECT id,email,status,locale FROM users WHERE id=?',p[2]);must(target,'User not found.',404);must(target.status==='active','Reactivate the account before sending a reset link.',409);const c=await serviceConfig();const token=await makeAuthToken(target.id as string,'reset');await audit(user.id,'user.reset-link',target.id as string);if(c.mailKey&&c.mailFrom){await sendAuthMail(target.email as string,token,'reset',target.locale==='en'?'en':'sq');return json({sent:true});}must(c.demo,'Email delivery is not configured. Add it in Connections first.',503);return json({sent:false,url:`${c.origin}/reset-password?token=${token}`});}
   if(method==='GET'&&p[3]==='purchases'){must(await one('SELECT id FROM users WHERE id=?',p[2]),'User not found.',404);return json(await listPurchases(p[2],new URL(req.url)));}
   if(method==='PATCH'){const b=z.object({status:z.enum(['active','suspended']).optional(),name:z.string().trim().min(2).max(80).optional(),emailVerified:z.literal(true).optional(),unblock:z.literal(true).optional()}).strict().parse(await body(req));
    const target=await one('SELECT id,role,email_verified FROM users WHERE id=?',p[2]);must(target,'User not found.',404);must(b.status||b.name||b.emailVerified||b.unblock,'Choose something to change.');
