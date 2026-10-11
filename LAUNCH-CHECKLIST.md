@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 13 | 32 |
+| 1. Codebase | 14 | 32 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -107,7 +107,7 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] C11.1 Receipt email after a credit purchase (skip if POK already sends one; check during T2).
   - [ ] C11.2 "Your video is ready" and "Your video failed, credits returned" emails.
 - [ ] **C7 🟡 Error tracking (L10).** Send Worker errors to a tracker (e.g. Sentry) and log provider and webhook failures with the generation or purchase ID.
-- [ ] **C8 🟡 Analytics (F9).** Record anonymous page and template views so the dashboard funnel is complete.
+- [x] **C8 🟡 Analytics (F9).** ✅ Page and template views are now recorded for guests too (the analytics endpoint moved to the public section with an IP rate limit; home/explore and template pages fire views regardless of sign-in), so the dashboard funnel includes anonymous visitors.
 - [ ] **C9 🟡 Catalog scale (F7).** Paginate the storefront instead of loading all templates at once, so the catalog can grow after launch without code changes.
 - [ ] **C10 🟡 Albanian translation.** i18n for the whole UI, emails and legal pages, with a language switcher (Albanian and English).
 - [ ] **C32 🔴 Higgsfield AI connection.** Higgsfield is the AI provider (D18). The app currently supports only fal.ai and Replicate.
@@ -344,6 +344,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-11 | C8 | Done | Anonymous page/template views recorded: analytics endpoint moved to the public route section (optional user, IP rate limit); client fires homepage_view on home/explore and template_view on template pages for guests too. 1 integration check |
 | 2026-10-11 | C4.2, C5, C28 | Done | PBKDF2 iteration count now stored in and read from the hash (F16); pager hidden on empty/single-page lists (C28). Verified F15/F17/F18/F19 were already fixed (image extensions, deletion order, user count, admin-only footer link). 3 integration checks added |
 | 2026-10-11 | C19 | Done | Exchange-rate settings (USD→EUR/ALL, defaults 0.92 / 85, admin-editable); AI costs converted into the selling currency for dashboard financials, profitable templates and the admin template margin column; dashboard defaults to EUR, no USD column. lib/server/rates.ts. 4 integration checks; security financials assertion updated |
 | 2026-10-11 | C23 | Done | Spending safety limits: per-customer concurrent (default 3) and daily (default 20) caps + studio-wide daily estimated-AI-cost cap (off by default, records spend_cap_reached event). New lib/server/limits.ts enforced in startGeneration before reserving credits; admin panel + settings API. 5 integration checks |

@@ -179,6 +179,10 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('Login verifies a hash with a non-default iteration count',relog.body.user?.email==='hash@studio.test');
  await request('/api/auth/login',{method:'POST',data:{email:'hash@studio.test',password:'wrong-password-000'},expected:401});ok('A wrong password still fails against a non-default-iteration hash',true);
 
+ // C8 — anonymous page/template views are recorded (dashboard funnel)
+ await request('/api/analytics',{method:'POST',data:{name:'template_view',templateId:formula.id}});
+ ok('Anonymous template views are recorded with no user',!!(await db.prepare("SELECT id FROM analytics_events WHERE name='template_view' AND user_id IS NULL").first()));
+
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
  const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;
  ok('Customer page returns profile, credits, creations and activity',detail.user.email===second.body.user.email&&typeof detail.balance.available==='number'&&Array.isArray(detail.creations.recent)&&detail.activity.some(a=>a.action==='user.suspended'));
