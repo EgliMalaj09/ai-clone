@@ -20,6 +20,7 @@ import {assertWithinLimits,spendingLimits} from './limits';
 import {exchangeRates,convertMinor} from './rates';
 import {dispatcherStatus,recordDispatch} from './dispatcher';
 import {reportError} from './errors';
+import {adminExport} from './exports';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
 import {langFromCookie,translate,type Lang} from '../i18n';
 /** Friendly, translated messages for the form fields customers fill in; other validation messages stay technical. */
@@ -186,6 +187,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
  if(p[1]==='workflows'&&p[2]==='preset'&&method==='POST'){const b=z.object({name:z.string().min(2).max(100),slug:z.string().max(120),description:z.string().max(2000),requiredImageCount:z.number().int().min(1).max(4),aspectRatio:z.enum(['9:16','16:9','1:1','4:5']),duration:z.union([z.literal(5),z.literal(10)]),estimatedCost:z.number().int().min(0)}).parse(await body(req));return json(liveWorkflow(b));}
  if(p[1]==='connections'&&p.length===2){if(method==='GET')return json(await connectionStatus());if(method==='PATCH')return json(await updateConnections(req,user));}
  if(p[1]==='operations'&&method==='GET')return json(await operationsSummary());
+ if(p[1]==='export'&&p[2]&&method==='GET'){await rateLimit('admin-export:'+user.id,30,3600000);return await adminExport(p[2],user.id);}
  if(p[1]==='activity'&&method==='GET')return json(await adminActivity(new URL(req.url)));
  if(['users','generations'].includes(p[1])&&method==='GET'&&!p[2])return json(await adminRecords(p[1],new URL(req.url)));
  if(p[1]==='operations'&&p[2]==='dispatch'&&method==='POST'){await rateLimit('admin-dispatch:'+user.id,6);const processed=await tickQueue();await audit(user.id,'queue.dispatch','queue');return json({processed});}

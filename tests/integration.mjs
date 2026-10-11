@@ -310,6 +310,13 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const relogged=await request('/api/auth/login',{method:'POST',data:{email:'resetme@studio.test',password:'Brand-new-password-2'}});
  const resetDetail=(await request('/api/admin/users/'+resetUser.body.user.id,{cookie:adminCookie})).body;
  ok('Admin reset link lets the customer choose a new password and is logged',resetLink.sent===false&&!!relogged.cookie&&resetDetail.activity.some(a=>a.action==='user.reset-link')&&Array.isArray(resetDetail.reports)&&resetDetail.user.two_factor===false);
+ // V12: CSV exports for admins only, with formula injection neutralised.
+ await request('/api/admin/export/users',{cookie:userCookie,expected:403});await request('/api/admin/export/nope',{cookie:adminCookie,expected:404});
+ await request('/api/account',{method:'PATCH',cookie:userCookie,data:{name:'=HYPERLINK("x")'}});
+ const usersCsv=await request('/api/admin/export/users',{cookie:adminCookie}),ledgerCsv=await request('/api/admin/export/ledger',{cookie:adminCookie}),purchasesCsv=await request('/api/admin/export/purchases',{cookie:adminCookie});
+ ok('Admin CSV exports for users, ledger and purchases',usersCsv.response.headers.get('content-type').startsWith('text/csv')&&usersCsv.response.headers.get('content-disposition').includes('studio-users-')&&usersCsv.text.includes('qa@studio.test')&&ledgerCsv.text.split('\r\n')[0].includes('Transaction ID')&&purchasesCsv.text.split('\r\n')[0].includes('Purchase ID'));
+ ok('CSV cells cannot run as spreadsheet formulas',usersCsv.text.includes(`"'=HYPERLINK(""x"")"`)&&!/(^|,)=HYPERLINK/m.test(usersCsv.text));
+ await request('/api/account',{method:'PATCH',cookie:userCookie,data:{name:'Disposable QA User'}});
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

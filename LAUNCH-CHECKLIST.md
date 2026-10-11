@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 2 | 45 |
+| 3B. Version 1 features | 3 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -287,7 +287,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 **Admin side**
 - [ ] **V10 🟡 Roles.** Promote other admins and add a support role with limited access.
 - [x] **V11 🟡 Admin password reset.** Send a reset link to a customer from Admin → Users.
-- [ ] **V12 🟡 CSV exports.** Credit purchases, the credit ledger and users.
+- [x] **V12 🟡 CSV exports.** Credit purchases, the credit ledger and users. ✅ Export CSV buttons on Credit purchases, Credit ledger and Users (UTF-8 with BOM for Excel, formula-safe cells, logged in Activity).
 - [ ] **V13 🟡 Template management.** Drag-and-drop ordering, bulk publish/unpublish and scheduled publishing.
 - [ ] **V14 🟡 Template archive.** Archive (soft delete) instead of permanent delete.
 - [ ] **V15 🟡 Real AI cost tracking.** Record the actual provider cost per creation and compare it with the estimate.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V12 | Done | lib/server/exports.ts: /api/admin/export/{purchases,ledger,users} CSV (admin only, rate-limited, audited, formula injection neutralised); buttons in the three admin pages. 2 integration checks |
 | 2026-10-12 | V11, V31 | Done | Admin → customer page: Send reset link (emailed in the customer's language; demo shows/copies the link), reports list, two-step and email-language badges, more activity labels. 1 integration + 1 production check |
 | 2026-10-12 | C10, C6.3 | Done | i18n: lib/i18n.ts + lib/i18n-sq.ts (≈600 lines), useI18n/LanguageSwitch, Albanian legal pages, translated metadata/404/error/loading, API errors and field messages per language (admin English), emails per users.locale (migration 0012), language cookie no longer counts as a signed-in cookie for the origin check. tests: test:i18n coverage + 6 integration + 1 production check; test helpers send studio_lang=en |
 | 2026-10-12 | C29.1, C29.2 | Done | Contrast raised to WCAG AA across globals.css (124 colours, hue kept), stronger focus styles, skip link, prefers-reduced-motion. Real-device checks stay with T5/T9. 1 integration check |

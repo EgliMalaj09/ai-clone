@@ -1,6 +1,6 @@
 'use client';
 import {useState} from 'react';
-import {Coins,Pencil,Plus,Trash2} from 'lucide-react';
+import {Coins,Download,Pencil,Plus,Trash2} from 'lucide-react';
 import {toast} from 'sonner';
 import {Switch} from '@/components/ui/switch';
 import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle,DialogTrigger} from '@/components/ui/dialog';
@@ -47,7 +47,7 @@ export function CreditPacks(){
 
 export function PurchaseManager(){
  const [page,setPage]=useState(1);const {data,error,loading,refresh}=useAPI<{purchases:CreditPurchase[];pagination:Pagination}>('admin/credits/purchases?page='+page);
- return <><Heading title="Credit purchases" description="Every pack bought, with its payment status. A reversed purchase is a refund or chargeback made in POK. POK does not report these, so record each one with Reverse."/>
+ return <><Heading title="Credit purchases" description="Every pack bought, with its payment status. A reversed purchase is a refund or chargeback made in POK. POK does not report these, so record each one with Reverse."><a className="button secondary small" href="/api/admin/export/purchases" download><Download size={16}/>Export CSV</a></Heading>
   {loading?<Loading/>:error||!data?<ErrorBox message={error} retry={refresh}/>:<div className="table-panel"><Table><TableHeader><TableRow><TableHead>Customer</TableHead><TableHead>Pack</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Date</TableHead><TableHead><span className="sr-only">Actions</span></TableHead></TableRow></TableHeader><TableBody>{data.purchases.map(p=><TableRow key={p.id}>
    <TableCell>{p.email||'Deleted account'}<small className="block mono">{p.id.slice(-10)}</small></TableCell><TableCell>{p.packageName}<small className="block">{credits(p.credits)}</small></TableCell>
    <TableCell>{money(p.amount,p.currency)}<small className="block">{p.provider==='mock'?'Test checkout':p.provider==='pok'?'POK':p.provider}</small></TableCell><TableCell><span className={'status '+(p.status==='paid'?'completed':p.status==='reversed'?'failed':'pending')}>{statusLabel(p.status)}</span></TableCell><TableCell>{date(p.createdAt)}</TableCell><TableCell>{p.status==='paid'&&<ReversePurchase purchase={p} onDone={refresh}/>}</TableCell>
@@ -58,7 +58,7 @@ export function CreditLedger({initialSearch=''}:{initialSearch?:string}){
  const [page,setPage]=useState(1),[search,setSearch]=useState(initialSearch),[kind,setKind]=useState('all');
  const {data,error,loading,refresh}=useAPI<CreditHistory>('admin/credits/ledger?'+new URLSearchParams({page:String(page),search,kind}));
  const reconciliation=useAPI<{ok:boolean;negative:unknown[]}>('admin/credits/reconciliation');
- return <><Heading title="Credit ledger" description="Every credit change, newest first. Entries are permanent; corrections are new entries."/>
+ return <><Heading title="Credit ledger" description="Every credit change, newest first. Entries are permanent; corrections are new entries."><a className="button secondary small" href="/api/admin/export/ledger" download><Download size={16}/>Export CSV</a></Heading>
   {reconciliation.data&&<div className={'subtle-note '+(reconciliation.data.ok?'':'readiness-warning')}>{reconciliation.data.ok?'Balances match the ledger.':'Ledger mismatch found. Review Operations.'}{reconciliation.data.negative.length>0&&` ${reconciliation.data.negative.length} account(s) are below zero after a reversed payment.`}</div>}
   <div className="admin-toolbar"><RecordSearch value={search} onChange={v=>{setSearch(v);setPage(1)}} placeholder="Search email, transaction or reference ID"/><Pick label="Transaction type" value={kind} onChange={v=>{setKind(v);setPage(1)}} options={kinds.map(([value,label])=>({value,label}))}/></div>
   {loading?<Loading/>:error||!data?<ErrorBox message={error} retry={refresh}/>:<div className="table-panel"><Table><TableHeader><TableRow><TableHead>Time</TableHead><TableHead>Customer</TableHead><TableHead>Type</TableHead><TableHead>Change</TableHead><TableHead>Balance after</TableHead><TableHead>Details</TableHead></TableRow></TableHeader><TableBody>{data.transactions.map(t=><TableRow key={t.id}>
