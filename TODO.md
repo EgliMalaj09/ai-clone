@@ -67,11 +67,11 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 ### Low priority
 - [x] **F13** — ✅ Fixed (C6.5): `/api/auth/resend` returns "already verified" without sending when the email is already verified.
 - [x] **F14** — ✅ Fixed (C6.5/C15): `/reset-password` and `/verify` without a token show a clear "incomplete link" message with a way to request a new one.
-- [ ] **F15** — Generated images are always stored with a `.png` key extension, even when they are WEBP/JPG (`lib/server/queue.ts:52`). This is cosmetic: the MIME type is correct.
-- [ ] **F16** — The PBKDF2 iteration count is hard-coded, and `checkPassword` ignores the count stored in the hash (`lib/server/security.ts:7-9`), so iterations can never be raised later without breaking logins. Read the count from the stored hash.
-- [ ] **F17** — Account deletion removes the R2 files before the database batch (`lib/server/api.ts:31`). If the batch fails, records point to missing files. Delete the DB rows first, or make the cleanup retryable.
-- [ ] **F18** — The admin dashboard counts users with `status!='deleted'`, but that status never exists (`lib/server/api.ts:116`). The result is harmless but misleading.
-- [ ] **F19** — The footer shows a "Studio admin" link to every visitor (`components/studio.tsx:21`). Show it only to admins.
+- [x] **F15** — ✅ Fixed earlier: generated assets use the MIME-mapped extension (webp/jpg/png).
+- [x] **F16** — ✅ Fixed (C4.2): passwordHash embeds the iteration count; checkPassword reads it from the stored hash.
+- [x] **F17** — ✅ Fixed earlier: account deletion deletes DB rows first, then R2 files with a retry-logged loop.
+- [x] **F18** — ✅ Fixed earlier: dashboard user count is a plain COUNT(*), no phantom status filter.
+- [x] **F19** — ✅ Fixed earlier: the "Studio admin" footer and mobile links are admin-only.
 - [ ] **F20** — Prices in `ALL` display with 0 decimals (`lib/contracts.ts:20`), so e.g. 299.50 shows as 300. Confirm the minimum Stripe amounts for ALL/EUR/GBP, since the validator only enforces `price >= 50`.
 
 ## 4. Not implemented, needed before a public launch

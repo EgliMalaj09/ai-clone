@@ -10,7 +10,8 @@ import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from './ui/tab
 import {Pagination,PaginationContent,PaginationItem} from './ui/pagination';
 
 export function Pager({pagination,onPage}:{pagination?:{page:number;pages:number;total:number};onPage:(page:number)=>void}){
- if(!pagination)return null;
+ // Nothing to page through: hide the pager entirely on empty or single-page lists (C28).
+ if(!pagination||pagination.total===0||pagination.pages<=1)return null;
  return <div className="data-pager"><span>{pagination.total} results · Page {pagination.page} of {pagination.pages}</span><Pagination className="m-0 w-auto" aria-label="Result pages"><PaginationContent><PaginationItem><button className="button secondary small" disabled={pagination.page<=1} onClick={()=>onPage(pagination.page-1)}>Previous</button></PaginationItem><PaginationItem><button className="button secondary small" disabled={pagination.page>=pagination.pages} onClick={()=>onPage(pagination.page+1)}>Next</button></PaginationItem></PaginationContent></Pagination></div>;
 }
 export function RecordSearch({value,onChange,placeholder='Search by name, email, or ID'}:{value:string;onChange:(value:string)=>void;placeholder?:string}){

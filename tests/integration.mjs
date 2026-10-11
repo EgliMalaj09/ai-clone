@@ -169,6 +169,16 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const adminTpls19=(await request('/api/admin/templates',{cookie:adminCookie})).body.templates;
  ok('Template margins show in the accounting currency, not blank USD',adminTpls19.every(t=>t.costCurrency==='EUR')&&adminTpls19.some(t=>t.creditValue!==null));
 
+ // C4.2 / F16 — the PBKDF2 iteration count is read from the stored hash
+ await request('/api/auth/register',{method:'POST',data:{name:'Hash User',email:'hash@studio.test',password:'Hash-password-123',acceptTerms:true,confirmAge:true},expected:201});
+ const storedHash=(await db.prepare("SELECT password_hash FROM users WHERE email='hash@studio.test'").first()).password_hash;
+ ok('New password hashes embed the iteration count',typeof storedHash==='string'&&storedHash.startsWith('pbkdf2$100000$'));
+ const salt2=randomBytes(32).toString('hex');const customHash='pbkdf2$150000$'+salt2+'$'+pbkdf2Sync('Rehashed-pass-456',salt2,150000,32,'sha256').toString('hex');
+ await db.prepare("UPDATE users SET password_hash=? WHERE email='hash@studio.test'").bind(customHash).run();
+ const relog=await request('/api/auth/login',{method:'POST',data:{email:'hash@studio.test',password:'Rehashed-pass-456'}});
+ ok('Login verifies a hash with a non-default iteration count',relog.body.user?.email==='hash@studio.test');
+ await request('/api/auth/login',{method:'POST',data:{email:'hash@studio.test',password:'wrong-password-000'},expected:401});ok('A wrong password still fails against a non-default-iteration hash',true);
+
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
  const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;
  ok('Customer page returns profile, credits, creations and activity',detail.user.email===second.body.user.email&&typeof detail.balance.available==='number'&&Array.isArray(detail.creations.recent)&&detail.activity.some(a=>a.action==='user.suspended'));

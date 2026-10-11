@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 11 | 32 |
+| 1. Codebase | 13 | 32 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -88,15 +88,15 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C3.2 Admin → Operations shows the dispatcher heartbeat and its source (cron / external); a cron run reopens sales after a stale heartbeat (tested in `tests/production.mjs`).
 - [ ] **C4 🟡 Security hardening.**
   - [ ] C4.1 Admin MFA (L5), e.g. TOTP for the admin account.
-  - [ ] C4.2 Store the PBKDF2 iteration count in the hash (F16).
+  - [x] C4.2 ✅ passwordHash embeds the iteration count and checkPassword reads it from the stored hash, so iterations can be raised later without breaking existing logins (F16).
   - [x] C4.3 ✅ Removed `app/chatgpt-auth.ts` (dead) and `chatgpt.com` from the CSP; `/__qa/responsive` already gone.
   - [ ] C4.4 Re-run the dependency audit and update `image-size` (F12).
-  - [ ] C4.5 Show the "Studio admin" footer link only to admins (F19).
+  - [x] C4.5 ✅ The "Studio admin" footer and mobile-menu links are gated to role==='admin' (F19).
   - [ ] C4.6 Run `/security-review` on the final branch.
-- [ ] **C5 🟡 Reliability fixes.**
-  - [ ] C5.1 Account deletion: delete DB rows before R2 files (F17).
-  - [ ] C5.2 Fix the misleading user count on the dashboard (F18).
-  - [ ] C5.3 Correct file extensions for generated images (F15).
+- [x] **C5 🟡 Reliability fixes.** ✅
+  - [x] C5.1 ✅ Already correct: deletion removes DB rows (cascading uploads/assets) first, then R2 files in a retry-logged loop (F17).
+  - [x] C5.2 ✅ Dashboard user count is a plain COUNT(*) with no phantom status filter (F18).
+  - [x] C5.3 ✅ Generated assets use the right extension from the MIME map (webp/jpg/png), not always .png (F15).
 - [ ] **C6 🔴 Account emails (sign-up and password).** Sign-up depends on these, so they block the launch.
   - [x] C6.1 Branded HTML verification email (wordmark, verify button, copy-paste link, 30-min expiry, business name VASIL XHAJA, support contact); plain-text version kept. Logo image waits for D5.
   - [x] C6.2 Same branded HTML + plain-text for the password reset email.
@@ -160,7 +160,7 @@ These come first, because the code and infrastructure work depends on them.
 - [ ] **C25 🟡 SEO basics.** `robots.txt`, `sitemap.xml` with all templates, an Open Graph image for the homepage, and structured data for templates.
 - [ ] **C26 🟡 Help pages.** A Contact/Support page and an FAQ (how it works, photo tips, credits, failed videos, privacy, deleting data), linked from the footer with your social accounts.
 - [ ] **C27 🟡 Template page details.** Photo tips with good and bad example photos, what the customer receives (length, resolution, format, any watermark), and related templates at the bottom.
-- [ ] **C28 🟡 Polish.** Hide pagination on empty lists (Credits history shows "0 results · Page 1 of 1" with buttons), and check every empty state and error message.
+- [x] **C28 🟡 Polish.** ✅ The pager is hidden on empty and single-page lists (no more "0 results · Page 1 of 1" with buttons). Empty states already use the Empty component; broader copy review continues as pages change.
 - [ ] **C29 🟡 Accessibility and browsers.** Keyboard navigation, colour contrast and labels; video playback and uploads on iPhone Safari, Android Chrome and desktop Safari/Firefox/Edge.
 - [ ] **C30 🔴 Branding everywhere.** Replace "PROJECT STUDIO", its logo, favicon, tagline and page titles with the final brand (from D5), including emails and legal pages.
 
@@ -344,6 +344,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-11 | C4.2, C5, C28 | Done | PBKDF2 iteration count now stored in and read from the hash (F16); pager hidden on empty/single-page lists (C28). Verified F15/F17/F18/F19 were already fixed (image extensions, deletion order, user count, admin-only footer link). 3 integration checks added |
 | 2026-10-11 | C19 | Done | Exchange-rate settings (USD→EUR/ALL, defaults 0.92 / 85, admin-editable); AI costs converted into the selling currency for dashboard financials, profitable templates and the admin template margin column; dashboard defaults to EUR, no USD column. lib/server/rates.ts. 4 integration checks; security financials assertion updated |
 | 2026-10-11 | C23 | Done | Spending safety limits: per-customer concurrent (default 3) and daily (default 20) caps + studio-wide daily estimated-AI-cost cap (off by default, records spend_cap_reached event). New lib/server/limits.ts enforced in startGeneration before reserving credits; admin panel + settings API. 5 integration checks |
 | 2026-10-11 | C22 | Done | Maintenance mode in Admin → Settings: toggles to pause creation and/or purchases + custom message; app_settings-backed, gates checkout and generation (503), storefront banner + closed buttons via publicAvailability. 5 integration checks |
