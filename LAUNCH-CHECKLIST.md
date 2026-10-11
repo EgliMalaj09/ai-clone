@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 14 | 30 |
+| 1. Codebase | 15 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -109,7 +109,7 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] C11.2 "Your video is ready" and "Your video failed, credits returned" emails.
 - [ ] **C7 🟡 Error tracking (L10).** Send Worker errors to a tracker (e.g. Sentry) and log provider and webhook failures with the generation or purchase ID.
 - [x] **C8 🟡 Analytics (F9).** ✅ Page and template views are now recorded for guests too (the analytics endpoint moved to the public section with an IP rate limit; home/explore and template pages fire views regardless of sign-in), so the dashboard funnel includes anonymous visitors.
-- [ ] **C9 🟡 Catalog scale (F7).** Paginate the storefront instead of loading all templates at once, so the catalog can grow after launch without code changes.
+- [x] **C9 🟡 Catalog scale (F7).** Paginate the storefront instead of loading all templates at once, so the catalog can grow after launch without code changes. ✅ The server renders the first 24 templates for the current filters; filter changes and "Show more templates" load further pages from `/api/templates`. Search also matches category names. Favorites stay a personal list.
 - [ ] **C10 🟡 Albanian translation.** i18n for the whole UI, emails and legal pages, with a language switcher (Albanian and English).
 - [ ] **C32 🔴 Higgsfield AI connection.** Higgsfield is the AI provider (D18). The app currently supports only fal.ai and Replicate.
   - [x] C32.1 Higgsfield provider adapter: submit, check status, fetch the result, using the API key ID + secret.
@@ -365,6 +365,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C9 (F7) | Done | Storefront paged on the server: first page (24) rendered with the page for the URL filters, filter changes refetch page 1, Show more appends pages; hero is its own top-3 query; favorites load only saved templates. 3 integration checks |
 | 2026-10-12 | C25, C30, X1, X2 | Moved | New pre-live phase (4B) at the end: C25 SEO basics become X1 Enhanced SEO (with P6), C30 branding becomes X2 Branding |
 | 2026-10-12 | C4.4 (F12) | Done | Audit re-run: next 16.3.8 + overrides for image-size/brace-expansion/fast-uri/sharp/source-map-js; 19 → 1 advisory (braces in lint/build tooling, no fix published). docs/SECURITY.md and dependency-audit.json updated |
 | 2026-10-11 | C8 | Done | Anonymous page/template views recorded: analytics endpoint moved to the public route section (optional user, IP rate limit); client fires homepage_view on home/explore and template_view on template pages for guests too. 1 integration check |

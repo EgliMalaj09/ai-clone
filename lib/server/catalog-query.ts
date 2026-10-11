@@ -1,8 +1,13 @@
 import {all,getPublicTemplate,HttpError,must,one,publicTemplate} from './data';
 import {pageQuery} from './http';
 
+/** The storefront page size: the first page is rendered with the page, later pages load on demand (C9). */
+export const CATALOG_PAGE_SIZE=24;
 export async function queryCatalog(url:URL,slug?:string){
  if(slug){const template=await getPublicTemplate(slug);if(!template)throw new HttpError(404,'Template unavailable.');return {template};}
+ return catalogPage(url);
+}
+export async function catalogPage(url:URL){
  const {page,limit,offset}=pageQuery(url);
  const query=(url.searchParams.get('q')||'').trim().slice(0,150);
  const category=url.searchParams.get('category')||'all',tag=url.searchParams.get('tag')||'all',sort=url.searchParams.get('sort')||'featured';
@@ -10,7 +15,7 @@ export async function queryCatalog(url:URL,slug?:string){
  const sorting:Record<string,string>={featured:'featured DESC,trending DESC,created_at DESC',newest:'created_at DESC','price-low':'credit_cost ASC','price-high':'credit_cost DESC'};
  must(tag==='all'||Object.hasOwn(flags,tag),'Unknown discovery filter.');must(Object.hasOwn(sorting,sort),'Unknown sort order.');
  const where=['active=1'],args:unknown[]=[];
- if(query){const pattern='%'+query.replace(/[\\%_]/g,'\\$&')+'%';where.push("(name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')");args.push(pattern,pattern);}
+ if(query){const pattern='%'+query.replace(/[\\%_]/g,'\\$&')+'%';where.push("(name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\')");args.push(pattern,pattern,pattern);}
  if(category!=='all'&&category!=='All templates'){where.push('category=?');args.push(category.slice(0,50));}
  if(tag!=='all')where.push(flags[tag]+'=1');
  const condition=' WHERE '+where.join(' AND ');

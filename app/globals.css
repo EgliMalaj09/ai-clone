@@ -234,3 +234,8 @@
 
 /* C22 — maintenance banner */
 .maintenance-banner{background:#fff4e5;color:#8a5200;border-bottom:1px solid #f3d9a8;padding:11px max(5vw,24px);font-size:14px;font-weight:600;text-align:center}
+
+/* Storefront paging (C9) */
+.load-more{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:34px}
+.load-error{color:#b42318;font-size:15px}
+.template-grid[aria-busy=true]{opacity:.6;transition:opacity .2s}
