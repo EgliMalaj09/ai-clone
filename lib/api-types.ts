@@ -31,6 +31,7 @@ export type Dashboard={users:number;demo:boolean;purchasingAvailable:boolean;gen
  recentPurchases:{id:string;package_name:string;credits:number;amount:number;currency:string;status:string;created_at:number;email:string|null}[]};
 export type Operations={demo:boolean;checkedAt:number;heartbeat:number|null;dispatchHeartbeat:number|null;dispatchSource:'cron'|'external'|null;
  queue:{status:string;count:number;oldest:number}[];
+ errors:{errors:{id:string;source:string;level:string;message:string;detail:string;context:Record<string,string|number|boolean|null>;createdAt:number}[];last24h:Record<string,number>};
  credits:Balance;
  reversals:{id:string;package_name:string;credits:number;amount:number;currency:string;created_at:number;email:string|null;balance:number}[];
  stalled:{id:string;template_name:string;status:string;started_at:number|null;created_at:number;internal_error:string|null}[];

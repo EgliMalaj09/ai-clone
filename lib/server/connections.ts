@@ -8,7 +8,7 @@ import type {AdminTemplate,StudioUser} from '../contracts';
 const fields={
   POK_KEY_ID:'pokKeyId',POK_KEY_SECRET:'pokKeySecret',POK_MERCHANT_ID:'pokMerchantId',POK_ENVIRONMENT:'pokEnvironment',
   HIGGSFIELD_API_KEY:'higgsfieldKey',HIGGSFIELD_API_SECRET:'higgsfieldSecret',FAL_KEY:'falKey',REPLICATE_API_TOKEN:'replicateKey',
-  RESEND_API_KEY:'mailKey',MAIL_FROM:'mailFrom',
+  RESEND_API_KEY:'mailKey',MAIL_FROM:'mailFrom',SENTRY_DSN:'sentryDsn',
 } as const;
 type Field=keyof typeof fields;
 const names=Object.keys(fields) as Field[];
@@ -97,7 +97,7 @@ export async function connectionStatus(){
     fields:Object.fromEntries(names.map(name=>[name,{configured:!!c[fields[name]],source:runtime()[name]?'environment':saved.some(r=>r.key==='connection.'+name)?'encrypted':'missing',...(name==='MAIL_FROM'?{value:c.mailFrom}:name==='POK_ENVIRONMENT'?{value:c.pokEnvironment||'staging'}:name==='POK_MERCHANT_ID'?{value:c.pokMerchantId}:{})}])),
   };
 }
-const keySchema=z.enum(['POK_KEY_ID','POK_KEY_SECRET','POK_MERCHANT_ID','POK_ENVIRONMENT','HIGGSFIELD_API_KEY','HIGGSFIELD_API_SECRET','FAL_KEY','REPLICATE_API_TOKEN','RESEND_API_KEY','MAIL_FROM']);
+const keySchema=z.enum(['POK_KEY_ID','POK_KEY_SECRET','POK_MERCHANT_ID','POK_ENVIRONMENT','HIGGSFIELD_API_KEY','HIGGSFIELD_API_SECRET','FAL_KEY','REPLICATE_API_TOKEN','RESEND_API_KEY','MAIL_FROM','SENTRY_DSN']);
 export async function updateConnections(req:Request,user:StudioUser){
   await rateLimit('connections:'+user.id,8,900000);
   const body=z.object({currentPassword:z.string().min(1).max(128),values:z.record(keySchema,z.string().trim().min(1).max(1024)).default({}),remove:z.array(keySchema).max(12).default([])}).strict().parse(await jsonBody(req));
@@ -114,6 +114,7 @@ export async function updateConnections(req:Request,user:StudioUser){
     if(name==='RESEND_API_KEY')must(/^re_[A-Za-z0-9_-]{12,}$/.test(value),'Use a valid Resend API key.');
     if(name==='FAL_KEY'||name==='REPLICATE_API_TOKEN')must(value.length>=16&&!/\s/.test(value),'Use the complete provider API key.');
     if(name==='HIGGSFIELD_API_KEY'||name==='HIGGSFIELD_API_SECRET')must(value.length>=8&&!/[\s:]/.test(value),'Paste the key ID and the key secret separately, from the Higgsfield console.');
+    if(name==='SENTRY_DSN')must(/^https:\/\/[0-9a-f]{16,64}@[\w.-]+(?::\d+)?\/\d+$/i.test(value),'Paste the full DSN from Sentry → Project settings → Client keys (https://…@…/123).');
     if(name==='MAIL_FROM')must(z.string().email().safeParse(value).success,'Use an email address on your verified sending domain.');
   }
   const writes=[];

@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 18 | 30 |
+| 1. Codebase | 19 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -107,7 +107,7 @@ These come first, because the code and infrastructure work depends on them.
 - [ ] **C11 🟡 Other emails customers expect.**
   - [ ] C11.1 Receipt email after a credit purchase (skip if POK already sends one; check during T2).
   - [x] C11.2 "Your video is ready" and "Your video failed, credits returned" emails. ✅ Branded HTML + plain-text emails sent by the queue when a creation is delivered ("Watch my video") or fails/is refused (credits returned, amount shown). Best-effort and idempotent per attempt. English for now (Albanian with C10).
-- [ ] **C7 🟡 Error tracking (L10).** Send Worker errors to a tracker (e.g. Sentry) and log provider and webhook failures with the generation or purchase ID.
+- [x] **C7 🟡 Error tracking (L10).** Send Worker errors to a tracker (e.g. Sentry) and log provider and webhook failures with the generation or purchase ID. ✅ Every server error, failed generation, payment/webhook, email, credit and queue problem goes through one reporter: logged with its IDs (generation, purchase, user), kept 30 days in a new `error_events` table and listed under **Admin → Operations → Recent errors**, and sent to Sentry when a `SENTRY_DSN` is saved in Admin → Connections (optional). See DECISIONS.md #4.
 - [x] **C8 🟡 Analytics (F9).** ✅ Page and template views are now recorded for guests too (the analytics endpoint moved to the public section with an IP rate limit; home/explore and template pages fire views regardless of sign-in), so the dashboard funnel includes anonymous visitors.
 - [x] **C9 🟡 Catalog scale (F7).** Paginate the storefront instead of loading all templates at once, so the catalog can grow after launch without code changes. ✅ The server renders the first 24 templates for the current filters; filter changes and "Show more templates" load further pages from `/api/templates`. Search also matches category names. Favorites stay a personal list.
 - [ ] **C10 🟡 Albanian translation.** i18n for the whole UI, emails and legal pages, with a language switcher (Albanian and English).
@@ -370,6 +370,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C7 (L10) | Done | lib/server/errors.ts reportError(): structured log + error_events (migration 0010, pruned after 30 days) + optional Sentry envelope; all console.error sites moved over with IDs; Operations shows Recent errors and a readiness line; SENTRY_DSN connection with validation. 3 production checks |
 | 2026-10-12 | C12 (F8) | Done | Replicate: version IDs for community models (POST /v1/predictions with version), model reference validated on template save, output picked from any shape (video preferred), aborted status handled; image steps default to an image key. 3 provider checks |
 | 2026-10-12 | C31.4 | Mostly done | Per-template photo tips: new templates.photo_tips column (migration 0009), textarea in the template editor, shown in the template's guidelines card. Albanian waits for C10. 1 integration check |
 | 2026-10-12 | C27.1, C27.2, C21.9 | Done | Template page: What you receive box and related templates (same category first). Example photos (C27.3) wait for real images. FAQ now covers the report/free-redo rule (C21.9). 1 integration check |

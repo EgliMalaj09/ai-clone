@@ -7,6 +7,7 @@ import {pageQuery} from './http';
 import {createPokOrder,getPokOrder,pokCurrencies,pokOrderState} from './payments';
 import {available,onlyIfApplied,post,SYSTEM} from './credits';
 import type {StudioUser} from '../contracts';
+import {reportError} from './errors';
 
 export const packCurrencies=pokCurrencies;
 export const packageSchema=z.object({
@@ -93,7 +94,7 @@ export async function confirmPackPayment(purchaseId:string,sessionId:string,tran
  must(p.provider_session_id===sessionId&&p.amount===amount&&typeof currency==='string'&&p.currency.toLowerCase()===currency.toLowerCase()&&typeof transactionId==='string','Payment details did not match the purchase.',400);
  if(!p.user_id){
   await run("UPDATE credit_purchases SET status='paid',provider_transaction_id=?,paid_at=? WHERE id=? AND status IN ('pending','failed')",transactionId,now(),p.id);
-  console.error('Paid credit purchase has no account and needs review',p.id);return false;
+  await reportError('payment','Paid credit purchase has no account and needs review',{context:{purchaseId:p.id as string}});return false;
  }
  // Only an open purchase can be paid: a reversed purchase must never be granted again.
  const open={sql:"EXISTS (SELECT 1 FROM credit_purchases WHERE id=? AND status IN ('pending','failed'))",args:[p.id]};
@@ -118,7 +119,7 @@ export async function reversePackPayment(purchaseId:string,reason:string,actorId
   moves:[{account:available(p.user_id),amount:-p.credits},{account:SYSTEM.refunded,amount:p.credits}],
   extra:tx=>{const g=onlyIfApplied(tx);return [stmt(`UPDATE credit_purchases SET status='reversed' WHERE id=? AND status='paid' AND ${g.sql}`,p.id,...g.args)];}})
   .catch(e=>{if(e instanceof HttpError&&e.status===409)return null;throw e;});
- if(result?.applied){console.error('Credit purchase payment reversed; review the account',p.id);await event('credits_payment_reversed',p.user_id,{purchaseId:p.id});}
+ if(result?.applied){await reportError('payment','Credit purchase payment reversed; review the account',{level:'warning',context:{purchaseId:p.id as string,userId:p.user_id as string}});await event('credits_payment_reversed',p.user_id,{purchaseId:p.id});}
  return !!result?.applied;
 }
 
@@ -130,13 +131,13 @@ export async function verifyPackCheckout(p:Row){
  const state=pokOrderState(await getPokOrder(p.provider_session_id),p);
  if(state==='paid')await confirmPackPayment(p.id,p.provider_session_id,p.provider_session_id,p.amount,p.currency);
  else if(state==='expired')await failPackPayment(p.id,p.provider_session_id);
- else if(state==='mismatch')console.error('POK order does not match the purchase; review it',p.id);
+ else if(state==='mismatch')await reportError('webhook','POK order does not match the purchase; review it',{context:{purchaseId:p.id as string}});
 }
 /** Re-checks recent unpaid POK purchases, in case a webhook never arrived. Runs with the hourly maintenance and the dispatcher. */
 export async function sweepPendingPurchases(){
  const t=now();
  for(const p of await all("SELECT * FROM credit_purchases WHERE provider='pok' AND status='pending' AND provider_session_id IS NOT NULL AND created_at BETWEEN ? AND ? ORDER BY created_at LIMIT 20",t-86400000,t-60000)){
-  try{await verifyPackCheckout(p)}catch(e){console.error('Pending purchase check failed',p.id,e instanceof Error?e.message:e)}
+  try{await verifyPackCheckout(p)}catch(e){await reportError('payment','Pending purchase check failed',{error:e,context:{purchaseId:p.id as string}})}
  }
 }
 export async function payTestPurchase(p:Row,result:'success'|'fail'){

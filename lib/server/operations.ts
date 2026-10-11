@@ -7,6 +7,7 @@ import {balanceOf,reconcileCredits} from './credits';
 import {checkPassword,hash,passwordHash,rateLimit,sessionCookie} from './security';
 import {dispatcherStatus} from './dispatcher';
 import {mediaUrl} from './storage';
+import {recentErrors} from './errors';
 
 const response=(data:unknown,headers:Record<string,string>={})=>Response.json(data,{headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers}});
 const pageInfo=(total:number,page:number,limit:number)=>({total,page,limit,pages:Math.max(1,Math.ceil(total/limit))});
@@ -98,7 +99,7 @@ export async function adminActivity(url:URL){
 
 export async function operationsSummary(){
   const c=await serviceConfig();
-  const [queue,reversals,stalled,heartbeat,dispatch,storageUsage,events,failures,ledger,credits]=await Promise.all([
+  const [queue,reversals,stalled,heartbeat,dispatch,storageUsage,events,failures,ledger,credits,errors]=await Promise.all([
     all("SELECT status,COUNT(*) AS count,MIN(created_at) AS oldest FROM generations WHERE deleted_at IS NULL GROUP BY status"),
     all("SELECT p.id,p.package_name,p.credits,p.amount,p.currency,p.created_at,u.email,COALESCE(b.available,0) AS balance FROM credit_purchases p LEFT JOIN users u ON u.id=p.user_id LEFT JOIN credit_balances b ON b.user_id=p.user_id WHERE p.status='reversed' ORDER BY p.created_at DESC LIMIT 20"),
     all("SELECT id,template_name,status,started_at,created_at,internal_error FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND COALESCE(started_at,created_at)<? ORDER BY created_at LIMIT 20",now()-10*60000),
@@ -109,6 +110,7 @@ export async function operationsSummary(){
     all("SELECT g.id,g.template_name,g.error,g.internal_error,g.completed_at,h.status AS credit_status FROM generations g LEFT JOIN credit_holds h ON h.id=g.hold_id WHERE g.status='failed' AND g.deleted_at IS NULL ORDER BY g.completed_at DESC LIMIT 10"),
     reconcileCredits(),
     one('SELECT COALESCE(SUM(available),0) AS available,COALESCE(SUM(held),0) AS held FROM credit_balances'),
+    recentErrors(),
   ]);
   const checks=[
     {name:'Database',ready:true,detail:'Connected'},
@@ -118,7 +120,8 @@ export async function operationsSummary(){
     {name:'Transactional email',ready:!!c.mailKey&&!!c.mailFrom,detail:c.mailKey&&c.mailFrom?'Sender configured; verify delivery with your email service':'Email credentials or sender missing'},
     {name:'AI generation',ready:!!(c.higgsfieldKey&&c.higgsfieldSecret)||!!c.falKey||!!c.replicateKey,detail:c.demo?'Sample video simulator active':c.higgsfieldKey&&c.higgsfieldSecret?'Higgsfield credentials configured; watch your Higgsfield credit balance':c.falKey||c.replicateKey?'Provider credentials configured':'Higgsfield key ID and secret missing'},
     {name:'Credit ledger',ready:ledger.ok,detail:ledger.ok?(ledger.negative.length?ledger.negative.length+' account(s) below zero after a reversed payment':'Balances match the ledger'):'Ledger mismatch: review Admin → Credits'},
+    {name:'Error tracking',ready:true,detail:c.sentryDsn?'Errors are listed below and sent to Sentry':'Errors are listed below; add a Sentry DSN in Connections for alerts'},
     {name:'Background dispatcher',ready:dispatch.fresh,detail:dispatch.at?(dispatch.fresh?'Running':'Stopped')+' · last run '+new Date(dispatch.at).toISOString()+' by '+(dispatch.source==='cron'?'the every-minute cron trigger':'an external scheduler'):'No dispatcher run recorded. The live Worker runs it every minute through its cron trigger.'},
   ];
-  return {demo:c.demo,checkedAt:now(),queue,reversals,stalled,credits:{available:Number(credits?.available||0),held:Number(credits?.held||0)},heartbeat:Number(heartbeat?.value)||null,dispatchHeartbeat:dispatch.at,dispatchSource:dispatch.source,storage:storageUsage,checks,events,failures};
+  return {demo:c.demo,checkedAt:now(),queue,reversals,stalled,credits:{available:Number(credits?.available||0),held:Number(credits?.held||0)},heartbeat:Number(heartbeat?.value)||null,dispatchHeartbeat:dispatch.at,dispatchSource:dispatch.source,storage:storageUsage,checks,events,failures,errors};
 }

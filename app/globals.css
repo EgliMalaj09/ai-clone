@@ -272,3 +272,5 @@ footer>div{flex-wrap:wrap}
 .pg-template-tips{list-style:none;margin:0 0 12px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--blue) 8%,transparent);display:grid;gap:6px}
 .pg-template-tips li{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45}
 .pg-template-tips svg{flex:none;margin-top:2px;color:var(--blue)}
+.error-list code{font-size:11px;padding:1px 4px;border-radius:4px;background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.error-detail{font-family:ui-monospace,monospace;font-size:11px;word-break:break-word}

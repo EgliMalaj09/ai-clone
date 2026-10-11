@@ -2,6 +2,7 @@ import {serviceConfig} from './connections';
 import {authMailContent} from './email-templates';
 import {batch,config,must,now,one,run,stmt,type Row} from './data';
 import type {StudioUser} from '../contracts';
+import {reportError} from './errors';
 const hex=(b:ArrayBuffer|Uint8Array)=>Array.from(new Uint8Array(b)).map(n=>n.toString(16).padStart(2,'0')).join('');
 export const randomToken=()=>hex(crypto.getRandomValues(new Uint8Array(32)));
 export const hash=async(s:string)=>hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)));
@@ -25,7 +26,8 @@ export async function sendMail(to:string,mail:{subject:string;html:string;text:s
  if(!c.mailKey||!c.mailFrom)return false;
  try{
   const result=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${c.mailKey}`,'Content-Type':'application/json',...(idempotencyKey?{'Idempotency-Key':idempotencyKey}:{})},signal:AbortSignal.timeout(12000),body:JSON.stringify({from:c.mailFrom,to,subject:mail.subject,html:mail.html,text:mail.text})});
+  if(!result.ok)await reportError('email','Email provider rejected a message',{context:{status:result.status,idempotencyKey}});
   return result.ok;
- }catch(e){console.error('Transactional email failed',e instanceof Error?e.message:'unknown');return false;}
+ }catch(e){await reportError('email','Transactional email failed',{error:e,context:{idempotencyKey}});return false;}
 }
 export async function makeAuthToken(userId:string,type:string){const token=randomToken();await batch([stmt('DELETE FROM auth_tokens WHERE user_id=? AND type=?',userId,type),stmt('INSERT INTO auth_tokens (token_hash,user_id,type,expires_at) VALUES (?,?,?,?)',await hash(token),userId,type,now()+1800000)]);return token;}

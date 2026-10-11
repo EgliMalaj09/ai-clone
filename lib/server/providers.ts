@@ -1,6 +1,7 @@
 import {serviceConfig} from './connections';
 import {config,must,now,parse,type Row} from './data';
 import type {WorkflowStep} from '../contracts';
+import {reportError} from './errors';
 export type AIRequest={step:WorkflowStep;input:Row;idempotencyKey:string;templateSlug:string};
 export type ProviderStatus={status:'processing'|'completed'|'failed'|'refused';url?:string;error?:string;mime?:string};
 /** A provider declined the request under its content rules. Unlike a failure, it is never retried and counts as a strike. */
@@ -55,7 +56,7 @@ async function higgsfieldFetch(path:string,method='GET',body?:Row){
   const detail=(await r.text().catch(()=>'')).slice(0,300);
   // 401: wrong key; 403: the Higgsfield account is out of credits. Both need the studio owner, not the customer.
   const message=r.status===401?'Higgsfield rejected the API key.':r.status===403?'The Higgsfield account has run out of credits. Top up Higgsfield to continue.':`Higgsfield returned HTTP ${r.status}${detail?': '+detail:''}`;
-  if(r.status===401||r.status===403)console.error(message);
+  if(r.status===401||r.status===403)await reportError('provider',message,{context:{provider:'higgsfield',status:r.status}});
   throw isRefusal(detail)?new ProviderRefusal(message):new Error(message);
  }
  return r.json() as Promise<Row>;

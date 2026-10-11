@@ -111,3 +111,8 @@ export const creditPurchases=sqliteTable('credit_purchases',{
  status:text('status').notNull().default('pending'),provider:text('provider').notNull(),providerSessionId:text('provider_session_id').unique(),providerTransactionId:text('provider_transaction_id'),checkoutUrl:text('checkout_url'),checkoutAttempt:integer('checkout_attempt').notNull().default(0),
  idempotencyKey:text('idempotency_key').notNull(),createdAt:integer('created_at').notNull(),paidAt:integer('paid_at'),
 },t=>[uniqueIndex('idx_credit_purchase_idempotency').on(t.userId,t.idempotencyKey),index('idx_credit_purchases_user').on(t.userId,t.createdAt)]);
+// Server errors and provider/webhook failures (C7), shown in Admin → Operations and kept 30 days; also forwarded to Sentry when SENTRY_DSN is set.
+export const errorEvents=sqliteTable('error_events',{
+ id:text('id').primaryKey(),source:text('source').notNull(),level:text('level').notNull().default('error'),message:text('message').notNull(),detail:text('detail').notNull().default(''),
+ context:text('context').notNull().default('{}'),createdAt:integer('created_at').notNull(),
+},t=>[index('idx_error_events_created').on(t.createdAt)]);

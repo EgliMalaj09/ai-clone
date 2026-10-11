@@ -13,14 +13,15 @@ const server=path.resolve('dist/server');
 const modules=(await readdir(server,{recursive:true})).filter(f=>f.endsWith('.js')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:a.localeCompare(b)).map(f=>({type:'ESModule',path:path.join(server,f)}));
 const password=randomBytes(20).toString('hex'),salt=randomBytes(32).toString('hex');
 const env={DEMO_MODE:'false',PUBLIC_SERVICE_ACCESS:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(password,salt,100000,32,'sha256').toString('hex'),REPLICATE_API_TOKEN:'replicate_environment_fixture'};
-const keys={POK_KEY_ID:'pokkey_'+randomBytes(10).toString('hex'),POK_KEY_SECRET:'poksecret_'+randomBytes(20).toString('hex'),POK_MERCHANT_ID:'merchant_'+randomBytes(8).toString('hex'),HIGGSFIELD_API_KEY:'hfkey_'+randomBytes(10).toString('hex'),HIGGSFIELD_API_SECRET:'hfsecret_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test'};
+const keys={POK_KEY_ID:'pokkey_'+randomBytes(10).toString('hex'),POK_KEY_SECRET:'poksecret_'+randomBytes(20).toString('hex'),POK_MERCHANT_ID:'merchant_'+randomBytes(8).toString('hex'),HIGGSFIELD_API_KEY:'hfkey_'+randomBytes(10).toString('hex'),HIGGSFIELD_API_SECRET:'hfsecret_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test',SENTRY_DSN:'https://'+randomBytes(16).toString('hex')+'@o1.ingest.sentry.io/42'};
 const image=await readFile('public/media/formula-driver.webp'),video=await readFile('public/media/formula-driver.mp4');
-const requests=[],mails=[];
+const requests=[],mails=[],sentry=[];
 const higgsfield=fakeHiggsfield({keyId:keys.HIGGSFIELD_API_KEY,keySecret:keys.HIGGSFIELD_API_SECRET,Response:MFResponse,image,video});
 const pok=fakePok({keyId:keys.POK_KEY_ID,keySecret:keys.POK_KEY_SECRET,merchantId:keys.POK_MERCHANT_ID,Response:MFResponse});
 const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:env,d1Databases:{DB:'production-fixture'},r2Buckets:['BUCKET'],cf:false,outboundService:async req=>{
   const u=new URL(req.url);requests.push({host:u.hostname,path:u.pathname});
   if(u.hostname==='api.resend.com'){assert.equal(req.headers.get('authorization'),'Bearer '+keys.RESEND_API_KEY);mails.push(await req.json());return MFResponse.json({id:'local_mail_fixture'});}
+  if(u.hostname==='o1.ingest.sentry.io'){assert.equal(u.pathname,'/api/42/envelope/');assert(req.headers.get('x-sentry-auth').includes('sentry_key='+keys.SENTRY_DSN.slice(8,40)));sentry.push((await req.text()).split('\n').map(l=>JSON.parse(l)));return MFResponse.json({id:'sentry_fixture'});}
   if(pok.matches(u)){assert.equal(u.hostname,'api-staging.pokpay.io','Staging is the default POK environment');return pok.handle(req);}
   if(higgsfield.matches(u))return higgsfield.handle(req);
   throw new Error('Unexpected external request');
@@ -50,7 +51,7 @@ try{
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{POK_ENVIRONMENT:'live'}},expected:400});ok('The POK environment accepts only staging or production');
   await save(keys);
   const stored=(await db.prepare("SELECT key,value FROM app_settings WHERE key LIKE 'connection.%'").all()).results;
-  ok('Stored connections do not contain plaintext secrets',stored.length===7&&Object.values(keys).every(secret=>!JSON.stringify(stored).includes(secret)));
+  ok('Stored connections do not contain plaintext secrets',stored.length===8&&Object.values(keys).every(secret=>!JSON.stringify(stored).includes(secret)));
   let status=await request('/api/admin/connections',{cookie:admin});
   ok('Status returns presence, not keys or ciphertext',status.body.fields.HIGGSFIELD_API_KEY.configured&&Object.values(keys).filter(k=>k!==keys.MAIL_FROM&&k!==keys.POK_MERCHANT_ID).every(k=>!status.text.includes(k))&&!status.text.includes('"iv"'));
   ok('POK staging is reported as test payments',status.body.readiness.paymentMode==='test'&&status.body.fields.POK_ENVIRONMENT.value==='staging');
@@ -110,6 +111,11 @@ try{
   higgsfield.outcome('kling-video/v3.0-turbo/image-to-video','completed');
   const failMail=mails.find(m=>m.subject?.includes('could not be completed'));
   ok('A failed video sends a "credits returned" email',failed.status==='failed'&&failMail&&failMail.text.includes('returned to your balance')&&failMail.text.includes(String(template.creditCost)));
+  // C7: a failed generation is recorded for the admin and forwarded to Sentry with its generation ID.
+  const ops=(await request('/api/admin/operations',{cookie:admin})).body;
+  ok('A failed generation is listed under Recent errors with its ID',ops.errors.errors.some(e=>e.source==='generation'&&e.context.generationId===failing.generationId)&&ops.errors.last24h.generation>=1);
+  ok('Errors are forwarded to Sentry when a DSN is configured',sentry.some(env=>env[2].logger==='generation'&&env[2].extra.generationId===failing.generationId&&env[2].level==='error'));
+  const badDsn=await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{SENTRY_DSN:'not-a-dsn'}},expected:400});ok('An invalid Sentry DSN is rejected',String(badDsn.body.error).includes('DSN'));
   ok('Only one email per finished creation',mails.filter(m=>m.subject?.includes('is ready')).length===1&&mails.filter(m=>m.subject?.includes('could not be completed')).length===1);
   const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
   await db.prepare("UPDATE credit_purchases SET provider='mock',status='pending' WHERE id=?").bind(stale.purchaseId).run();

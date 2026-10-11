@@ -5,6 +5,7 @@ import {serviceConfig} from './connections';
 import {config,must,one,type Row} from './data';
 import {constantEqual,sign} from './security';
 import {boundedText} from './http';
+import {reportError} from './errors';
 
 const hosts={production:'https://api.pokpay.io',staging:'https://api-staging.pokpay.io'} as const;
 export const pokCurrencies=['ALL','EUR'] as const;
@@ -29,7 +30,7 @@ async function token(force=false){
  if(!force&&session&&session.owner===owner&&session.expires>Date.now()+60000)return {c,token:session.token};
  const {r,data}=await call(c.base,'/auth/sdk/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({keyId:c.pokKeyId,keySecret:c.pokKeySecret})});
  const d=data.data||{};
- if(!r.ok||typeof d.accessToken!=='string'){console.error('POK login failed',r.status);throw new Error('The payment service is unavailable. Please try again.');}
+ if(!r.ok||typeof d.accessToken!=='string'){await reportError('payment','POK login failed',{context:{status:r.status}});throw new Error('The payment service is unavailable. Please try again.');}
  const expires=d.expiresAt?Date.parse(d.expiresAt):Date.now()+Number(d.expiresIn||600)*1000;
  session={token:d.accessToken,expires:Number.isFinite(expires)?expires:Date.now()+600000,owner};
  return {c,token:session.token};
@@ -42,7 +43,7 @@ export async function pok(path:string,body?:Row){
   ({c,token:t}=await token(true));({r,data}=await send());
   if(r.status===401){scheme=scheme?'':'Bearer ';({r,data}=await send());}
  }
- if(!r.ok){console.error('POK request failed',r.status,data.message||data.code);throw new Error('The payment service is unavailable. Please try again.');}
+ if(!r.ok){await reportError('payment','POK request failed',{context:{status:r.status,code:String(data.message||data.code||'')}});throw new Error('The payment service is unavailable. Please try again.');}
  return {data:(data.data||{}) as Row,merchantId:c.pokMerchantId};
 }
 

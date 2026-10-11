@@ -9,6 +9,7 @@ import {sweepPendingPurchases} from './credit-purchases';
 import {serviceConfig} from './connections';
 import {generationMailContent,type GenerationMailKind} from './email-templates';
 import {sendMail} from './security';
+import {reportError,pruneErrors} from './errors';
 
 const extensions:Record<string,string>={'video/mp4':'mp4','video/webm':'webm','image/png':'png','image/jpeg':'jpg','image/webp':'webp'};
 
@@ -19,15 +20,16 @@ async function notifyFinished(g:Row,kind:GenerationMailKind){
   const u=g.user_id?await one('SELECT email FROM users WHERE id=?',g.user_id):null;if(!u?.email)return;
   const c=await serviceConfig();
   await sendMail(u.email as string,generationMailContent(kind,{brand:c.brandName,templateName:g.template_name as string,credits:Number(g.credit_cost||0),link:c.origin+'/creations',supportEmail:c.mailFrom}),`generation-${kind}-${g.id}-${g.hold_id||''}`);
- }catch(e){console.error('Creation email needs review',g.id,e instanceof Error?e.message:'unknown');}
+ }catch(e){await reportError('email','Creation email needs review',{error:e,context:{generationId:g.id as string}});}
 }
 export async function failGeneration(g:Row,error:string){
  const result=await run("UPDATE generations SET status='failed',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",'Your video could not be completed. Your credits were returned.',error.slice(0,2000),now(),g.id,g.lease_token);
  if(!result.meta.changes)return;
  await run("UPDATE generation_steps SET status='failed',error=? WHERE generation_id=? AND status NOT IN ('completed','cancelled')",error.slice(0,2000),g.id);
  await event('generation_failed',g.user_id,{generationId:g.id});
+ await reportError('generation','Video generation failed; credits returned',{error,context:{generationId:g.id as string,template:g.template_slug as string,step:Number(g.current_step||0)}});
  // A failed generation always returns its credits.
- if(g.hold_id)await settleHold(g.hold_id,'release').catch(()=>console.error('Credit release needs review; the hold sweep will retry',g.id));
+ if(g.hold_id)await settleHold(g.hold_id,'release').catch(e=>reportError('credits','Credit release needs review; the hold sweep will retry',{error:e,context:{generationId:g.id as string}}));
  await notifyFinished(g,'failed');
 }
 export const STRIKE_LIMIT=3;
@@ -37,7 +39,7 @@ export async function refuseGeneration(g:Row,reason:string){
  const result=await run("UPDATE generations SET status='refused',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",'This video was refused under the content rules. Your credits were returned.',reason.slice(0,2000),now(),g.id,g.lease_token);
  if(!result.meta.changes)return;
  await run("UPDATE generation_steps SET status='failed',error=? WHERE generation_id=? AND status NOT IN ('completed','cancelled')",reason.slice(0,2000),g.id);
- if(g.hold_id)await settleHold(g.hold_id,'release').catch(()=>console.error('Credit release needs review; the hold sweep will retry',g.id));
+ if(g.hold_id)await settleHold(g.hold_id,'release').catch(e=>reportError('credits','Credit release needs review; the hold sweep will retry',{error:e,context:{generationId:g.id as string}}));
  await event('generation_refused',g.user_id,{generationId:g.id});
  await notifyFinished(g,'refused');
  if(!g.user_id)return;
@@ -56,7 +58,7 @@ export async function tickGeneration(id:string){
    const asset=await one("SELECT id FROM generated_assets WHERE generation_id=? ORDER BY created_at DESC LIMIT 1",id);must(asset,'No output asset was saved.');
    const completed=await run("UPDATE generations SET status='completed',completed_at=?,error=NULL WHERE id=? AND lease_token=? AND status='finalizing' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=? AND h.status='pending')",now(),id,token,g.hold_id);
    // Delivered: charge the reserved credits. If this is interrupted, the hold sweep captures it.
-   if(completed.meta.changes){await settleHold(g.hold_id,'capture').catch(()=>console.error('Credit capture needs review; the hold sweep will retry',id));await event('generation_completed',g.user_id,{generationId:id});await notifyFinished(g,'ready');}return;
+   if(completed.meta.changes){await settleHold(g.hold_id,'capture').catch(e=>reportError('credits','Credit capture needs review; the hold sweep will retry',{error:e,context:{generationId:id}}));await event('generation_completed',g.user_id,{generationId:id});await notifyFinished(g,'ready');}return;
   }
   const step=steps[i];must(step,'Workflow has no executable step.');const p=providerFor(step.provider);const stepId=id+'_'+i;const record=await one('SELECT * FROM generation_steps WHERE id=?',stepId);
   if(record?.status==='completed'){await run("UPDATE generations SET current_step=current_step+1,status=?,next_run_at=? WHERE id=? AND lease_token=?",i+1>=steps.length?'finalizing':'preparing',now()+500,id,token);return;}
@@ -77,7 +79,7 @@ export async function tickGeneration(id:string){
    await run('INSERT INTO generation_steps (id,generation_id,step_order,type,provider,model,status,started_at) VALUES (?,?,?,?,?,?,?,?)',stepId,id,i,step.type,step.provider,step.model,'submitting',now());
    const request={step,input,idempotencyKey:stepId,templateSlug:snapshot.slug};
    const jobId=await (['image','transform'].includes(step.type)?p.generateImage(request):p.generateVideo(request));
-   const owned=await one("SELECT id FROM generations WHERE id=? AND lease_token=? AND status IN ('preparing','generating')",id,token);if(!owned){await run("UPDATE generation_steps SET provider_job_id=?,status='cancelled' WHERE id=?",jobId,stepId);try{await p.cancelJob(jobId)}catch{console.error('Provider cancellation needs review',id)}return;}
+   const owned=await one("SELECT id FROM generations WHERE id=? AND lease_token=? AND status IN ('preparing','generating')",id,token);if(!owned){await run("UPDATE generation_steps SET provider_job_id=?,status='cancelled' WHERE id=?",jobId,stepId);try{await p.cancelJob(jobId)}catch(e){await reportError('provider','Provider cancellation needs review',{error:e,context:{generationId:id,jobId}})}return;}
    await batch([stmt("UPDATE generation_steps SET provider_job_id=?,status='generating' WHERE id=?",jobId,stepId),stmt("UPDATE generations SET status='generating',attempts=0,next_run_at=? WHERE id=? AND lease_token=?",now()+1500,id,token)]);return;
   }
   const result=await p.getStatus(record.provider_job_id);if(result.status==='processing'){await run('UPDATE generations SET next_run_at=? WHERE id=? AND lease_token=?',now()+1500,id,token);return;}
@@ -100,7 +102,7 @@ export async function tickQueue(userId?:string){
  const maintenance=await one("INSERT INTO app_settings (key,value) VALUES ('last_maintenance',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE CAST(value AS INTEGER)<? RETURNING value",String(now()),now()-3600000);
  if(maintenance){
   await batch([stmt('DELETE FROM rate_limits WHERE reset_at<?',now()-3600000),stmt('DELETE FROM sessions WHERE expires_at<?',now()),stmt('DELETE FROM auth_tokens WHERE expires_at<?',now())]);
-  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads,sweepPendingPurchases])await task().catch(e=>console.error('Maintenance task needs another run',e instanceof Error?e.message:'unknown'));
+  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads,sweepPendingPurchases,pruneErrors])await task().catch(e=>reportError('queue','Maintenance task needs another run',{error:e,context:{task:task.name}}));
  }
  await run("INSERT INTO app_settings (key,value) VALUES ('queue_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(now()));const rows=await all("SELECT id FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND next_run_at<=? AND lease_until<? AND deleted_at IS NULL"+(userId?' AND user_id=?':'')+' ORDER BY created_at LIMIT 5',now(),now(),...(userId?[userId]:[]));await Promise.allSettled(rows.map(g=>tickGeneration(g.id)));return rows.length;}
 export async function removeGeneration(id:string,userId:string){const g=await one('SELECT * FROM generations WHERE id=? AND user_id=? AND deleted_at IS NULL',id,userId);must(g,'Creation not found.',404);must(!active.includes(g.status),'Please wait for the running generation to finish before deleting it.',409);const assets=await all('SELECT * FROM generated_assets WHERE generation_id=?',id);for(const a of assets)await storage.delete(a.storage_key);await batch([stmt('DELETE FROM generated_assets WHERE generation_id=?',id),stmt("UPDATE generations SET deleted_at=?,context='{}',input_ids='[]' WHERE id=?",now(),id)]);}
