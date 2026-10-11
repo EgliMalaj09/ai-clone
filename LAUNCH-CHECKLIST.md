@@ -16,11 +16,12 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 14 | 32 |
+| 1. Codebase | 14 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
 | 4. Live testing on staging | 0 | 10 |
+| 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
 | 6. After launch: operating routine (no new code) | 0 | 6 |
 
@@ -101,7 +102,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C6.1 Branded HTML verification email (wordmark, verify button, copy-paste link, 30-min expiry, business name VASIL XHAJA, support contact); plain-text version kept. Logo image waits for D5.
   - [x] C6.2 Same branded HTML + plain-text for the password reset email.
   - [ ] C6.3 Albanian text (or Albanian + English) for both emails.
-  - [~] C6.4 Brand name moved to one config value (`BRAND_NAME`, temporary "Project Studio"); no more "PROJECT STUDIO" in emails. **TODO before launch:** set the final brand once D5 is decided.
+  - [~] C6.4 Brand name moved to one config value (`BRAND_NAME`, temporary "Project Studio"); no more "PROJECT STUDIO" in emails. **TODO before launch:** set the final brand once D5 is decided (part of X2).
   - [x] C6.5 Already fixed: resend returns "already verified" for verified accounts (F13); `/reset-password` and `/verify` without a link show a clear "incomplete link" message with a way to request a new one (F14).
 - [ ] **C11 🟡 Other emails customers expect.**
   - [ ] C11.1 Receipt email after a credit purchase (skip if POK already sends one; check during T2).
@@ -157,12 +158,12 @@ These come first, because the code and infrastructure work depends on them.
 - [x] **C22 🔴 Maintenance switch and banner.** ✅ Admin → Settings → Maintenance mode: separate toggles to pause new video creation and/or new credit purchases, with an optional custom message. Paused actions return 503 with the message; a site-wide banner shows it. Work already running keeps going. No deploy needed.
 - [x] **C23 🔴 Spending safety limits.** ✅ Admin → Settings → Spending safety limits: per-customer caps on videos running at once (default 3) and per day (default 20), and a studio-wide daily AI-cost cap (off by default) that pauses creation and records a `spend_cap_reached` alert event. 0 means no limit. Enforced before any credits are reserved.
 - [ ] **C24 🟡 Marketing tracking (from D15).** Meta and/or TikTok pixel plus server-side conversion events for sign-up and purchase, UTM campaign capture at sign-up, and a cookie consent banner (required once trackers are added).
-- [ ] **C25 🟡 SEO basics.** `robots.txt`, `sitemap.xml` with all templates, an Open Graph image for the homepage, and structured data for templates.
+- [x] ~~**C25 🟡 SEO basics.**~~ Moved to **X1 Enhanced SEO** in the pre-live phase, done together at the end.
 - [ ] **C26 🟡 Help pages.** A Contact/Support page and an FAQ (how it works, photo tips, credits, failed videos, privacy, deleting data), linked from the footer with your social accounts.
 - [ ] **C27 🟡 Template page details.** Photo tips with good and bad example photos, what the customer receives (length, resolution, format, any watermark), and related templates at the bottom.
 - [x] **C28 🟡 Polish.** ✅ The pager is hidden on empty and single-page lists (no more "0 results · Page 1 of 1" with buttons). Empty states already use the Empty component; broader copy review continues as pages change.
 - [ ] **C29 🟡 Accessibility and browsers.** Keyboard navigation, colour contrast and labels; video playback and uploads on iPhone Safari, Android Chrome and desktop Safari/Firefox/Edge.
-- [ ] **C30 🔴 Branding everywhere.** Replace "PROJECT STUDIO", its logo, favicon, tagline and page titles with the final brand (from D5), including emails and legal pages.
+- [x] ~~**C30 🔴 Branding everywhere.**~~ Moved to **X2 Branding** in the pre-live phase.
 
 ## Phase 2 — Infrastructure
 
@@ -317,6 +318,26 @@ Run these on a staging copy with test keys before switching to live keys (L1). R
 - [ ] **T9 🟡 Slow phone test.** Use the site on a mid-range phone with slow mobile data; uploads and video playback must still work.
 - [ ] **T10 🟡 Email display test.** Check the verification and reset emails in Gmail, Outlook and phone mail apps, in light and dark mode.
 
+## Phase 4B — Pre-live finishing
+
+Done at the end, after the features are built and before launch day, once the final name and domain (D5) are known. These touch every page, so doing them once at the end avoids redoing them.
+
+- [ ] **X1 🟡 Enhanced SEO** (replaces C25; includes P6).
+  - [ ] X1.1 `robots.txt` (block admin and account pages) and `sitemap.xml` with every published template, generated from the database so new templates appear automatically.
+  - [ ] X1.2 Unique page titles and descriptions for every page and template, in Albanian and English, with `hreflang` links between the two languages (after C10).
+  - [ ] X1.3 Open Graph and Twitter images: one for the homepage and one per template (its poster), so links shared on WhatsApp, Instagram and Facebook show a preview.
+  - [ ] X1.4 Structured data (JSON-LD): Organization and WebSite on the homepage, Product/Offer for credit packs, VideoObject for template examples, FAQPage for the FAQ (C26).
+  - [ ] X1.5 Canonical URLs on the final domain, no duplicate pages (e.g. with and without a trailing slash or filter parameters).
+  - [ ] X1.6 Speed (Core Web Vitals): compress previews, lazy-load videos below the fold, check with PageSpeed Insights on mobile.
+  - [ ] X1.7 Landing pages for the main searches (e.g. "AI video nga foto", birthday/wedding templates), and category pages people can find from Google.
+  - [ ] X1.8 Register the domain in Google Search Console and Bing Webmaster Tools, submit the sitemap, and check for indexing errors.
+- [ ] **X2 🔴 Branding** (replaces C30; needs D5).
+  - [ ] X2.1 Final name everywhere: replace "PROJECT STUDIO" in the header, footer, page titles, 404 page and admin.
+  - [ ] X2.2 Logo and favicon (all sizes, including the phone home-screen icon for V7) and the tagline.
+  - [ ] X2.3 Set `BRAND_NAME` (C6.4) and add the logo image to all emails; sender address `MAIL_FROM` on the final domain.
+  - [ ] X2.4 Legal pages, FAQ and help pages use the final name and domain.
+  - [ ] X2.5 Download file names (today `project-studio-….mp4`) and any watermark (V41) use the final brand.
+
 ## Phase 5 — Launch day
 
 - [ ] **L-1 🔴 Back up** the production D1 database.
@@ -344,6 +365,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C25, C30, X1, X2 | Moved | New pre-live phase (4B) at the end: C25 SEO basics become X1 Enhanced SEO (with P6), C30 branding becomes X2 Branding |
 | 2026-10-12 | C4.4 (F12) | Done | Audit re-run: next 16.3.8 + overrides for image-size/brace-expansion/fast-uri/sharp/source-map-js; 19 → 1 advisory (braces in lint/build tooling, no fix published). docs/SECURITY.md and dependency-audit.json updated |
 | 2026-10-11 | C8 | Done | Anonymous page/template views recorded: analytics endpoint moved to the public route section (optional user, IP rate limit); client fires homepage_view on home/explore and template_view on template pages for guests too. 1 integration check |
 | 2026-10-11 | C4.2, C5, C28 | Done | PBKDF2 iteration count now stored in and read from the hash (F16); pager hidden on empty/single-page lists (C28). Verified F15/F17/F18/F19 were already fixed (image extensions, deletion order, user count, admin-only footer link). 3 integration checks added |
