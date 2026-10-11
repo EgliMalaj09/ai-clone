@@ -17,9 +17,9 @@ const active=['queued','preparing','generating','finalizing'];
 /** Best-effort email when a creation finishes (C11.2); a mail problem never affects the creation or its credits. */
 async function notifyFinished(g:Row,kind:GenerationMailKind){
  try{
-  const u=g.user_id?await one('SELECT email FROM users WHERE id=?',g.user_id):null;if(!u?.email)return;
+  const u=g.user_id?await one('SELECT email,locale FROM users WHERE id=?',g.user_id):null;if(!u?.email)return;
   const c=await serviceConfig();
-  await sendMail(u.email as string,generationMailContent(kind,{brand:c.brandName,templateName:g.template_name as string,credits:Number(g.credit_cost||0),link:c.origin+'/creations',supportEmail:c.mailFrom}),`generation-${kind}-${g.id}-${g.hold_id||''}`);
+  await sendMail(u.email as string,generationMailContent(kind,{brand:c.brandName,templateName:g.template_name as string,credits:Number(g.credit_cost||0),link:c.origin+'/creations',supportEmail:c.mailFrom,lang:u.locale==='en'?'en':'sq'}),`generation-${kind}-${g.id}-${g.hold_id||''}`);
  }catch(e){await reportError('email','Creation email needs review',{error:e,context:{generationId:g.id as string}});}
 }
 export async function failGeneration(g:Row,error:string){

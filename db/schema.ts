@@ -12,6 +12,8 @@ export const users=sqliteTable('users',{
  marketingOptIn:integer('marketing_opt_in').notNull().default(0),marketingOptInAt:integer('marketing_opt_in_at'),
  // Two-step sign-in (C4.1): encrypted TOTP secret (and one being set up), when it was turned on, the last code step used
  // (no code works twice) and hashes of the one-time recovery codes.
+ // Language for emails (C10): the one the customer last used on the site.
+ locale:text('locale').notNull().default('sq'),
  totpSecret:text('totp_secret'),totpPending:text('totp_pending'),totpEnabledAt:integer('totp_enabled_at'),totpLastStep:integer('totp_last_step').notNull().default(0),totpRecovery:text('totp_recovery').notNull().default('[]'),
 });
 export const accounts=sqliteTable('accounts',{

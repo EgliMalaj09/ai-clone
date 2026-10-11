@@ -37,8 +37,8 @@ const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15
 }});
 const replicateCalls=[];
 const checks=[];const ok=(name,value=true)=>{assert(value,name);checks.push({name,passed:true});console.log('PASS',name)};
-async function request(route,{method='GET',data,cookie,expected=200}={}){
- const r=await mf.dispatchFetch(env.APP_ORIGIN+route,{method,headers:{origin:env.APP_ORIGIN,...(cookie?{cookie}:{}),...(data?{'content-type':'application/json'}:{})},body:data?JSON.stringify(data):undefined});const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}if(expected!==null)assert.equal(r.status,expected,route+': '+text.slice(0,200));return {body,cookie:r.headers.get('set-cookie')?.split(';')[0]};
+async function request(route,{method='GET',data,cookie,lang,expected=200}={}){
+ const r=await mf.dispatchFetch(env.APP_ORIGIN+route,{method,headers:{origin:env.APP_ORIGIN,cookie:[cookie,lang===undefined?'studio_lang=en':lang&&'studio_lang='+lang].filter(Boolean).join('; '),...(data?{'content-type':'application/json'}:{})},body:data?JSON.stringify(data):undefined});const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}if(expected!==null)assert.equal(r.status,expected,route+': '+text.slice(0,200));return {body,cookie:r.headers.get('set-cookie')?.split(';')[0]};
 }
 async function finish(cookie,id){const deadline=Date.now()+25000;while(Date.now()<deadline){await request('/api/queue/tick',{method:'POST',data:{},cookie,expected:null});const g=(await request('/api/generations/'+id,{cookie})).body.generations[0];if(['completed','failed','refused'].includes(g.status))return g;await new Promise(r=>setTimeout(r,900));}throw new Error('Provider workflow did not finish');}
 try{

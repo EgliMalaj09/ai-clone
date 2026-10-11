@@ -3,16 +3,17 @@ import {loadPage} from '@/lib/server/data';
 import {headers} from 'next/headers';
 import {notFound} from 'next/navigation';
 import type {Metadata} from 'next';
+import {langFromCookie,translate} from '@/lib/i18n';
 export const dynamic='force-dynamic';
 const titles:Record<string,string>={explore:'Explore templates',creations:'My creations',favorites:'Favorites',credits:'Credits',pricing:'Pricing',account:'Your account',login:'Sign in',register:'Create an account','forgot-password':'Forgot password','reset-password':'Choose a new password',verify:'Verify your email',privacy:'Privacy Policy',terms:'Terms of Service',faq:'Help & FAQ',contact:'Contact us'};
 export async function generateMetadata({params}:{params:Promise<{path?:string[]}>}):Promise<Metadata>{
- const {path=[]}=await params;
+ const {path=[]}=await params;const lang=langFromCookie((await headers()).get('cookie'));const tr=(s:string)=>path[0]==='admin'?s:translate(lang,s);
  if(path[0]==='template'){
    const {getPublicTemplate,config}=await import('@/lib/server/data');const t=await getPublicTemplate(path[1]);
-   if(t){const image=new URL(t.thumbnail,config().origin).toString();return {title:`${t.name} AI Video Template | PROJECT STUDIO`,description:t.description,openGraph:{title:`${t.name} AI Video Template`,description:t.description,images:[image]},twitter:{card:'summary_large_image',title:t.name,description:t.description,images:[image]}};}
+   if(t){const image=new URL(t.thumbnail,config().origin).toString();return {title:`${t.name} ${tr('AI Video Template')} | PROJECT STUDIO`,description:t.description,openGraph:{title:`${t.name} ${tr('AI Video Template')}`,description:t.description,images:[image]},twitter:{card:'summary_large_image',title:t.name,description:t.description,images:[image]}};}
  }
  const title=path[0]==='admin'?'Studio admin':path[0]==='credits'&&path[1]==='checkout'?'Test checkout':titles[path[0]||''];
- return {title:title?`${title} | PROJECT STUDIO`:path.length?'Page not found | PROJECT STUDIO':'PROJECT STUDIO — Your next main character moment',robots:path[0]==='admin'||['creations','credits','account','favorites'].includes(path[0])?{index:false,follow:false}:undefined};
+ return {title:title?`${tr(title)} | PROJECT STUDIO`:path.length?`${tr('Page not found')} | PROJECT STUDIO`:`PROJECT STUDIO — ${tr('Your next main character moment')}`,description:tr('Choose a look. Upload a photo. Make your own AI video with credits, and pay only for videos that are delivered.'),robots:path[0]==='admin'||['creations','credits','account','favorites'].includes(path[0])?{index:false,follow:false}:undefined};
 }
 export default async function Page({params,searchParams}:{params:Promise<{path?:string[]}>;searchParams:Promise<Record<string,string|undefined>>}){
  const {path=[]}=await params;const query=await searchParams;

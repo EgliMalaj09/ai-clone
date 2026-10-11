@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import { langFromCookie } from "@/lib/i18n";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -10,13 +12,13 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang={langFromCookie((await headers()).get("cookie"))}>
       {/* Browser extensions (e.g. ColorZilla) add attributes to <body> before React loads; ignore those differences. */}
       <body className="antialiased" suppressHydrationWarning>{children}</body>
     </html>

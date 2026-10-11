@@ -16,8 +16,8 @@ const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15
 });
 const checks=[];const hash=s=>createHash('sha256').update(s).digest('hex');
 const ok=(name,value=true)=>{assert(value,name);checks.push({name,passed:true});console.log('PASS',name)};
-async function request(route,{method='GET',data,cookie,headers={},expected=200,origin=true}={}){
- const h={...(origin?{origin:config.APP_ORIGIN}:{}),...(cookie?{cookie}:{}),...(data!==undefined?{'content-type':'application/json'}:{}),...headers};
+async function request(route,{method='GET',data,cookie,lang,headers={},expected=200,origin=true}={}){
+ const h={...(origin?{origin:config.APP_ORIGIN}:{}),cookie:[cookie,lang===undefined?'studio_lang=en':lang&&'studio_lang='+lang].filter(Boolean).join('; '),...(data!==undefined?{'content-type':'application/json'}:{}),...headers};
  const r=await mf.dispatchFetch(config.APP_ORIGIN+route,{method,headers:h,body:data===undefined?undefined:JSON.stringify(data)});const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}
  if(expected!==null)assert.equal(r.status,expected,method+' '+route+': '+text.slice(0,250));
  return {body,text,response:r,cookie:r.headers.get('set-cookie')?.split(';')[0]};

@@ -28,8 +28,8 @@ const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15
 }});
 const checks=[];
 const ok=(name,value=true)=>{assert(value,name);checks.push({name,passed:true});console.log('PASS',name)};
-async function request(route,{method='GET',data,cookie,expected=200,origin=env.APP_ORIGIN}={}){
-  const r=await mf.dispatchFetch(env.APP_ORIGIN+route,{method,headers:{origin,...(cookie?{cookie}:{}),...(data?{'content-type':'application/json'}:{})},body:data?JSON.stringify(data):undefined});
+async function request(route,{method='GET',data,cookie,lang,expected=200,origin=env.APP_ORIGIN}={}){
+  const r=await mf.dispatchFetch(env.APP_ORIGIN+route,{method,headers:{origin,cookie:[cookie,lang===undefined?'studio_lang=en':lang&&'studio_lang='+lang].filter(Boolean).join('; '),...(data?{'content-type':'application/json'}:{})},body:data?JSON.stringify(data):undefined});
   const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}
   if(expected!==null)assert.equal(r.status,expected,route+': '+text.slice(0,180));return {body,text,cookie:r.headers.get('set-cookie')?.split(';')[0]};
 }
@@ -117,6 +117,10 @@ try{
   ok('Errors are forwarded to Sentry when a DSN is configured',sentry.some(env=>env[2].logger==='generation'&&env[2].extra.generationId===failing.generationId&&env[2].level==='error'));
   const badDsn=await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{SENTRY_DSN:'not-a-dsn'}},expected:400});ok('An invalid Sentry DSN is rejected',String(badDsn.body.error).includes('DSN'));
   ok('Only one email per finished creation',mails.filter(m=>m.subject?.includes('is ready')).length===1&&mails.filter(m=>m.subject?.includes('could not be completed')).length===1);
+  // C10: emails go out in the customer's language (Albanian by default).
+  await request('/api/auth/register',{method:'POST',lang:null,data:{name:'Klient Shqip',email:'shqip@studio.test',password:'Fjalekalim-123',acceptTerms:true,confirmAge:true},expected:201});
+  const sqMail=mails.find(m=>m.to==='shqip@studio.test');
+  ok('An Albanian visitor gets the verification email in Albanian',sqMail&&sqMail.subject.startsWith('Verifiko email-in')&&sqMail.html.includes('lang="sq"')&&sqMail.text.includes('Hape këtë lidhje'));
   const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
   await db.prepare("UPDATE credit_purchases SET provider='mock',status='pending' WHERE id=?").bind(stale.purchaseId).run();
   await request('/api/credits/purchases/'+stale.purchaseId+'/retry',{method:'POST',cookie:admin,data:{},expected:403});ok('A test purchase cannot reopen checkout after a production switch');

@@ -22,7 +22,8 @@
     "queue:worker": "node scripts/dispatch-queue.mjs --continuous",
     "test:providers": "node tests/providers.mjs",
     "test:production": "node tests/production.mjs",
-    "test:credits": "node tests/credits.mjs"
+    "test:credits": "node tests/credits.mjs",
+    "test:i18n": "node tests/i18n-keys.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -88,7 +88,7 @@ export async function resolveReport(admin:StudioUser,id:string,input:unknown){
  must(r,'This report is not open.',409);
  const og=await one('SELECT * FROM generations WHERE id=?',r.generation_id);must(og,'Creation not found.',404);
  const brand=config().brandName,origin=config().origin,support=config().mailFrom||undefined;
- const email=og.user_id?(await one('SELECT email FROM users WHERE id=?',og.user_id))?.email as string|undefined:undefined;
+ const customer=og.user_id?await one('SELECT email,locale FROM users WHERE id=?',og.user_id):null;const email=customer?.email as string|undefined,lang=customer?.locale==='en'?'en' as const:'sq' as const;
 
  if(b.decision==='approve'){
   let amount=Number(og.credit_cost)||0;
@@ -106,20 +106,20 @@ export async function resolveReport(admin:StudioUser,id:string,input:unknown){
   await run("UPDATE generation_reports SET status='approved',resolution='generation_problem',redo_generation_id=?,resolved_at=?,resolved_by=? WHERE id=?",redoId,now(),admin.id,id);
   await event('report_approved',admin.id,{reportId:id,generationId:r.generation_id,redoGenerationId:redoId});
   await audit(admin.id,'report.approve',id);
-  if(email)await sendMail(email,reportMailContent('approved',{brand,templateName:og.template_name as string,link:origin+'/creations',linkLabel:'See my creations',supportEmail:support}),'report-'+id);
+  if(email)await sendMail(email,reportMailContent('approved',{brand,templateName:og.template_name as string,link:origin+'/creations',linkLabel:'See my creations',supportEmail:support,lang}),'report-'+id);
   return {ok:true,redoGenerationId:redoId};
  }
  if(b.decision==='reject_photo'){
   must(b.guideline,'Choose which photo guideline was not met.');
   await run("UPDATE generation_reports SET status='rejected',resolution='photo_unsuitable',guideline=?,resolved_at=?,resolved_by=? WHERE id=?",b.guideline,now(),admin.id,id);
   await event('report_rejected',admin.id,{reportId:id,resolution:'photo_unsuitable'});await audit(admin.id,'report.reject',id);
-  if(email)await sendMail(email,reportMailContent('rejected_photo',{brand,templateName:og.template_name as string,detail:b.guideline,link:origin+'/terms#photos',linkLabel:'Photo tips',supportEmail:support}),'report-'+id);
+  if(email)await sendMail(email,reportMailContent('rejected_photo',{brand,templateName:og.template_name as string,detail:b.guideline,link:origin+'/terms#photos',linkLabel:'Photo tips',supportEmail:support,lang}),'report-'+id);
   return {ok:true};
  }
  // reject_other
  must(b.reason,'Add a short reason the customer will see.');
  await run("UPDATE generation_reports SET status='rejected',resolution='other',admin_reason=?,resolved_at=?,resolved_by=? WHERE id=?",b.reason,now(),admin.id,id);
  await event('report_rejected',admin.id,{reportId:id,resolution:'other'});await audit(admin.id,'report.reject',id);
- if(email)await sendMail(email,reportMailContent('rejected_other',{brand,templateName:og.template_name as string,detail:b.reason,supportEmail:support}),'report-'+id);
+ if(email)await sendMail(email,reportMailContent('rejected_other',{brand,templateName:og.template_name as string,detail:b.reason,supportEmail:support,lang}),'report-'+id);
  return {ok:true};
 }

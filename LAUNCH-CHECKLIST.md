@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 19 | 30 |
+| 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -101,7 +101,7 @@ These come first, because the code and infrastructure work depends on them.
 - [ ] **C6 🔴 Account emails (sign-up and password).** Sign-up depends on these, so they block the launch.
   - [x] C6.1 Branded HTML verification email (wordmark, verify button, copy-paste link, 30-min expiry, business name VASIL XHAJA, support contact); plain-text version kept. Logo image waits for D5.
   - [x] C6.2 Same branded HTML + plain-text for the password reset email.
-  - [ ] C6.3 Albanian text (or Albanian + English) for both emails.
+  - [x] C6.3 Albanian text (or Albanian + English) for both emails.
   - [~] C6.4 Brand name moved to one config value (`BRAND_NAME`, temporary "Project Studio"); no more "PROJECT STUDIO" in emails. **TODO before launch:** set the final brand once D5 is decided (part of X2).
   - [x] C6.5 Already fixed: resend returns "already verified" for verified accounts (F13); `/reset-password` and `/verify` without a link show a clear "incomplete link" message with a way to request a new one (F14).
 - [ ] **C11 🟡 Other emails customers expect.**
@@ -110,7 +110,7 @@ These come first, because the code and infrastructure work depends on them.
 - [x] **C7 🟡 Error tracking (L10).** Send Worker errors to a tracker (e.g. Sentry) and log provider and webhook failures with the generation or purchase ID. ✅ Every server error, failed generation, payment/webhook, email, credit and queue problem goes through one reporter: logged with its IDs (generation, purchase, user), kept 30 days in a new `error_events` table and listed under **Admin → Operations → Recent errors**, and sent to Sentry when a `SENTRY_DSN` is saved in Admin → Connections (optional). See DECISIONS.md #4.
 - [x] **C8 🟡 Analytics (F9).** ✅ Page and template views are now recorded for guests too (the analytics endpoint moved to the public section with an IP rate limit; home/explore and template pages fire views regardless of sign-in), so the dashboard funnel includes anonymous visitors.
 - [x] **C9 🟡 Catalog scale (F7).** Paginate the storefront instead of loading all templates at once, so the catalog can grow after launch without code changes. ✅ The server renders the first 24 templates for the current filters; filter changes and "Show more templates" load further pages from `/api/templates`. Search also matches category names. Favorites stay a personal list.
-- [ ] **C10 🟡 Albanian translation.** i18n for the whole UI, emails and legal pages, with a language switcher (Albanian and English).
+- [x] **C10 🟡 Albanian translation.** i18n for the whole UI, emails and legal pages, with a language switcher (Albanian and English). ✅ Albanian (default) and English across the storefront, account pages, help and legal pages, page titles, customer API messages and all emails (sent in the customer's language, `users.locale`). Shqip/English switch in the footer and mobile menu, kept in a cookie; `<html lang>` follows it. The studio admin stays English. Draft translation by Claude — a native speaker must review it (P7). `pnpm test:i18n` fails if a customer-facing line has no Albanian. See DECISIONS.md #7–8.
 - [ ] **C32 🔴 Higgsfield AI connection.** Higgsfield is the AI provider (D18). The app currently supports only fal.ai and Replicate.
   - [x] C32.1 Higgsfield provider adapter: submit, check status, fetch the result, using the API key ID + secret.
   - [x] C32.2 Key ID and secret in Admin → Connections (encrypted), and Higgsfield in Admin → AI providers.
@@ -155,7 +155,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C31.1 ✅ Photo guidelines card in every template's upload area (before uploading): a photo-count line driven by the template's required photos, plus ✓ do / ✕ don't lists.
   - [~] C31.2 Do/don't guidance shown as a clear ✓/✕ two-column card. Side-by-side **example photos** still to add (needs real example images, like P4).
   - [x] C31.3 ✅ Required "My photo follows the photo guidelines above" checkbox; Generate stays disabled until it (and the permission consent) are ticked.
-  - [~] C31.4 Studio-wide guidelines editable in Admin → Settings (Do/Don't lists). Per-template photo **count** already adapts (e.g. 2 photos for couples). ✅ Per-template custom **tips** (one per line, in the template editor) are shown in the guidelines card. Albanian still to add with C10.
+  - [~] C31.4 Studio-wide guidelines editable in Admin → Settings (Do/Don't lists). Per-template photo **count** already adapts (e.g. 2 photos for couples). ✅ Per-template custom **tips** (one per line, in the template editor) are shown in the guidelines card. ✅ The default guidelines are translated to Albanian (C10); admin-written lines and tips show as written, so write them in Albanian.
   - [x] ~~C31.5 Automatic photo checks before credits are spent.~~ Dropped by decision (C2): the AI platform checks content.
 - [x] **C22 🔴 Maintenance switch and banner.** ✅ Admin → Settings → Maintenance mode: separate toggles to pause new video creation and/or new credit purchases, with an optional custom message. Paused actions return 503 with the message; a site-wide banner shows it. Work already running keeps going. No deploy needed.
 - [x] **C23 🔴 Spending safety limits.** ✅ Admin → Settings → Spending safety limits: per-customer caps on videos running at once (default 3) and per day (default 20), and a studio-wide daily AI-cost cap (off by default) that pauses creation and records a `spend_cap_reached` alert event. 0 means no limit. Enforced before any credits are reserved.
@@ -220,7 +220,7 @@ These come first, because the code and infrastructure work depends on them.
 - [ ] **P4 🔴 Real template examples (L9).** Replace every concept preview with a real generated example (poster and video) made with the live workflow.
 - [ ] **P5 🟡 Template catalog for launch.** Decide which templates are published at launch; unpublish any whose output quality is not good enough.
 - [ ] **P6 🟡 Landing page and SEO.** Final copy, page titles and descriptions, an Open Graph image, favicon, and `robots.txt`.
-- [ ] **P7 🔴 Albanian text review.** A native speaker reads every page, button, error message, email and legal text.
+- [ ] **P7 🔴 Albanian text review.** A native speaker reads every page, button, error message, email and legal text. The draft translation is in `lib/i18n-sq.ts` (one line per text) and `components/legal-sq.tsx`.
 - [ ] **P8 🟡 Launch assets.** Social media accounts and handles, profile images, and a few real example videos ready for when marketing starts.
 
 ## Phase 3B — Version 1 features
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C10, C6.3 | Done | i18n: lib/i18n.ts + lib/i18n-sq.ts (≈600 lines), useI18n/LanguageSwitch, Albanian legal pages, translated metadata/404/error/loading, API errors and field messages per language (admin English), emails per users.locale (migration 0012), language cookie no longer counts as a signed-in cookie for the origin check. tests: test:i18n coverage + 6 integration + 1 production check; test helpers send studio_lang=en |
 | 2026-10-12 | C29.1, C29.2 | Done | Contrast raised to WCAG AA across globals.css (124 colours, hue kept), stronger focus styles, skip link, prefers-reduced-motion. Real-device checks stay with T5/T9. 1 integration check |
 | 2026-10-12 | C4.1 (L5) | Done | TOTP two-step sign-in (lib/server/mfa.ts, migration 0011): setup with key + otpauth link, enable with code, recovery codes, login ticket step, disable/regenerate with password + code; admin reminder banner. Also fixed a pre-existing hydration mismatch (dates now formatted in Europe/Tirane on server and browser). 7 security checks |
 | 2026-10-12 | C7 (L10) | Done | lib/server/errors.ts reportError(): structured log + error_events (migration 0010, pruned after 30 days) + optional Sentry envelope; all console.error sites moved over with IDs; Operations shows Recent errors and a readiness line; SENTRY_DSN connection with validation. 3 production checks |

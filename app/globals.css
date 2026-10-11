@@ -289,3 +289,9 @@ summary:focus-visible,[tabindex]:focus-visible,[role=checkbox]:focus-visible,[ro
 .skip-link{position:absolute;left:12px;top:-60px;z-index:1000;padding:10px 16px;border-radius:10px;background:var(--ink);color:#fff;font-weight:600;font-size:14px;transition:top .15s}
 .skip-link:focus{top:12px}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+
+/* Language switch (C10) */
+.language-switch{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--line);border-radius:999px}
+.language-switch button{border:0;background:transparent;padding:4px 10px;border-radius:999px;font-size:12px;color:#68707a;cursor:pointer}
+.language-switch button.active{background:var(--ink);color:#fff}
+.sheet-language{margin:18px 16px 0}
