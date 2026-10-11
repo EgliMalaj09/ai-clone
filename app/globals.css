@@ -239,3 +239,23 @@
 .load-more{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:34px}
 .load-error{color:#b42318;font-size:15px}
 .template-grid[aria-busy=true]{opacity:.6;transition:opacity .2s}
+
+/* Help pages (C26) */
+.help-page>p{font-size:15px}
+.help-page a{color:var(--blue)}
+.faq-item{border-bottom:1px solid var(--line)}
+.faq-item summary{cursor:pointer;padding:16px 4px;font-weight:600;font-size:15px;list-style:none;display:flex;justify-content:space-between;gap:16px}
+.faq-item summary::-webkit-details-marker{display:none}
+.faq-item summary::after{content:'+';color:#798696;font-weight:400;font-size:20px;line-height:1}
+.faq-item[open] summary::after{content:'−'}
+.faq-item summary:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+.faq-item p{margin:0 4px 18px}
+.help-cta{display:flex;gap:14px;align-items:flex-start;margin-top:40px;padding:20px;border:1px solid var(--line);border-radius:16px}
+.help-cta p{margin:4px 0 0}
+.contact-list{display:grid;gap:12px;margin:28px 0}
+.contact-row{display:flex;gap:14px;align-items:center;padding:16px 18px;border:1px solid var(--line);border-radius:14px;color:inherit}
+.contact-row div{display:flex;flex-direction:column;gap:2px}
+.contact-row span{color:#798696;font-size:14px}
+a.contact-row:hover{border-color:var(--blue)}
+.social-row{display:flex;flex-wrap:wrap;gap:10px}
+footer>div{flex-wrap:wrap}

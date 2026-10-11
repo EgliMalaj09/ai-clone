@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 16 | 30 |
+| 1. Codebase | 17 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -161,7 +161,7 @@ These come first, because the code and infrastructure work depends on them.
 - [x] **C23 🔴 Spending safety limits.** ✅ Admin → Settings → Spending safety limits: per-customer caps on videos running at once (default 3) and per day (default 20), and a studio-wide daily AI-cost cap (off by default) that pauses creation and records a `spend_cap_reached` alert event. 0 means no limit. Enforced before any credits are reserved.
 - [ ] **C24 🟡 Marketing tracking (from D15).** Meta and/or TikTok pixel plus server-side conversion events for sign-up and purchase, UTM campaign capture at sign-up, and a cookie consent banner (required once trackers are added).
 - [x] ~~**C25 🟡 SEO basics.**~~ Moved to **X1 Enhanced SEO** in the pre-live phase, done together at the end.
-- [ ] **C26 🟡 Help pages.** A Contact/Support page and an FAQ (how it works, photo tips, credits, failed videos, privacy, deleting data), linked from the footer with your social accounts.
+- [x] **C26 🟡 Help pages.** A Contact/Support page and an FAQ (how it works, photo tips, credits, failed videos, privacy, deleting data), linked from the footer with your social accounts. ✅ `/faq` (grouped, expandable questions: how it works, photos, credits, failures, privacy, deleting data) and `/contact` (support email/phone/response time, business name, social links). Support details and social links are set in Admin → Settings; footer links Help & FAQ, Contact and the social accounts. See DECISIONS.md #1–2.
 - [ ] **C27 🟡 Template page details.** Photo tips with good and bad example photos, what the customer receives (length, resolution, format, any watermark), and related templates at the bottom.
 - [x] **C28 🟡 Polish.** ✅ The pager is hidden on empty and single-page lists (no more "0 results · Page 1 of 1" with buttons). Empty states already use the Empty component; broader copy review continues as pages change.
 - [ ] **C29 🟡 Accessibility and browsers.** Keyboard navigation, colour contrast and labels; video playback and uploads on iPhone Safari, Android Chrome and desktop Safari/Firefox/Edge.
@@ -367,6 +367,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C26 | Done | Help & FAQ and Contact pages, footer links, admin-editable support details and social links (validated https). 4 integration checks. New DECISIONS.md records choices made for soft-blocked items |
 | 2026-10-12 | C13.1 | Done | money() shows fractional amounts exactly instead of rounding (ALL whole amounts keep no decimals); ALL packs already limited to whole lek. C13.2 (POK minimums) waits on POK |
 | 2026-10-12 | C14 | Done | Account export adds signed 23-hour download links for every upload and generated file (grouped per creation), consents, refusal count and reports; Account page text updated. 2 integration checks |
 | 2026-10-12 | C11.2 | Done | Creation finished emails: ready / failed / refused (credits returned), sent best-effort from the queue with one idempotency key per attempt; shared branded notice layout reused by report emails. 3 production checks |
