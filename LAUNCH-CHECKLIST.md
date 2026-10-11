@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 10 | 32 |
+| 1. Codebase | 11 | 32 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -131,7 +131,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C16.5 ✅ Legal pages show `Version {TERMS_VERSION}` (2026-10-07). Full rewrite still in P3.
 - [x] **C17 🔴 Proper page titles.** ✅ Every route has a real title and the 404 page has its own title. Brand word stays "PROJECT STUDIO" until C30/D5.
 - [x] **C18 🔴 Show what credits cost before sign-up.** ✅ New public `/pricing` page shows the four packs with price, credits and per-credit value (EUR/ALL switch), welcome-credits note and CTA; "Pricing" link added to the header and mobile menu; approximate price ("≈ ALL 2,750") now shown next to credit costs on template cards, the hero and the template page. Guests see all of it without an account.
-- [ ] **C19 🔴 Fix profit calculation currencies.** AI costs are in USD but packs are only ALL/EUR, so the template editor and dashboard can never show a margin, and the dashboard opens in USD. Add an exchange rate setting (USD→ALL/EUR) and open the dashboard in your selling currency.
+- [x] **C19 🔴 Fix profit calculation currencies.** ✅ Admin → Settings → Exchange rates (USD→EUR default 0.92, USD→ALL default 85, editable). AI costs (USD) are converted into the selling currency so the dashboard and template list show real margins; the dashboard now opens in EUR (switchable to ALL) and no longer shows a USD column. New lib/server/rates.ts.
 - [x] **C20 🔴 Sign-up form.** ✅
   - [x] C20.1 Explicit "I accept the Terms and Privacy Policy" checkbox; stored per account with the accepted-at time and the Terms version (`TERMS_VERSION`). Required to submit.
   - [x] C20.2 "I am 13 years of age or older" checkbox, required to submit; the confirmation time is stored. Any extra 13–17 wording waits on the lawyer (D13.1, D13.2).
@@ -344,6 +344,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-11 | C19 | Done | Exchange-rate settings (USD→EUR/ALL, defaults 0.92 / 85, admin-editable); AI costs converted into the selling currency for dashboard financials, profitable templates and the admin template margin column; dashboard defaults to EUR, no USD column. lib/server/rates.ts. 4 integration checks; security financials assertion updated |
 | 2026-10-11 | C23 | Done | Spending safety limits: per-customer concurrent (default 3) and daily (default 20) caps + studio-wide daily estimated-AI-cost cap (off by default, records spend_cap_reached event). New lib/server/limits.ts enforced in startGeneration before reserving credits; admin panel + settings API. 5 integration checks |
 | 2026-10-11 | C22 | Done | Maintenance mode in Admin → Settings: toggles to pause creation and/or purchases + custom message; app_settings-backed, gates checkout and generation (503), storefront banner + closed buttons via publicAvailability. 5 integration checks |
 | 2026-10-11 | Checklist | Moved | Checklist now lives in the repo at LAUNCH-CHECKLIST.md (was in Downloads) so it persists and is versioned |

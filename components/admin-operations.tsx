@@ -21,13 +21,13 @@ function Header({title,description,children}:{title:string;description:string;ch
 }
 export function StudioDashboard(){
  const {data:d,error,loading,refresh}=useAPI<Dashboard>('admin/dashboard');
- const [currency,setCurrency]=useState('USD');const [openedAt]=useState(()=>Date.now());
+ const [currency,setCurrency]=useState('EUR');const [openedAt]=useState(()=>Date.now());
  if(loading||!d)return error?<ErrorBox message={error} retry={refresh}/>:<Loading/>;
  const finance=d.financials.find(f=>f.currency===currency)||{revenue:0,estimated_cost:0,paid_count:0,reversed_count:0,reversed_amount:0};
  const days=Array.from({length:30},(_,i)=>new Date(openedAt-(29-i)*86400000).toISOString().slice(0,10));
  const chart=days.map(day=>({day,value:d.daily.find(v=>v.day===day&&v.currency===currency)?.revenue||0}));
  const peak=Math.max(...chart.map(v=>v.value),100);
- const currencies=Array.from(new Set(['USD',...d.financials.map(f=>f.currency)]));
+ const currencies=Array.from(new Set(['EUR',...d.financials.map(f=>f.currency)]));
  return <>
   <Header title="Your studio at a glance." description="The creative work. The business behind it."><a className="button primary small" href="/admin/templates/new"><Plus size={16}/>New template</a></Header>
   {d.demo&&<div className="admin-demo-note"><Film size={22}/><div><strong>Your development studio</strong><p>Credit purchases use the test checkout and videos are samples. No real money is collected.</p></div><a href="/admin/operations" className="text-link">Service readiness <ArrowUpRight size={15}/></a></div>}

@@ -160,6 +160,15 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('The spend cap records an alert event',!!(await db.prepare("SELECT id FROM analytics_events WHERE name='spend_cap_reached'").first()));
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{limits:{concurrent:3,daily:20,studioDailyCost:0}}});
 
+ // C19 — exchange rates + margins in the selling currency
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{exchangeRates:{EUR:0.92,ALL:85}}});
+ ok('Exchange rates are saved and returned',(await request('/api/admin/settings',{cookie:adminCookie})).body.exchangeRates.ALL===85);
+ const dash19=(await request('/api/admin/dashboard',{cookie:adminCookie})).body;
+ ok('Dashboard financials use selling currencies, not USD',dash19.financials.some(f=>f.currency==='EUR')&&!dash19.financials.some(f=>f.currency==='USD'));
+ ok('Profitable templates are computed in a selling currency',dash19.profitable.length>0&&dash19.profitable.every(x=>x.currency!=='USD')&&dash19.profitable.some(x=>x.currency==='EUR'));
+ const adminTpls19=(await request('/api/admin/templates',{cookie:adminCookie})).body.templates;
+ ok('Template margins show in the accounting currency, not blank USD',adminTpls19.every(t=>t.costCurrency==='EUR')&&adminTpls19.some(t=>t.creditValue!==null));
+
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
  const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;
  ok('Customer page returns profile, credits, creations and activity',detail.user.email===second.body.user.email&&typeof detail.balance.available==='number'&&Array.isArray(detail.creations.recent)&&detail.activity.some(a=>a.action==='user.suspended'));

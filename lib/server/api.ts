@@ -17,6 +17,7 @@ import {pokWebhook} from './payments';
 import {removeGeneration,tickQueue} from './queue';
 import {createReport,listReports,reportDetail,resolveReport,reportsForGenerations,publicReport,hasOpenReport,uploadsLockedByReport,userHasOpenReport} from './reports';
 import {assertWithinLimits,spendingLimits} from './limits';
+import {exchangeRates,convertMinor} from './rates';
 import {dispatcherStatus,recordDispatch} from './dispatcher';
 import {TERMS_VERSION,cleanGuidelineList,type AdminTemplate,type StudioUser} from '../contracts';
 
@@ -189,14 +190,17 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
    creditValues(),
    all('SELECT name,credit_cost,estimated_cost,currency FROM templates WHERE active=1'),
   ]);
-  const currencies=[...new Set([...revenue,...costs].map(r=>r.currency as string))];
-  const financials=currencies.map(c=>({currency:c,revenue:0,paid_count:0,reversed_count:0,reversed_amount:0,estimated_cost:0,...revenue.find(r=>r.currency===c),...costs.find(r=>r.currency===c)}));
-  // Gross margin per video at the cheapest credit price (largest pack bonus) in the template's cost currency.
-  const profitable=templates.filter(t=>values[t.currency]!==undefined).map(t=>({name:t.name,currency:t.currency,credit_cost:t.credit_cost,estimated_cost:t.estimated_cost,value:Math.round(t.credit_cost*values[t.currency])})).sort((a,b)=>(b.value-b.estimated_cost)-(a.value-a.estimated_cost)).slice(0,5);
+  // Sell in the pack currencies (ALL/EUR); AI costs are entered in USD and converted with the admin rates (C19).
+  const rates=await exchangeRates();
+  const selling=(Object.keys(values).length?Object.keys(values):[...new Set(revenue.map(r=>r.currency as string))]);
+  const currencies=selling.length?selling:['EUR'];
+  const financials=currencies.map(c=>{const r=revenue.find(x=>x.currency===c)||{};return {currency:c,revenue:0,paid_count:0,reversed_count:0,reversed_amount:0,...r,estimated_cost:costs.reduce((sum,row)=>sum+convertMinor(Number(row.estimated_cost||0),row.currency as string,c,rates),0)};});
+  // Gross margin per video at the cheapest credit price, with AI cost converted into each selling currency.
+  const profitable=currencies.filter(c=>values[c]!==undefined).flatMap(c=>templates.map(t=>({name:t.name as string,currency:c,credit_cost:t.credit_cost as number,estimated_cost:convertMinor(Number(t.estimated_cost||0),t.currency as string,c,rates),value:Math.round((t.credit_cost as number)*values[c])})).sort((a,b)=>(b.value-b.estimated_cost)-(a.value-a.estimated_cost)).slice(0,5));
   return json({users:users?.count||0,metrics,financials,credits,top,recent,profitable,daily,recentPurchases,demo:config().demo,...await publicAvailability()});
  }
  if(p[1]==='templates'){
-  if(method==='GET'){if(p[2]){const t=await getAdminTemplate(p[2]);must(t,'Template not found.',404);return json({template:t});}const [t,values]=await Promise.all([all('SELECT * FROM templates ORDER BY created_at DESC'),creditValues()]);return json({templates:t.map(t=>({...publicTemplate(t),estimatedCost:t.estimated_cost,provider:t.provider,model:t.model,costCurrency:t.currency,creditValue:values[t.currency]!==undefined?Math.round(t.credit_cost*values[t.currency]):null}))});}
+  if(method==='GET'){if(p[2]){const t=await getAdminTemplate(p[2]);must(t,'Template not found.',404);return json({template:t});}const [t,values,rates]=await Promise.all([all('SELECT * FROM templates ORDER BY created_at DESC'),creditValues(),exchangeRates()]);const acct=values['EUR']!==undefined?'EUR':(Object.keys(values)[0]||'EUR');return json({templates:t.map(t=>({...publicTemplate(t),estimatedCost:convertMinor(Number(t.estimated_cost||0),t.currency as string,acct,rates),provider:t.provider,model:t.model,costCurrency:acct,creditValue:values[acct]!==undefined?Math.round((t.credit_cost as number)*values[acct]):null}))});}
   if(method==='POST'||method==='PATCH'){
    if(p[3]==='duplicate'){const original=await getAdminTemplate(p[2]);must(original,'Template not found.',404);const suffix=uid().slice(0,6);const t={...original,id:uid('tpl_'),slug:original.slug+'-copy-'+suffix,name:original.name+' (copy)',active:false,createdAt:now()};await batch(templateStatements(t));await audit(user.id,'template.duplicate',t.id);return json({template:t},201);}
    const b=templateSchema.parse(await body(req));await validateTemplateMedia(b);const existing=p[2]?await getAdminTemplate(p[2]):null;if(method==='PATCH')must(existing,'Template not found.',404);must(!await one('SELECT id FROM templates WHERE slug=? AND id!=?',b.slug,existing?.id||''),'This URL slug is already in use.',409);
@@ -260,12 +264,13 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='PATCH'){const b=await body(req);const enabled=z.boolean().parse(b.enabled);must(['mock','higgsfield','fal','replicate'].includes(p[2]),'Unknown provider.');await run('UPDATE provider_configurations SET enabled=?,updated_at=? WHERE id=?',Number(enabled),now(),p[2]);await audit(user.id,'provider.update',p[2]);return json({ok:true});}
  }
  if(p[1]==='settings'){
-  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),photoGuidelines:await photoGuidelines(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus(),maintenance:await maintenanceStatus(),limits:await spendingLimits()});}
-  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({welcomeCredits:z.number().int().min(0).max(100000).optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional(),limits:z.object({concurrent:z.number().int().min(0).max(100),daily:z.number().int().min(0).max(1000),studioDailyCost:z.number().int().min(0).max(1000000000)}).optional()}).parse(await body(req));
+  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),photoGuidelines:await photoGuidelines(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus(),maintenance:await maintenanceStatus(),limits:await spendingLimits(),exchangeRates:await exchangeRates()});}
+  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({welcomeCredits:z.number().int().min(0).max(100000).optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional(),limits:z.object({concurrent:z.number().int().min(0).max(100),daily:z.number().int().min(0).max(1000),studioDailyCost:z.number().int().min(0).max(1000000000)}).optional(),exchangeRates:z.object({EUR:z.number().positive().max(100000),ALL:z.number().positive().max(100000)}).optional()}).parse(await body(req));
    if(b.welcomeCredits!==undefined){await run("INSERT INTO app_settings (key,value) VALUES ('welcome_credits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(b.welcomeCredits));await audit(user.id,'settings.update','welcome_credits');}
    if(b.photoGuidelines){const value={do:cleanGuidelineList(b.photoGuidelines.do),dont:cleanGuidelineList(b.photoGuidelines.dont)};must(value.do.length&&value.dont.length,'Add at least one “do” and one “don’t” guideline.');await run("INSERT INTO app_settings (key,value) VALUES ('photo_guidelines',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(value));await audit(user.id,'settings.update','photo_guidelines');}
    if(b.maintenance){const up=(k:string,v:string)=>run("INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",k,v);await up('maintenance_purchases',b.maintenance.purchasesPaused?'1':'0');await up('maintenance_creations',b.maintenance.creationsPaused?'1':'0');await up('maintenance_message',b.maintenance.message);await audit(user.id,'settings.update','maintenance');}
    if(b.limits){const up=(k:string,v:number)=>run("INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",k,String(v));await up('limit_user_concurrent',b.limits.concurrent);await up('limit_user_daily',b.limits.daily);await up('limit_studio_daily_cost',b.limits.studioDailyCost);await audit(user.id,'settings.update','limits');}
+   if(b.exchangeRates){const up=(k:string,v:number)=>run("INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",k,String(v));await up('rate_usd_eur',b.exchangeRates.EUR);await up('rate_usd_all',b.exchangeRates.ALL);await audit(user.id,'settings.update','exchange_rates');}
    return json({ok:true});}
  }
  throw new HttpError(404,'Admin action not found.');
