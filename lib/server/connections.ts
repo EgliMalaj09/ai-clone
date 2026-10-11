@@ -64,6 +64,13 @@ export async function purchaseReadiness(){
     enabledProviders:enabled.filter(p=>p.id==='mock'?c.demo:providerConfigured(p.id as string,c)).map(p=>p.id as string),
   };
 }
+/** Admin-controlled maintenance pause (C22): stop new purchases and/or new creations without a deploy. */
+export async function maintenanceStatus(){
+  const rows=await all("SELECT key,value FROM app_settings WHERE key IN ('maintenance_purchases','maintenance_creations','maintenance_message')");
+  const get=(k:string)=>rows.find(r=>r.key===k)?.value;
+  return {purchasesPaused:get('maintenance_purchases')==='1',creationsPaused:get('maintenance_creations')==='1',message:(get('maintenance_message') as string)||''};
+}
+export const DEFAULT_MAINTENANCE_MESSAGE='We’re doing some maintenance. Please check back shortly.';
 /** Generation needs an AI provider, the background dispatcher and public access; it does not need payments. */
 function generationReady(r:Awaited<ReturnType<typeof purchaseReadiness>>){return r.demo||r.ai&&r.dispatcher&&r.publicAccess;}
 function templateRunnable(template:AdminTemplate,r:Awaited<ReturnType<typeof purchaseReadiness>>){
@@ -71,6 +78,8 @@ function templateRunnable(template:AdminTemplate,r:Awaited<ReturnType<typeof pur
 }
 export async function assertGeneratable(template:AdminTemplate){
   const r=await purchaseReadiness();
+  const m=await maintenanceStatus();
+  must(!m.creationsPaused,m.message||DEFAULT_MAINTENANCE_MESSAGE,503);
   must(template.workflow.length>0&&template.workflow.every(s=>r.demo?s.provider==='mock':s.provider!=='mock'),'This template is not available yet.',409);
   must(generationReady(r),'Video creation is not open yet. Please check back soon.',503);
   must(templateRunnable(template,r),'This template is temporarily unavailable.',503);
@@ -78,7 +87,8 @@ export async function assertGeneratable(template:AdminTemplate){
 /** What the storefront may offer: registration, buying credits (needs payments) and generating a template. */
 export async function publicAvailability(template?:AdminTemplate|null){
   const r=await purchaseReadiness();
-  return {registrationAvailable:r.registrationAvailable,purchasingAvailable:r.ready,generationAvailable:generationReady(r)&&(!template||templateRunnable(template,r))};
+  const m=await maintenanceStatus();
+  return {registrationAvailable:r.registrationAvailable,purchasingAvailable:r.ready&&!m.purchasesPaused,generationAvailable:generationReady(r)&&!m.creationsPaused&&(!template||templateRunnable(template,r)),maintenance:m};
 }
 export async function connectionStatus(){
   const c=await serviceConfig(true),readiness=await purchaseReadiness();

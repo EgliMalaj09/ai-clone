@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 8 | 32 |
+| 1. Codebase | 9 | 32 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 0 | 45 |
@@ -154,7 +154,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C31.3 ✅ Required "My photo follows the photo guidelines above" checkbox; Generate stays disabled until it (and the permission consent) are ticked.
   - [~] C31.4 Studio-wide guidelines editable in Admin → Settings (Do/Don't lists). Per-template photo **count** already adapts (e.g. 2 photos for couples). Per-template custom **text** and Albanian still to add (Albanian with C10).
   - [x] ~~C31.5 Automatic photo checks before credits are spent.~~ Dropped by decision (C2): the AI platform checks content.
-- [ ] **C22 🔴 Maintenance switch and banner.** An admin setting to pause new purchases and/or new videos with a message ("Video creation is paused for maintenance"), for provider outages, without a deploy.
+- [x] **C22 🔴 Maintenance switch and banner.** ✅ Admin → Settings → Maintenance mode: separate toggles to pause new video creation and/or new credit purchases, with an optional custom message. Paused actions return 503 with the message; a site-wide banner shows it. Work already running keeps going. No deploy needed.
 - [ ] **C23 🔴 Spending safety limits.** Per customer: a maximum number of videos running at once and per day. Studio-wide: a daily AI spending cap that pauses creation and alerts you, so a bug or abuse can't empty your fal.ai balance.
 - [ ] **C24 🟡 Marketing tracking (from D15).** Meta and/or TikTok pixel plus server-side conversion events for sign-up and purchase, UTM campaign capture at sign-up, and a cookie consent banner (required once trackers are added).
 - [ ] **C25 🟡 SEO basics.** `robots.txt`, `sitemap.xml` with all templates, an Open Graph image for the homepage, and structured data for templates.
@@ -344,6 +344,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-11 | C22 | Done | Maintenance mode in Admin → Settings: toggles to pause creation and/or purchases + custom message; app_settings-backed, gates checkout and generation (503), storefront banner + closed buttons via publicAvailability. 5 integration checks |
 | 2026-10-11 | Checklist | Moved | Checklist now lives in the repo at LAUNCH-CHECKLIST.md (was in Downloads) so it persists and is versioned |
 | 2026-10-11 | C16, C17, C4.3 | Done | CSP frame-ancestors self-only + removed dead app/chatgpt-auth.ts; legal date -> Version TERMS_VERSION; 404 title; C16.1–C16.3 already clean; titles were already proper |
 | 2026-10-07 | C21 | Done | Report a problem on finished videos (reason+comment, 7-day window, one open), case status in My creations, admin Reports queue with photos/video/history + abuse flag, approve = free goodwill redo (ledger-recorded, same photo), reject photo-unsuitable (guideline) / other (reason), file+account retention while open, branded decision emails, Terms policy. Migration 0008. 15 integration checks added. FAQ copy deferred to C26 |

@@ -133,6 +133,19 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const redoCard=(await request('/api/generations?status=completed',{cookie:userCookie})).body.generations.find(g=>g.id===redoId);
  ok('A rejected report shows photo-not-suitable to the customer',redoCard.report.status==='rejected'&&redoCard.report.resolution==='photo_unsuitable'&&redoCard.report.guideline==='Face clearly visible and facing the camera');
 
+ // C22 — maintenance switch
+ const curFormula=(await request('/api/templates')).body.templates.find(t=>t.slug==='formula-driver');
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{maintenance:{creationsPaused:true,purchasesPaused:false,message:'Paused for maintenance'}}});
+ ok('Maintenance settings are saved and returned',(await request('/api/admin/settings',{cookie:adminCookie})).body.maintenance.creationsPaused===true);
+ const mUp=await upload(userCookie);
+ await generate(userCookie,curFormula,[mUp.body.id],{expected:503});ok('Maintenance pauses new video creation',true);
+ ok('The template page shows the maintenance message',(await request('/template/formula-driver')).body.includes('Paused for maintenance'));
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{maintenance:{creationsPaused:false,purchasesPaused:true,message:''}}});
+ const maintPack=(await request('/api/admin/credit-packages',{method:'POST',cookie:adminCookie,data:{name:'Maint pack',credits:100,prices:{EUR:499},active:true},expected:201})).body.package;
+ await request('/api/credits/checkout',{method:'POST',cookie:userCookie,data:{packageId:maintPack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:503});ok('Maintenance pauses new credit purchases',true);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{maintenance:{creationsPaused:false,purchasesPaused:false,message:''}}});
+ const resumed=await generate(userCookie,curFormula,[(await upload(userCookie)).body.id]);await waitDone(userCookie,resumed.body.generationId);ok('Creation works again after maintenance is lifted',true);
+
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
  const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;
  ok('Customer page returns profile, credits, creations and activity',detail.user.email===second.body.user.email&&typeof detail.balance.available==='number'&&Array.isArray(detail.creations.recent)&&detail.activity.some(a=>a.action==='user.suspended'));

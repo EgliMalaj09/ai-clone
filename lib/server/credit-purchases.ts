@@ -2,7 +2,7 @@
 // transaction that marks the purchase paid, so a retried or concurrent webhook can never grant twice.
 import {z} from 'zod';
 import {all,audit,config,event,HttpError,must,now,one,parse,run,stmt,uid,type Row} from './data';
-import {purchaseReadiness} from './connections';
+import {purchaseReadiness,maintenanceStatus,DEFAULT_MAINTENANCE_MESSAGE} from './connections';
 import {pageQuery} from './http';
 import {createPokOrder,getPokOrder,pokCurrencies,pokOrderState} from './payments';
 import {available,onlyIfApplied,post,SYSTEM} from './credits';
@@ -51,6 +51,7 @@ export async function startPackCheckout(user:StudioUser,input:unknown){
  if(prior){must(prior.package_id===b.packageId&&prior.currency===b.currency,'This checkout key was already used for another purchase.',409);return {purchaseId:prior.id,...await ensurePackCheckout(prior,user.email)};}
  const pack=await one('SELECT * FROM credit_packages WHERE id=? AND active=1',b.packageId);must(pack,'This credit pack is not available.',404);
  const amount=supportedPrices(parse<Record<string,number>>(pack.prices,{}))[b.currency];must(Number.isSafeInteger(amount)&&amount>0,'This pack is not sold in that currency.',400);
+ const maint=await maintenanceStatus();must(!maint.purchasesPaused,maint.message||DEFAULT_MAINTENANCE_MESSAGE,503);
  if(!config().demo)must((await purchaseReadiness()).ready,'Buying credits is not open yet. Please check back soon.',503);
  const id=uid('cp_');
  try{await run('INSERT INTO credit_purchases (id,user_id,package_id,package_name,credits,amount,currency,status,provider,idempotency_key,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
