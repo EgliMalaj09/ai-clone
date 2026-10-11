@@ -291,6 +291,8 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const tipsPage=(await request('/template/formula-driver')).text;
  ok('Per-template photo tips are saved and shown on the template page',tipsPage.includes('Helmet off, face visible')&&tipsPage.includes('Look straight at the camera')&&(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template.photoTips.includes('Helmet off'));
  await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...tipsTpl,photoTips:''}});
+ // C29: every storefront page starts with a skip link to the main content.
+ const home=(await request('/')).text;ok('Pages have a skip link to the main content',home.includes('class="skip-link" href="#main"')&&home.includes('id="main"'));
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

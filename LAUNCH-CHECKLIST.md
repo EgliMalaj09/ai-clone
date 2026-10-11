@@ -167,7 +167,10 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C27.2 ✅ "You might also like": 4 related templates, same category first.
   - [ ] C27.3 Good and bad **example photos** next to the photo tips (needs real example images, same as C31.2/P4).
 - [x] **C28 🟡 Polish.** ✅ The pager is hidden on empty and single-page lists (no more "0 results · Page 1 of 1" with buttons). Empty states already use the Empty component; broader copy review continues as pages change.
-- [ ] **C29 🟡 Accessibility and browsers.** Keyboard navigation, colour contrast and labels; video playback and uploads on iPhone Safari, Android Chrome and desktop Safari/Firefox/Edge.
+- [~] **C29 🟡 Accessibility and browsers.** Keyboard navigation, colour contrast and labels; video playback and uploads on iPhone Safari, Android Chrome and desktop Safari/Firefox/Edge.
+  - [x] C29.1 ✅ Colour contrast: 124 text colours darkened (same hue) to WCAG AA, at least 4.6:1 for text and 3:1 for icons. An axe-core WCAG 2 A/AA scan of the Account page reports no violations.
+  - [x] C29.2 ✅ Keyboard: visible focus outline on links, buttons, inputs, checkboxes, switches, tabs, menus, FAQ items and upload areas; "Skip to content" link; reduced motion when the device asks for it. Icon buttons, images and inputs already had labels.
+  - [ ] C29.3 Real-device checks (iPhone Safari, Android Chrome, desktop Safari/Firefox/Edge) — done together with T5/T9 on staging.
 - [x] ~~**C30 🔴 Branding everywhere.**~~ Moved to **X2 Branding** in the pre-live phase.
 
 ## Phase 2 — Infrastructure
@@ -370,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C29.1, C29.2 | Done | Contrast raised to WCAG AA across globals.css (124 colours, hue kept), stronger focus styles, skip link, prefers-reduced-motion. Real-device checks stay with T5/T9. 1 integration check |
 | 2026-10-12 | C4.1 (L5) | Done | TOTP two-step sign-in (lib/server/mfa.ts, migration 0011): setup with key + otpauth link, enable with code, recovery codes, login ticket step, disable/regenerate with password + code; admin reminder banner. Also fixed a pre-existing hydration mismatch (dates now formatted in Europe/Tirane on server and browser). 7 security checks |
 | 2026-10-12 | C7 (L10) | Done | lib/server/errors.ts reportError(): structured log + error_events (migration 0010, pruned after 30 days) + optional Sentry envelope; all console.error sites moved over with IDs; Operations shows Recent errors and a readiness line; SENTRY_DSN connection with validation. 3 production checks |
 | 2026-10-12 | C12 (F8) | Done | Replicate: version IDs for community models (POST /v1/predictions with version), model reference validated on template save, output picked from any shape (video preferred), aborted status handled; image steps default to an image key. 3 provider checks |
