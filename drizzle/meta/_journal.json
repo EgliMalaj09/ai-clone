@@ -64,6 +64,13 @@
       "when": 1791365523446,
       "tag": "0008_chief_nighthawk",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1791758316444,
+      "tag": "0009_chilly_otto_octavius",
+      "breakpoints": true
     }
   ]
 }

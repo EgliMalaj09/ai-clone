@@ -31,6 +31,8 @@ export const templates=sqliteTable('templates',{
  generationType:text('generation_type').notNull().default('video'),provider:text('provider').notNull().default('mock'),model:text('model').notNull().default('studio-demo'),
  hiddenPrompt:text('hidden_prompt').notNull(),negativePrompt:text('negative_prompt').notNull().default(''),settings:text('settings').notNull().default('{}'),createdAt:integer('created_at').notNull(),updatedAt:integer('updated_at').notNull(),
  creditCost:integer('credit_cost').notNull().default(0),
+ // Extra photo tips for this template only (C31.4), one per line, shown under the studio-wide guidelines.
+ photoTips:text('photo_tips').notNull().default(''),
 },t=>[index('idx_templates_active_category').on(t.active,t.category)]);
 export const templateWorkflows=sqliteTable('template_workflows',{
  id:text('id').primaryKey(),templateId:text('template_id').notNull().unique().references(()=>templates.id,{onDelete:'cascade'}),version:integer('version').notNull().default(1),

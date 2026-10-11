@@ -155,7 +155,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C31.1 ✅ Photo guidelines card in every template's upload area (before uploading): a photo-count line driven by the template's required photos, plus ✓ do / ✕ don't lists.
   - [~] C31.2 Do/don't guidance shown as a clear ✓/✕ two-column card. Side-by-side **example photos** still to add (needs real example images, like P4).
   - [x] C31.3 ✅ Required "My photo follows the photo guidelines above" checkbox; Generate stays disabled until it (and the permission consent) are ticked.
-  - [~] C31.4 Studio-wide guidelines editable in Admin → Settings (Do/Don't lists). Per-template photo **count** already adapts (e.g. 2 photos for couples). Per-template custom **text** and Albanian still to add (Albanian with C10).
+  - [~] C31.4 Studio-wide guidelines editable in Admin → Settings (Do/Don't lists). Per-template photo **count** already adapts (e.g. 2 photos for couples). ✅ Per-template custom **tips** (one per line, in the template editor) are shown in the guidelines card. Albanian still to add with C10.
   - [x] ~~C31.5 Automatic photo checks before credits are spent.~~ Dropped by decision (C2): the AI platform checks content.
 - [x] **C22 🔴 Maintenance switch and banner.** ✅ Admin → Settings → Maintenance mode: separate toggles to pause new video creation and/or new credit purchases, with an optional custom message. Paused actions return 503 with the message; a site-wide banner shows it. Work already running keeps going. No deploy needed.
 - [x] **C23 🔴 Spending safety limits.** ✅ Admin → Settings → Spending safety limits: per-customer caps on videos running at once (default 3) and per day (default 20), and a studio-wide daily AI-cost cap (off by default) that pauses creation and records a `spend_cap_reached` alert event. 0 means no limit. Enforced before any credits are reserved.
@@ -370,6 +370,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C31.4 | Mostly done | Per-template photo tips: new templates.photo_tips column (migration 0009), textarea in the template editor, shown in the template's guidelines card. Albanian waits for C10. 1 integration check |
 | 2026-10-12 | C27.1, C27.2, C21.9 | Done | Template page: What you receive box and related templates (same category first). Example photos (C27.3) wait for real images. FAQ now covers the report/free-redo rule (C21.9). 1 integration check |
 | 2026-10-12 | C26 | Done | Help & FAQ and Contact pages, footer links, admin-editable support details and social links (validated https). 4 integration checks. New DECISIONS.md records choices made for soft-blocked items |
 | 2026-10-12 | C13.1 | Done | money() shows fractional amounts exactly instead of rounding (ALL whole amounts keep no decimals); ALL packs already limited to whole lek. C13.2 (POK minimums) waits on POK |

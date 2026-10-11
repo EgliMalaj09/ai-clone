@@ -285,6 +285,12 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  // C27: the template page says what the customer receives and links related templates (same category first, never itself).
  const detailPage=(await request('/template/formula-driver')).text;const sameCategory=templates.filter(t=>t.category===formula.category&&t.id!==formula.id);
  ok('Template page shows what you receive and related templates',detailPage.includes('What you receive')&&detailPage.includes('MP4')&&detailPage.includes('You might also like')&&(sameCategory.length===0||detailPage.includes('/template/'+sameCategory[0].slug))&&(detailPage.match(/href="\/template\/formula-driver"/g)||[]).length===0);
+ // C31.4: a template can add its own photo tips, shown with the studio-wide guidelines on its page.
+ const tipsTpl=(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template;
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...tipsTpl,photoTips:'Helmet off, face visible\n  \nLook straight at the camera'}});
+ const tipsPage=(await request('/template/formula-driver')).text;
+ ok('Per-template photo tips are saved and shown on the template page',tipsPage.includes('Helmet off, face visible')&&tipsPage.includes('Look straight at the camera')&&(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template.photoTips.includes('Helmet off'));
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...tipsTpl,photoTips:''}});
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

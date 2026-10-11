@@ -269,3 +269,6 @@ footer>div{flex-wrap:wrap}
 .you-receive strong{color:var(--ink)}
 .related-templates{margin-top:70px}
 .related-templates .section-heading{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:22px}
+.pg-template-tips{list-style:none;margin:0 0 12px;padding:10px 12px;border-radius:12px;background:color-mix(in srgb,var(--blue) 8%,transparent);display:grid;gap:6px}
+.pg-template-tips li{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.45}
+.pg-template-tips svg{flex:none;margin-top:2px;color:var(--blue)}

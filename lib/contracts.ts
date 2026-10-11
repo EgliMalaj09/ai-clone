@@ -4,6 +4,8 @@ export type PublicTemplate = {
   creditCost: number; requiredImageCount: number; aspectRatio: string;
   duration: number; resolution: string; featured: boolean; trending: boolean;
   isNew: boolean; popular: boolean; active: boolean; createdAt: number;
+  /** Extra photo tips for this template only (C31.4), one per line. */
+  photoTips: string;
 };
 export type WorkflowStep = {
   id: string; type: 'image'|'transform'|'video'|'upscale'|'process'; provider: string;
