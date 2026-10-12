@@ -331,11 +331,11 @@ Run these on a staging copy with test keys before switching to live keys (L1). R
 Done at the end, after the features are built and before launch day, once the final name and domain (D5) are known. These touch every page, so doing them once at the end avoids redoing them.
 
 - [ ] **X1 🟡 Enhanced SEO** (replaces C25; includes P6).
-  - [ ] X1.1 `robots.txt` (block admin and account pages) and `sitemap.xml` with every published template, generated from the database so new templates appear automatically.
+  - [x] X1.1 ✅ `robots.txt` (blocks admin/account/credits/favorites/api/share) + `sitemap.xml` with the public pages and every published template, served by the Worker from `lib/server/seo.ts`. Generated from the database so new templates appear automatically.
   - [ ] X1.2 Unique page titles and descriptions for every page and template, in Albanian and English, with `hreflang` links between the two languages (after C10).
   - [ ] X1.3 Open Graph and Twitter images: one for the homepage and one per template (its poster), so links shared on WhatsApp, Instagram and Facebook show a preview.
   - [ ] X1.4 Structured data (JSON-LD): Organization and WebSite on the homepage, Product/Offer for credit packs, VideoObject for template examples, FAQPage for the FAQ (C26).
-  - [ ] X1.5 Canonical URLs on the final domain, no duplicate pages (e.g. with and without a trailing slash or filter parameters).
+  - [x] X1.5 ✅ Every indexable page declares a canonical URL on `APP_ORIGIN` (template pages too); private/admin pages stay noindex. No duplicate pages (e.g. with and without a trailing slash or filter parameters).
   - [ ] X1.6 Speed (Core Web Vitals): compress previews, lazy-load videos below the fold, check with PageSpeed Insights on mobile.
   - [ ] X1.7 Landing pages for the main searches (e.g. "AI video nga foto", birthday/wedding templates), and category pages people can find from Google.
   - [ ] X1.8 Register the domain in Google Search Console and Bing Webmaster Tools, submit the sitemap, and check for indexing errors.

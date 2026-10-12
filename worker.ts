@@ -9,6 +9,14 @@ import {reportError} from './lib/server/errors';
 async function drainWindow(){const deadline=Date.now()+22000;while(Date.now()<deadline){await tickQueue();const pending=await one("SELECT id FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL LIMIT 1");if(!pending)break;await new Promise(r=>setTimeout(r,1000));}}
 const worker={
  async fetch(request:Request,env:Cloudflare.Env,ctx:ExecutionContext){
+  if(request.method==='GET'){
+   const p=new URL(request.url).pathname;
+   if(p==='/robots.txt'||p==='/sitemap.xml'){
+    const {robotsTxt,sitemapXml}=await import('./lib/server/seo');
+    const [body,type]=p==='/robots.txt'?[robotsTxt(),'text/plain']:[await sitemapXml(),'application/xml'];
+    return new Response(body,{headers:{'content-type':type+'; charset=utf-8','cache-control':'public,max-age=3600','X-Content-Type-Options':'nosniff'}});
+   }
+  }
   const response=await handler.fetch(request,env,ctx);
   const path=new URL(request.url).pathname;
   if(request.method==='POST'&&response.status<400&&(path==='/api/generations'||path==='/api/generations/batch'||/\/api\/admin\/generations\/[^/]+\/retry$/.test(path)))ctx.waitUntil(drainWindow().catch(e=>reportError('queue','Background queue needs another dispatch',{error:e})));

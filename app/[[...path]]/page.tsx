@@ -1,5 +1,5 @@
 import Studio from '@/components/studio';
-import {loadPage} from '@/lib/server/data';
+import {loadPage,config} from '@/lib/server/data';
 import {headers} from 'next/headers';
 import {notFound} from 'next/navigation';
 import type {Metadata} from 'next';
@@ -11,10 +11,12 @@ export async function generateMetadata({params}:{params:Promise<{path?:string[]}
  if(path[0]==='v'&&path[1]){const {sharedVideo}=await import('@/lib/server/share');const {config}=await import('@/lib/server/data');const s=await sharedVideo(path[1]);if(s){const origin=config().origin;const title=`${s.templateName} — ${tr('made with')} PROJECT STUDIO`;return {title,description:tr('Watch this AI video and make your own from one photo.'),robots:{index:false,follow:false},openGraph:{title,description:tr('Watch this AI video and make your own from one photo.'),type:'video.other',images:[new URL(s.thumbnail,origin).toString()],videos:[{url:new URL(s.video,origin).toString(),type:s.mime}]},twitter:{card:'summary_large_image',title,images:[new URL(s.thumbnail,origin).toString()]}};}}
  if(path[0]==='template'){
    const {getPublicTemplate,config}=await import('@/lib/server/data');const t=await getPublicTemplate(path[1]);
-   if(t){const image=new URL(t.thumbnail,config().origin).toString();return {title:`${t.name} ${tr('AI Video Template')} | PROJECT STUDIO`,description:t.description,openGraph:{title:`${t.name} ${tr('AI Video Template')}`,description:t.description,images:[image]},twitter:{card:'summary_large_image',title:t.name,description:t.description,images:[image]}};}
+   if(t){const image=new URL(t.thumbnail,config().origin).toString();return {title:`${t.name} ${tr('AI Video Template')} | PROJECT STUDIO`,description:t.description,alternates:{canonical:config().origin.replace(/\/$/,'')+'/template/'+t.slug},openGraph:{title:`${t.name} ${tr('AI Video Template')}`,description:t.description,images:[image]},twitter:{card:'summary_large_image',title:t.name,description:t.description,images:[image]}};}
  }
  const title=path[0]==='admin'?'Studio admin':path[0]==='credits'&&path[1]==='checkout'?'Test checkout':titles[path[0]||''];
- return {title:title?`${tr(title)} | PROJECT STUDIO`:path.length?`${tr('Page not found')} | PROJECT STUDIO`:`PROJECT STUDIO — ${tr('Your next main character moment')}`,description:tr('Choose a look. Upload a photo. Make your own AI video with credits, and pay only for videos that are delivered.'),robots:path[0]==='admin'||['creations','credits','account','favorites'].includes(path[0])?{index:false,follow:false}:undefined};
+ const noindex=path[0]==='admin'||['creations','credits','account','favorites'].includes(path[0]);
+ const canonical=config().origin.replace(/\/$/,'')+(path.length?'/'+path.join('/'):'/');
+ return {title:title?`${tr(title)} | PROJECT STUDIO`:path.length?`${tr('Page not found')} | PROJECT STUDIO`:`PROJECT STUDIO — ${tr('Your next main character moment')}`,description:tr('Choose a look. Upload a photo. Make your own AI video with credits, and pay only for videos that are delivered.'),robots:noindex?{index:false,follow:false}:undefined,alternates:noindex?undefined:{canonical}};
 }
 export default async function Page({params,searchParams}:{params:Promise<{path?:string[]}>;searchParams:Promise<Record<string,string|undefined>>}){
  const {path=[]}=await params;const query=await searchParams;

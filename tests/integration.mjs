@@ -187,6 +187,11 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/analytics',{method:'POST',data:{name:'template_view',templateId:formula.id}});
  ok('Anonymous template views are recorded with no user',!!(await db.prepare("SELECT id FROM analytics_events WHERE name='template_view' AND user_id IS NULL").first()));
 
+ // X1 — robots.txt, sitemap.xml and canonical URLs (SEO)
+ const robots=await request('/robots.txt');ok('robots.txt blocks admin and points to the sitemap',typeof robots.body==='string'&&robots.body.includes('Disallow: /admin')&&robots.body.includes('Sitemap:'));
+ const sitemap=await request('/sitemap.xml');ok('sitemap.xml lists public pages and published templates',typeof sitemap.body==='string'&&sitemap.body.includes('<urlset')&&sitemap.body.includes('/template/formula-driver')&&sitemap.body.includes('/pricing'));
+ const pricingHtml=await request('/pricing');ok('Indexable pages declare a canonical URL',typeof pricingHtml.body==='string'&&pricingHtml.body.includes('rel="canonical"'));
+
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
  const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;
  ok('Customer page returns profile, credits, creations and activity',detail.user.email===second.body.user.email&&typeof detail.balance.available==='number'&&Array.isArray(detail.creations.recent)&&detail.activity.some(a=>a.action==='user.suspended'));
