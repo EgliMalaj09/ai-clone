@@ -366,3 +366,16 @@ tr[draggable=true]{cursor:grab}
 .site-header nav a,.header-create,.credit-badge{white-space:nowrap}
 @media (max-width:1100px){.site-header nav a[href="/favorites"]{display:none}}
 @media (max-width:920px){.site-header nav a[href="/pricing"]{display:none}}
+/* Saved photos (V17) */
+.saved-photo-tools{display:grid;gap:6px;margin:10px 0}
+.saved-picker{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.saved-grid{display:flex;flex-wrap:wrap;gap:10px;width:100%;margin-top:4px}
+.saved-grid button{display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line);border-radius:12px;background:white;padding:6px;cursor:pointer;font-size:12px;color:var(--ink);width:96px}
+.saved-grid button[aria-selected=true]{border-color:var(--blue)}
+.saved-grid img{width:80px;height:80px;object-fit:cover;border-radius:8px}
+.saved-library{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin:12px 0}
+.saved-photo{display:flex;flex-direction:column;gap:6px}
+.saved-photo img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px}
+.saved-photo input{padding:7px 9px;font-size:13px}
+.saved-actions{display:flex;justify-content:space-between;align-items:center}
+.is-default{color:#c98a00}

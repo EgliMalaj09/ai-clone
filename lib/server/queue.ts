@@ -123,6 +123,6 @@ export async function sweepCreditHolds(){
 const unusedUpload="NOT EXISTS (SELECT 1 FROM generations g, json_each(CASE WHEN json_valid(g.input_ids) THEN g.input_ids ELSE '[]' END) j WHERE g.user_id=user_uploads.user_id AND g.deleted_at IS NULL AND j.value=user_uploads.id)";
 /** Photos uploaded more than 24 hours ago that no creation uses. */
 export async function sweepUnusedUploads(){
- const rows=await all(`SELECT id FROM user_uploads WHERE created_at<? AND ${unusedUpload} ORDER BY created_at LIMIT 50`,now()-24*3600000);
- for(const r of rows){const gone=await one(`DELETE FROM user_uploads WHERE id=? AND ${unusedUpload} RETURNING storage_key`,r.id);if(gone)await storage.delete(gone.storage_key);}
+ const rows=await all(`SELECT id FROM user_uploads WHERE created_at<? AND saved_at IS NULL AND ${unusedUpload} ORDER BY created_at LIMIT 50`,now()-24*3600000);
+ for(const r of rows){const gone=await one(`DELETE FROM user_uploads WHERE id=? AND saved_at IS NULL AND ${unusedUpload} RETURNING storage_key`,r.id);if(gone)await storage.delete(gone.storage_key);}
 }

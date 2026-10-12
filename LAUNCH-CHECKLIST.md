@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 22 | 45 |
+| 3B. Version 1 features | 23 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -237,14 +237,14 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V7 🟡 Installable app (PWA).** Add to home screen on phones, with an app icon and offline page. ✅ Web app manifest (standalone, theme colour, shortcuts), icons incl. maskable and Apple home-screen icon, a network-first service worker with a bilingual offline page. Icons are made from today's logo; replace them with the final brand (X2.2).
 - [ ] **V8 🟡 Image-only templates.** Photo results (portraits, photoshoots) as a cheaper product; allow publishing workflows that end in an image.
 - [ ] **V9 🟡 Upscale / post-processing step.** A built-in step type using a real upscaling model.
-- [ ] **V17 🟡 Saved photos ("My photos").** Customers save a photo once and reuse it for any template.
-  - [ ] V17.1 After uploading on a template page, a "Save this photo for future videos" option, off by default and unticked, so saving is the customer's explicit choice.
-  - [ ] V17.2 On every template page, "Use a saved photo" shows the customer's saved photos to pick from, next to the normal upload. For 2-photo templates, pick one for each slot.
-  - [ ] V17.3 A "My photos" section (Account or its own tab) to see, rename (e.g. "Me", "My partner"), set a default, and delete saved photos.
-  - [ ] V17.4 Saved photos are excluded from the 24-hour cleanup and count toward the per-account photo limit; unsaved photos keep today's behaviour.
-  - [ ] V17.5 Deleting a saved photo removes the file but keeps past videos; deleting the account removes all saved photos.
-  - [ ] V17.6 Privacy: state in the Privacy Policy how long saved photos are kept (D11) and that customers can delete them anytime; covered by D10 since face photos are personal data.
-  - [ ] V17.7 Saved photos still pass the photo checks (C2) when used, and are never shown to anyone else.
+- [x] **V17 🟡 Saved photos ("My photos").** Customers save a photo once and reuse it for any template.
+  - [x] V17.1 After uploading on a template page, a "Save this photo for future videos" option, off by default and unticked, so saving is the customer's explicit choice.
+  - [x] V17.2 On every template page, "Use a saved photo" shows the customer's saved photos to pick from, next to the normal upload. For 2-photo templates, pick one for each slot.
+  - [x] V17.3 A "My photos" section (Account or its own tab) to see, rename (e.g. "Me", "My partner"), set a default, and delete saved photos.
+  - [x] V17.4 Saved photos are excluded from the 24-hour cleanup and count toward the per-account photo limit; unsaved photos keep today's behaviour.
+  - [x] V17.5 Deleting a saved photo removes the file but keeps past videos; deleting the account removes all saved photos.
+  - [x] V17.6 Privacy: state in the Privacy Policy how long saved photos are kept (D11) and that customers can delete them anytime; covered by D10 since face photos are personal data.
+  - [x] V17.7 Saved photos still pass the photo checks (C2) when used, and are never shown to anyone else.
 
 **Found by walking through the customer journey**
 - [x] **V18 🟡 Change email address.** Today the email is read-only, so a customer who changes email is stuck. Change it with a confirmation link sent to the new address. ✅ Account → Change email address (with password): a confirmation link goes to the new address (30 minutes); the change happens when it's opened, and the old address gets a notice. Pending changes can be cancelled. Demo studio without email changes it at once.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V17 | Done | Saved photos: unticked 'Save this photo for future videos' after upload; 'Use a saved photo' picker per slot and the default photo pre-filled; Account → My photos with names, a default, delete, and Save for recent uploads; saved photos skip the 24-hour cleanup (max 20) and are never deleted by replacing/removing them on a template page; deleting keeps past videos; privacy text, FAQ (EN+SQ) updated. Photos were cleaned at upload (C2) and stay private. Migration 0021. 3 integration checks |
 | 2026-10-12 | V6, V40, V42 | Done | Ratings (1–5 stars) on finished videos; opt-in Share to the community (consent dialog) puts a video on the new /feed Community page (newest / most liked, likes for signed-in customers) and in a 'See what others made' gallery on its template page; stop sharing, deletion, removal requests and staff Hide take it out. Customers who rate 4–5 stars are invited to review (review link set in Admin → Settings → Support). Header nav fits at tablet widths. Privacy text and FAQ updated (EN+SQ). Migration 0020. 6 integration checks |
 | 2026-10-12 | V43 | Done | Template ideas: public /ideas page (footer "Suggest a template", link from empty search) where signed-in customers suggest ideas and vote once each; Admin → Template ideas sorted by votes with status (open / coming soon / available / declined) and a linked template. Migration 0019. 2 integration checks |
 | 2026-10-12 | V36, V29 | Done | Admin → Announcements: write the email in Albanian and English (or pick a template to announce it with a ready message), send yourself a test, then send to verified customers who opted in; the dispatcher sends 40 per minute, can be stopped, each customer gets their language once. One-click unsubscribe (signed link + List-Unsubscribe header) and a news toggle in Account. Migration 0018. 2 production + 1 integration check |

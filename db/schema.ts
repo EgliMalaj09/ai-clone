@@ -51,6 +51,8 @@ export const templateWorkflowSteps=sqliteTable('template_workflow_steps',{
 },t=>[uniqueIndex('idx_workflow_step_order').on(t.workflowId,t.stepOrder)]);
 export const uploads=sqliteTable('user_uploads',{
  id:text('id').primaryKey(),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),storageKey:text('storage_key').notNull().unique(),mime:text('mime').notNull(),size:integer('size').notNull(),name:text('name').notNull(),createdAt:integer('created_at').notNull(),
+ // Saved photos (V17): kept for reuse (not swept after 24 h), with a label like "Me" and one default photo.
+ savedAt:integer('saved_at'),label:text('label'),isDefault:integer('is_default').notNull().default(0),
 },t=>[index('idx_uploads_user').on(t.userId)]);
 // Studio-owned public preview media for templates. Kept apart from customer photos so quotas, privacy and account deletion never mix them.
 export const templateMedia=sqliteTable('template_media',{

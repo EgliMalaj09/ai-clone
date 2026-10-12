@@ -15,7 +15,7 @@ export type CreditPackage={id:string;name:string;credits:number;bonusCredits:num
 export type CreditPurchase={id:string;packageName:string;credits:number;amount:number;currency:string;status:'pending'|'paid'|'failed'|'reversed';provider:string;createdAt:number;paidAt:number|null;email?:string|null};
 export type CreditTransaction={id:string;kind:string;reason:string|null;reference_type:string|null;reference_id:string|null;created_at:number;available_change:number;held_change:number;available_after:number|null;user_id?:string|null;email?:string|null;actor_id?:string|null};
 export type CreditHistory={transactions:CreditTransaction[];pagination:Pagination};
-export type Upload={id:string;name:string;mime:string;size:number;created_at:number};
+export type Upload={id:string;name:string;mime:string;size:number;created_at:number;saved:boolean;isDefault:boolean;label:string|null;url:string};
 export type Sessions={sessions:{current:boolean;expiresAt:number}[]};
 
 export type Readiness={demo:boolean;ready:boolean;registrationAvailable:boolean;payments:boolean;email:boolean;ai:boolean;dispatcher:boolean;publicAccess:boolean;paymentMode:'live'|'test'|'missing';enabledProviders:string[]};

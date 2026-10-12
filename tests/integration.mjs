@@ -426,6 +426,19 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('Stopping sharing also takes the video out of the community',!(await request('/api/feed')).body.items.some(i=>i.id===pub.id)&&!(await request('/api/generations/'+pub.id,{cookie:userCookie})).body.generations[0].isPublic);
  await request('/api/generations/'+pub.id+'/public',{method:'POST',cookie:userCookie,data:{public:true}});await request('/api/admin/feed/'+pub.id+'/hide',{method:'POST',cookie:adminCookie,data:{}});
  ok('Staff can hide a video from the community',!(await request('/api/feed')).body.items.some(i=>i.id===pub.id));
+ // V17: saved photos survive the 24-hour cleanup, have a name and a default, and deleting one keeps past videos.
+ const keepUp=await upload(userCookie),dropUp=await upload(userCookie);
+ await request('/api/uploads/'+keepUp.body.id,{method:'PATCH',cookie:userCookie,data:{saved:true,label:'Me',isDefault:true}});
+ await request('/api/uploads/'+keepUp.body.id,{method:'PATCH',cookie:relogged.cookie,data:{saved:true},expected:404});
+ await db.prepare('UPDATE user_uploads SET created_at=? WHERE id IN (?,?)').bind(Date.now()-25*3600000,keepUp.body.id,dropUp.body.id).run();
+ await db.prepare("UPDATE app_settings SET value='0' WHERE key='last_maintenance'").run();await request('/api/queue/tick',{method:'POST',cookie:userCookie,data:{}});
+ const lib=(await request('/api/uploads',{cookie:userCookie})).body.uploads;const kept=lib.find(u=>u.id===keepUp.body.id);
+ ok('Saved photos are kept past the 24-hour cleanup with their name and default',kept&&kept.saved&&kept.isDefault&&kept.label==='Me'&&!lib.some(u=>u.id===dropUp.body.id));
+ await request('/api/uploads/'+keepUp.body.id,{method:'PATCH',cookie:userCookie,data:{label:'Me again'}});
+ ok('Renaming keeps the default photo',(await request('/api/uploads',{cookie:userCookie})).body.uploads.find(u=>u.id===keepUp.body.id).isDefault);
+ const savedGen=await generate(userCookie,formula,[keepUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost,expected:201});await waitDone(userCookie,savedGen.body.generationId);
+ await request('/api/uploads/'+keepUp.body.id,{method:'DELETE',cookie:userCookie});
+ ok('Deleting a saved photo keeps the videos made with it',(await request('/api/generations/'+savedGen.body.generationId,{cookie:userCookie})).body.generations[0].status==='completed');
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});
