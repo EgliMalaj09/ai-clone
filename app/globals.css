@@ -388,3 +388,5 @@ tr[draggable=true]{cursor:grab}
 .code-form input{flex:1;min-width:180px}
 .referral-panel small{color:#68707a}
 .pack-card s{color:#68707a;font-weight:400}
+.gift-fields{padding:12px 14px;border:1px solid var(--line);border-radius:12px;margin:6px 0 10px}
+.consent svg{vertical-align:-2px}

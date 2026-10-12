@@ -111,6 +111,19 @@ async function liveChecks(){
   pok.pay(pok.last().id);await call(`/api/credits/purchases/${fb.purchaseId}/verify`,{method:'POST',cookie:fc,data:{}});
   const friendBalance=(await call('/api/credits',{cookie:fc})).body.available;
   ok('An invite rewards both customers after the friend’s first purchase',invite.reward===40&&friendBalance===540&&await balance()===890&&(await call('/api/referral',{cookie:buyer})).body.invited===1&&!!friend);
+  // V28: a gift pack becomes a one-time code for the recipient; the buyer's balance doesn't change; reversing it takes the credits back.
+  const giftBuy=(await call('/api/credits/checkout',{method:'POST',cookie:buyer,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true,gift:{email:'Lucky@credits.test',name:'Lucky',message:'Happy birthday!'}},expected:201})).body;
+  const beforeGift=await balance();pok.pay(pok.last().id);await call(`/api/credits/purchases/${giftBuy.purchaseId}/verify`,{method:'POST',cookie:buyer,data:{}});
+  const giftRow=await db.prepare('SELECT gift_code,gift_email,status FROM credit_purchases WHERE id=?').bind(giftBuy.purchaseId).first();
+  ok('A paid gift creates a code for the recipient instead of crediting the buyer',giftRow.status==='paid'&&/^GIFT-/.test(giftRow.gift_code)&&giftRow.gift_email==='lucky@credits.test'&&await balance()===beforeGift);
+  await call('/api/auth/register',{method:'POST',data:{name:'Lucky',email:'lucky@credits.test',password:'Test-password-123',acceptTerms:true,confirmAge:true},expected:201});await db.prepare("UPDATE users SET email_verified=1 WHERE email='lucky@credits.test'").run();
+  const lucky=(await call('/api/auth/login',{method:'POST',data:{email:'lucky@credits.test',password:'Test-password-123'}})).cookie;
+  const redeemed=(await call('/api/promo/redeem',{method:'POST',cookie:lucky,data:{code:giftRow.gift_code}})).body;
+  await call('/api/promo/redeem',{method:'POST',cookie:buyer,data:{code:giftRow.gift_code},expected:404});
+  ok('The recipient redeems the gift once; the code then stops working',redeemed.kind==='credits'&&redeemed.credits===500&&(await call('/api/credits',{cookie:lucky})).body.available===500);
+  await call('/api/admin/credits/purchases/'+giftBuy.purchaseId+'/reverse',{method:'POST',cookie:admin,data:{reason:'Payment refunded',currentPassword:adminPassword}});
+  const giftRec=(await call('/api/admin/credits/reconciliation',{cookie:admin})).body;
+  ok('Reversing a redeemed gift takes the credits back from the recipient and the ledger stays balanced',(await call('/api/credits',{cookie:lucky})).body.available===0&&giftRec.ok);
  }finally{await live.dispose()}
 }
 try{

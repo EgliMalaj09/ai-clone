@@ -129,6 +129,8 @@ export const creditPurchases=sqliteTable('credit_purchases',{
  idempotencyKey:text('idempotency_key').notNull(),createdAt:integer('created_at').notNull(),paidAt:integer('paid_at'),
  // Promo code applied at checkout (V4): the code and the price before the discount.
  promoCode:text('promo_code'),fullAmount:integer('full_amount'),
+ // Gift purchase (V28): the credits go to a one-time code emailed to the recipient instead of the buyer.
+ giftEmail:text('gift_email'),giftName:text('gift_name'),giftMessage:text('gift_message'),giftCode:text('gift_code'),
 },t=>[uniqueIndex('idx_credit_purchase_idempotency').on(t.userId,t.idempotencyKey),index('idx_credit_purchases_user').on(t.userId,t.createdAt)]);
 // Server errors and provider/webhook failures (C7), shown in Admin → Operations and kept 30 days; also forwarded to Sentry when SENTRY_DSN is set.
 export const errorEvents=sqliteTable('error_events',{

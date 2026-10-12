@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 27 | 45 |
+| 3B. Version 1 features | 28 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -257,7 +257,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V25 🟡 Share straight to apps.** On phones, the native share sheet (WhatsApp, Instagram, TikTok) with the video file, not only a link.
 - [x] **V26 🟡 "Your video is ready" browser notification.** In addition to the email (C11.2), so customers can leave the page while waiting. ✅ While a video is being made, My creations offers "Notify me"; when it finishes (or fails, credits returned) the browser shows a notification through the service worker, also when the tab is in the background; clicking it opens My creations. Works while the site is open in some tab — push to a closed browser would need Web Push keys (see DECISIONS.md #11).
 - [x] **V27 🟡 Low balance reminder.** When credits drop below the cheapest template, show a reminder with the best pack.
-- [ ] **V28 🟡 Gift credits.** Buy a pack as a gift and send it by email with a redeem code.
+- [x] **V28 🟡 Gift credits.** Buy a pack as a gift and send it by email with a redeem code. ✅ Credits → Buy as a gift (name, email, message): when POK confirms the payment the credits become a one-time GIFT-… code emailed to the recipient (in the buyer's language) with a redeem link; the buyer gets the code too. The recipient redeems it under Have a code?. Reversing a gift cancels the code, or takes the credits back if already redeemed. Ledger stays balanced (gifts holding account).
 - [x] **V29 🟡 New template emails.** Announce new and seasonal templates to customers who opted in (C20.3), with an unsubscribe link.
 - [x] **V30 🟡 Removal request form.** A public form for someone who finds themselves in a video they didn't agree to, going to the admin report queue (C21) with a fast takedown. ✅ Public /removal-request form (footer "Report a video", and a link on every share page): a request naming a shared video hides it at once. Admin → Reports → Removal requests: watch the video, Remove it (deleted, owner emailed) or Keep it (requester emailed, optional note). Support can handle these too. See DECISIONS.md #12.
 
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V28 | Done | Gift purchases: gift fields on credit_purchases (migration 0024), confirmGiftPayment (issued→system:gifts, one-time gift code, emails), redemption from system:gifts, reverseGiftPayment, ledger kinds gift_sale/gift, Credits page gift form, redeem code prefilled from ?code=. 3 credits checks |
 | 2026-10-12 | V4 | Done | Promo codes (promo_codes, promo_redemptions), discount applied in startPackCheckout and counted when paid, credit codes granted from system:promo (new ledger kinds promo/referral), referral codes + referred_by, reward after the first paid purchase, admin page and settings, customer code box and invite panel (translated). Migration 0023. 4 credits checks |
 | 2026-10-12 | V35 | Done | Backup model per workflow step (validated), queue tryFallback on provider failure or failed submissions, logged as a warning with the generation ID, editor fields. 1 provider check |
 | 2026-10-12 | V32 | Done | Admin test runs: generations.test_run (migration 0022), POST /api/admin/templates/:id/test-run, queue runs test runs without a credit hold, no strike/email, staff may upload without credits, Test run tab with live status and video. 1 integration check |

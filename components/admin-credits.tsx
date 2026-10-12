@@ -12,7 +12,7 @@ import type {CreditHistory,CreditPackage,CreditPurchase,Pagination} from '@/lib/
 
 // POK charges in these currencies only.
 const currencies=['ALL','EUR'];
-const kinds:[string,string][]=[['all','All types'],['purchase','Purchases'],['hold','Reserved'],['capture','Spent'],['release','Returned'],['adjust','Adjustments'],['welcome','Welcome'],['goodwill','Free redos'],['promo','Promo codes'],['referral','Referrals'],['reversal','Reversals']];
+const kinds:[string,string][]=[['all','All types'],['purchase','Purchases'],['hold','Reserved'],['capture','Spent'],['release','Returned'],['adjust','Adjustments'],['welcome','Welcome'],['goodwill','Free redos'],['promo','Promo codes'],['referral','Referrals'],['gift_sale','Gifts bought'],['gift','Gifts redeemed'],['reversal','Reversals']];
 export const kindLabel=(k:string)=>kinds.find(([v])=>v===k)?.[1].replace(/s$/,'')||k;
 function Heading({title,description,children}:{title:string;description:string;children?:React.ReactNode}){return <div className="admin-heading"><div><span className="eyebrow">CREDITS</span><h1>{title}</h1><p>{description}</p></div>{children}</div>;}
 export const signed=(n:number)=>(n>0?'+':n<0?'−':'')+credits(Math.abs(n));

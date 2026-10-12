@@ -30,7 +30,8 @@ export async function redeemCode(user:StudioUser,input:unknown){
  const claimed=await one('UPDATE promo_codes SET uses=uses+1 WHERE id=? AND (max_uses IS NULL OR uses<max_uses) RETURNING id',c.id);must(claimed,'This code is not valid or has expired.',404);
  try{await run('INSERT INTO promo_redemptions (id,code_id,user_id,created_at) VALUES (?,?,?,?)',uid('pr_'),c.id,user.id,now());}
  catch{await run('UPDATE promo_codes SET uses=uses-1 WHERE id=?',c.id);throw new HttpError(409,'You have already used this code.');}
- const r=await grant({userId:user.id,amount:Number(c.credits),kind:'promo',key:`promo:${c.id}:${user.id}`,source:SYSTEM.promo,referenceType:'promo_code',referenceId:c.id as string,reason:'Code '+c.code});
+ // A gift code (V28) was paid for, so its credits come from the gifts holding account; other codes are promotional.
+ const gift=c.kind==='gift';const r=await grant({userId:user.id,amount:Number(c.credits),kind:gift?'gift':'promo',key:`promo:${c.id}:${user.id}`,source:gift?SYSTEM.gifts:SYSTEM.promo,referenceType:'promo_code',referenceId:c.id as string,reason:gift?'Gift':'Code '+c.code});
  await event('promo_redeemed',user.id,{code:c.code});
  return {kind:'credits' as const,code:c.code as string,credits:Number(c.credits),balance:{available:r.available,held:r.held}};
 }
@@ -80,7 +81,7 @@ export async function rewardReferral(userId:string){
 const codeSchema=z.object({code:z.string().trim().min(3).max(30).transform(normalize).refine(v=>v.length>=3,'Use letters and numbers for the code.'),kind:z.enum(['credits','discount']),credits:z.number().int().min(0).max(100000).default(0),percent:z.number().int().min(0).max(90).default(0),maxUses:z.number().int().min(1).max(1000000).nullable().default(null),expiresAt:z.number().int().positive().nullable().default(null),note:z.string().trim().max(200).default('')})
  .refine(c=>c.kind==='credits'?c.credits>0:c.percent>0,{message:'Set the credits to give, or the percentage off (1–90).'});
 export async function listCodes(){
- const rows=await all('SELECT * FROM promo_codes ORDER BY created_at DESC LIMIT 200');
+ const rows=await all("SELECT * FROM promo_codes WHERE kind!='gift' ORDER BY created_at DESC LIMIT 200");
  return {referralCredits:await referralReward(),codes:rows.map(r=>({id:r.id as string,code:r.code as string,kind:r.kind as string,credits:Number(r.credits),percent:Number(r.percent),maxUses:r.max_uses===null?null:Number(r.max_uses),uses:Number(r.uses),expiresAt:(r.expires_at as number|null)??null,active:!!r.active,note:r.note as string,createdAt:r.created_at as number}))};
 }
 export async function createCode(admin:StudioUser,input:unknown){

@@ -20,7 +20,7 @@ export const packageSchema=z.object({
 const supportedPrices=(prices:Record<string,number>)=>Object.fromEntries(Object.entries(prices).filter(([c])=>(packCurrencies as readonly string[]).includes(c)));
 const purchasePath=(id:string)=>'/credits?purchase='+id;
 const publicPackage=(p:Row)=>({id:p.id as string,name:p.name as string,credits:Number(p.credits),bonusCredits:Number(p.bonus_credits),totalCredits:Number(p.credits)+Number(p.bonus_credits),prices:supportedPrices(parse<Record<string,number>>(p.prices,{})),active:!!p.active,sortOrder:Number(p.sort_order)});
-const publicPurchase=(p:Row)=>({id:p.id,packageName:p.package_name,credits:p.credits,amount:p.amount,currency:p.currency,status:p.status,provider:p.provider,createdAt:p.created_at,paidAt:p.paid_at});
+const publicPurchase=(p:Row)=>({id:p.id,packageName:p.package_name,credits:p.credits,amount:p.amount,currency:p.currency,status:p.status,provider:p.provider,createdAt:p.created_at,paidAt:p.paid_at,gift:p.gift_email?{email:p.gift_email as string,name:p.gift_name as string}:null});
 
 export async function listPackages(includeInactive=false){
  return (await all(`SELECT * FROM credit_packages${includeInactive?'':' WHERE active=1'} ORDER BY sort_order,credits,id`)).map(publicPackage);
@@ -47,7 +47,7 @@ export async function deletePackage(id:string,user:StudioUser){
 }
 
 export async function startPackCheckout(user:StudioUser,input:unknown){
- const b=z.object({packageId:z.string().max(100),currency:z.enum(packCurrencies),idempotencyKey:z.string().uuid(),consent:z.literal(true),promoCode:z.string().max(40).optional()}).parse(input);
+ const b=z.object({packageId:z.string().max(100),currency:z.enum(packCurrencies),idempotencyKey:z.string().uuid(),consent:z.literal(true),promoCode:z.string().max(40).optional(),gift:z.object({email:z.string().trim().email().max(254).transform(s=>s.toLowerCase()),name:z.string().trim().min(1).max(80),message:z.string().trim().max(500).default('')}).optional()}).parse(input);
  must(user.emailVerified,'Verify your email before buying credits.',403);
  const prior=await one('SELECT * FROM credit_purchases WHERE user_id=? AND idempotency_key=?',user.id,b.idempotencyKey);
  if(prior){must(prior.package_id===b.packageId&&prior.currency===b.currency,'This checkout key was already used for another purchase.',409);return {purchaseId:prior.id,...await ensurePackCheckout(prior,user.email)};}
@@ -59,7 +59,8 @@ export async function startPackCheckout(user:StudioUser,input:unknown){
  if(!config().demo)must((await purchaseReadiness()).ready,'Buying credits is not open yet. Please check back soon.',503);
  const id=uid('cp_');
  try{await run('INSERT INTO credit_purchases (id,user_id,package_id,package_name,credits,amount,currency,status,provider,idempotency_key,created_at,promo_code,full_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-  id,user.id,pack.id,pack.name,Number(pack.credits)+Number(pack.bonus_credits),amount,b.currency,'pending',config().demo?'mock':'pok',b.idempotencyKey,now(),promo?.code??null,promo?fullAmount:null);}
+  id,user.id,pack.id,pack.name,Number(pack.credits)+Number(pack.bonus_credits),amount,b.currency,'pending',config().demo?'mock':'pok',b.idempotencyKey,now(),promo?.code??null,promo?fullAmount:null);
+  if(b.gift)await run('UPDATE credit_purchases SET gift_email=?,gift_name=?,gift_message=? WHERE id=?',b.gift.email,b.gift.name,b.gift.message,id);}
  catch(e){const duplicate=await one('SELECT * FROM credit_purchases WHERE user_id=? AND idempotency_key=?',user.id,b.idempotencyKey);if(duplicate)return {purchaseId:duplicate.id,...await ensurePackCheckout(duplicate,user.email)};throw e}
  await event('credits_checkout_started',user.id,{purchaseId:id});
  return {purchaseId:id,...await ensurePackCheckout((await one('SELECT * FROM credit_purchases WHERE id=?',id))!,user.email)};
@@ -100,6 +101,7 @@ export async function confirmPackPayment(purchaseId:string,sessionId:string,tran
   await reportError('payment','Paid credit purchase has no account and needs review',{context:{purchaseId:p.id as string}});return false;
  }
  // Only an open purchase can be paid: a reversed purchase must never be granted again.
+ if(p.gift_email)return confirmGiftPayment(p,transactionId);
  const open={sql:"EXISTS (SELECT 1 FROM credit_purchases WHERE id=? AND status IN ('pending','failed'))",args:[p.id]};
  const result=await post({kind:'purchase',key:'purchase:'+p.id,userId:p.user_id,referenceType:'credit_purchase',referenceId:p.id,reason:p.package_name,condition:open,
   moves:[{account:SYSTEM.issued,amount:-p.credits},{account:available(p.user_id),amount:p.credits}],
@@ -117,6 +119,7 @@ export async function reversePackPayment(purchaseId:string,reason:string,actorId
  const p=await one('SELECT * FROM credit_purchases WHERE id=?',purchaseId);
  if(!p||p.status!=='paid')return false;
  if(!p.user_id){await run("UPDATE credit_purchases SET status='reversed' WHERE id=? AND status='paid'",p.id);return false;}
+ if(p.gift_email)return reverseGiftPayment(p,reason,actorId);
  const result=await post({kind:'reversal',key:'reversal:'+p.id,userId:p.user_id,actorId,referenceType:'credit_purchase',referenceId:p.id,reason,allowNegative:true,
   condition:{sql:"EXISTS (SELECT 1 FROM credit_purchases WHERE id=? AND status='paid')",args:[p.id]},
   moves:[{account:available(p.user_id),amount:-p.credits},{account:SYSTEM.refunded,amount:p.credits}],
@@ -158,3 +161,39 @@ export async function listPurchases(userId:string|null,url:URL){
  return {purchases:rows.map(r=>({...publicPurchase(r),...(userId?{}:{email:r.email})})),pagination:{page,limit,total,pages:Math.max(1,Math.ceil(total/limit))}};
 }
 export {publicPurchase};
+
+// Gifts (V28): a paid gift pack moves its credits into a holding account and becomes a one-time code emailed to the
+// recipient; redeeming the code moves them to the recipient. A reversed gift cancels an unused code, or takes the
+// credits back from whoever redeemed it.
+async function confirmGiftPayment(p:Row,transactionId:string){
+ const open={sql:"EXISTS (SELECT 1 FROM credit_purchases WHERE id=? AND status IN ('pending','failed'))",args:[p.id]};
+ const code='GIFT-'+Array.from(crypto.getRandomValues(new Uint8Array(8)),x=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[x%32]).join('');
+ const result=await post({kind:'gift_sale',key:'purchase:'+p.id,userId:p.user_id,referenceType:'credit_purchase',referenceId:p.id,reason:'Gift for '+p.gift_name,condition:open,
+  moves:[{account:SYSTEM.issued,amount:-p.credits},{account:SYSTEM.gifts,amount:p.credits}],
+  extra:tx=>{const g=onlyIfApplied(tx);return [stmt(`UPDATE credit_purchases SET status='paid',provider_transaction_id=?,paid_at=?,gift_code=? WHERE id=? AND status IN ('pending','failed') AND ${g.sql}`,transactionId,now(),code,p.id,...g.args),
+   stmt(`INSERT INTO promo_codes (id,code,kind,credits,max_uses,note,created_by,created_at) SELECT ?,?,'gift',?,1,?,?,? WHERE ${g.sql}`,uid('promo_'),code,p.credits,'Gift from purchase '+p.id,p.user_id,now(),...g.args)];}})
+  .catch(e=>{if(e instanceof HttpError&&e.status===409)return null;throw e;});
+ if(!result?.applied)return false;
+ await event('gift_purchased',p.user_id,{purchaseId:p.id,credits:p.credits});
+ await recordDiscountUse({id:p.id as string,user_id:p.user_id as string,promo_code:(p.promo_code as string|null)??null});
+ try{
+  const {sendMail}=await import('./security');const {noticeMailContent}=await import('./email-templates');const {serviceConfig}=await import('./connections');const c=await serviceConfig();
+  const buyer=await one('SELECT name,email,locale FROM users WHERE id=?',p.user_id);const lang=buyer?.locale==='en'?'en':'sq';
+  const link=`${c.origin}/register?next=${encodeURIComponent('/credits?code='+code)}`;
+  await sendMail(p.gift_email as string,noticeMailContent({lang,brand:c.brandName,subject:'{from} sent you a {brand} gift',heading:'You received {amount}',lead:(p.gift_message?'“{message}” — {from}\n\n':'')+'Use them to turn a photo of yourself into an AI video. Your gift code is {code}. Sign in or create an account and redeem it under Credits.',vars:{from:(buyer?.name as string)||'A friend',amount:`${p.credits} ${lang==='sq'?'kredite':'credits'}`,message:(p.gift_message as string)||'',code},link,linkLabel:'Redeem your gift',supportEmail:c.mailFrom}),'gift-'+p.id);
+  if(buyer)await sendMail(buyer.email as string,noticeMailContent({lang,brand:c.brandName,subject:'Your gift is on its way',heading:'Your gift was sent',lead:'We emailed {name} ({email}) a code for {amount}. If it doesn’t arrive, you can share this code yourself: {code}',vars:{name:p.gift_name as string,email:p.gift_email as string,amount:`${p.credits} ${lang==='sq'?'kredite':'credits'}`,code},supportEmail:c.mailFrom}),'gift-buyer-'+p.id);
+ }catch(e){await reportError('email','Gift email needs a retry',{error:e,context:{purchaseId:p.id as string}});}
+ return true;
+}
+async function reverseGiftPayment(p:Row,reason:string,actorId?:string){
+ const code=await one('SELECT id,uses FROM promo_codes WHERE code=?',p.gift_code);
+ if(code)await run('UPDATE promo_codes SET active=0 WHERE id=?',code.id);
+ const redemption=code?await one('SELECT user_id FROM promo_redemptions WHERE code_id=?',code.id):null;
+ const back=redemption?.user_id?{userId:redemption.user_id as string,moves:[{account:available(redemption.user_id as string),amount:-p.credits},{account:SYSTEM.refunded,amount:p.credits}]}:{userId:p.user_id as string,moves:[{account:SYSTEM.gifts,amount:-p.credits},{account:SYSTEM.refunded,amount:p.credits}]};
+ const result=await post({kind:'reversal',key:'reversal:'+p.id,userId:back.userId,actorId,referenceType:'credit_purchase',referenceId:p.id,reason,allowNegative:true,
+  condition:{sql:"EXISTS (SELECT 1 FROM credit_purchases WHERE id=? AND status='paid')",args:[p.id]},moves:back.moves,
+  extra:tx=>{const g=onlyIfApplied(tx);return [stmt(`UPDATE credit_purchases SET status='reversed' WHERE id=? AND status='paid' AND ${g.sql}`,p.id,...g.args)];}})
+  .catch(e=>{if(e instanceof HttpError&&e.status===409)return null;throw e;});
+ if(result?.applied)await reportError('payment','Gift purchase reversed; its code was cancelled',{level:'warning',context:{purchaseId:p.id as string,redeemedBy:(redemption?.user_id as string|undefined)??null}});
+ return !!result?.applied;
+}
