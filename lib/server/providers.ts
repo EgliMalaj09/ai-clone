@@ -3,7 +3,7 @@ import {config,must,now,parse,type Row} from './data';
 import type {WorkflowStep} from '../contracts';
 import {reportError} from './errors';
 export type AIRequest={step:WorkflowStep;input:Row;idempotencyKey:string;templateSlug:string};
-export type ProviderStatus={status:'processing'|'completed'|'failed'|'refused';url?:string;error?:string;mime?:string};
+export type ProviderStatus={status:'processing'|'completed'|'failed'|'refused';url?:string;error?:string;mime?:string;/** USD cents, when the provider reports what the job cost (V15). */cost?:number};
 /** A provider declined the request under its content rules. Unlike a failure, it is never retried and counts as a strike. */
 export class ProviderRefusal extends Error{}
 const refusalWords=/nsfw|content[ _-]?(policy|moderation|filter)|safety (check|filter|system)|moderation|inappropriate|sensitive content|flagged/i;

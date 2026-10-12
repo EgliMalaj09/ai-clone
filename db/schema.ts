@@ -96,6 +96,8 @@ export const generationReports=sqliteTable('generation_reports',{
 },t=>[index('idx_reports_status').on(t.status,t.createdAt),index('idx_reports_generation').on(t.generationId)]);
 export const generationSteps=sqliteTable('generation_steps',{
  id:text('id').primaryKey(),generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),stepOrder:integer('step_order').notNull(),type:text('type').notNull(),provider:text('provider').notNull(),model:text('model').notNull(),status:text('status').notNull(),providerJobId:text('provider_job_id'),result:text('result'),error:text('error'),startedAt:integer('started_at').notNull(),completedAt:integer('completed_at'),
+ // Recorded AI cost of this step (V15), in USD cents: what the provider reported, else the step's listed price.
+ cost:integer('cost'),costSource:text('cost_source'),
 },t=>[uniqueIndex('idx_generation_step_order').on(t.generationId,t.stepOrder)]);
 export const generatedAssets=sqliteTable('generated_assets',{
  id:text('id').primaryKey(),generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),storageKey:text('storage_key').notNull().unique(),mime:text('mime').notNull(),kind:text('kind').notNull(),size:integer('size').notNull(),createdAt:integer('created_at').notNull(),
@@ -190,3 +192,7 @@ export const promoCodes=sqliteTable('promo_codes',{
 export const promoRedemptions=sqliteTable('promo_redemptions',{
  id:text('id').primaryKey(),codeId:text('code_id').notNull().references(()=>promoCodes.id,{onDelete:'cascade'}),userId:text('user_id').references(()=>users.id,{onDelete:'set null'}),purchaseId:text('purchase_id'),createdAt:integer('created_at').notNull(),
 },t=>[uniqueIndex('idx_promo_redemption_user').on(t.codeId,t.userId)]);
+// Provider invoices (V15): the real monthly bill per AI provider, compared with the recorded cost of the videos.
+export const providerInvoices=sqliteTable('provider_invoices',{
+ id:text('id').primaryKey(),provider:text('provider').notNull(),month:text('month').notNull(),amount:integer('amount').notNull(),note:text('note').notNull().default(''),createdAt:integer('created_at').notNull(),
+},t=>[uniqueIndex('idx_provider_invoice_month').on(t.provider,t.month)]);

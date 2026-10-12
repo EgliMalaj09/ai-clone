@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 36 | 45 |
+| 3B. Version 1 features | 37 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -290,7 +290,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V12 🟡 CSV exports.** Credit purchases, the credit ledger and users. ✅ Export CSV buttons on Credit purchases, Credit ledger and Users (UTF-8 with BOM for Excel, formula-safe cells, logged in Activity).
 - [x] **V13 🟡 Template management.** Drag-and-drop ordering, bulk publish/unpublish and scheduled publishing.
 - [x] **V14 🟡 Template archive.** Archive (soft delete) instead of permanent delete.
-- [ ] **V15 🟡 Real AI cost tracking.** Record the actual provider cost per creation and compare it with the estimate.
+- [x] **V15 🟡 Real AI cost tracking.** Record the actual provider cost per creation and compare it with the estimate.
 - [ ] **V16 🟡 A/B tests.** Test two previews or credit costs for a template.
 
 Not planned: PostgreSQL. D1 handles the expected load and no code change is needed for it.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V15 | Done | AI cost tracking: each finished step records its cost (provider-reported when an adapter returns it, otherwise the step's listed price); Admin → AI costs shows per month and provider the recorded cost next to the invoice you enter (difference and %), and per template the estimated vs recorded cost per video. Migration 0027. 1 integration check |
 | 2026-10-12 | V8, V9 | Done | Photo templates: generationType image can be published (no video step allowed); customers see 'Photo' on cards, a photo 'What you receive', and the image in My creations, share pages and the community. Upscale step: works on the previous result (or the photo) and goes through the image or video API to match; editor button 'Add upscale step' (fal clarity-upscaler / video-upscaler, to confirm on first real runs with C32.8). 1 integration check |
 | 2026-10-12 | V19 | Done | Photo editor before upload: after choosing or dropping a photo, a 4:5 frame lets the customer drag, zoom (slider, arrow keys) and rotate, previewing exactly what is sent; 'Use the whole photo' skips cropping; crops stay at least 512 px (mild enlargement allowed, otherwise a warning). Verified in the browser (512×640 crop uploaded). Translated; HEIC/too-small photo messages now in Albanian too |
 | 2026-10-12 | V21 | Done | One photo, several templates: after adding the photo(s), 'Make more with the same photo' lets the customer add up to 2 other templates (same photo count), shows the total, and starts them together via /api/generations/batch (total and running-video limits checked first, repeat-safe keys). 1 integration check |

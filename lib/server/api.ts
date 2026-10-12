@@ -25,6 +25,7 @@ import {shareGeneration,sharedMap,sharedVideoRedirect,stopSharing} from './share
 import {createRemovalRequest,listRemovals,resolveRemoval} from './removals';
 import {listVersions,recordVersion,restoreVersion} from './template-history';
 import {templateStats} from './template-stats';
+import {aiCosts,saveInvoice} from './ai-costs';
 import {feed,hideFromFeed,rateCreation,setPublic,toggleLike} from './feed';
 import {attachReferral,createCode,listCodes,redeemCode,referralInfo,setCodeActive,setReferralCredits} from './promos';
 import {adminIdeas,listIdeas,suggestIdea,toggleVote,updateIdea} from './template-requests';
@@ -288,6 +289,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
  if(p[1]==='announcements'){if(method==='GET'&&!p[2])return json(await listAnnouncements());if(method==='POST'&&p[2]==='test')return json(await sendTest(user,await body(req)));if(method==='POST'&&!p[2])return json(await createAnnouncement(user,await body(req)),201);if(method==='POST'&&p[3]==='cancel')return json(await cancelAnnouncement(user,p[2]));}
  if(p[1]==='promos'){if(method==='GET'&&!p[2])return json(await listCodes());if(method==='POST'&&!p[2])return json(await createCode(user,await body(req)),201);if(method==='PATCH'&&p[2]==='referral')return json(await setReferralCredits(user,Number((await body(req)).credits)));if(method==='PATCH'&&p[2])return json(await setCodeActive(user,p[2],(await body(req)).active===true));}
  if(p[1]==='ideas'){if(method==='GET'&&!p[2])return json(await adminIdeas());if(method==='PATCH'&&p[2])return json(await updateIdea(user,p[2],await body(req)));}
+ if(p[1]==='ai-costs'){if(method==='GET'&&!p[2])return json(await aiCosts(new URL(req.url)));if(method==='POST'&&p[2]==='invoices')return json(await saveInvoice(user,await body(req)));}
  if(p[1]==='template-stats'&&method==='GET')return json(await templateStats(new URL(req.url)));
  if(p[1]==='templates'){
   if(method==='GET'&&p[3]==='versions'&&p[2])return json(await listVersions(p[2]));

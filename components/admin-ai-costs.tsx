@@ -1,0 +1,22 @@
+'use client';
+import {useState} from 'react';
+import {toast} from 'sonner';
+import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table';
+import {api,useAPI,ErrorBox,Loading,Pick} from './shared';
+import {money} from '@/lib/contracts';
+
+// Real AI cost tracking (V15): recorded cost per provider and template, compared with estimates and the real invoices.
+type Costs={month:string;currency:string;providers:{provider:string;videos:number;steps:number;recorded:number;reportedByProvider:number;invoice:number|null;note:string;difference:number|null}[];templates:{templateId:string;name:string;videos:number;estimated:number;recorded:number}[]};
+const months=()=>Array.from({length:6},(_,i)=>{const d=new Date();d.setUTCDate(1);d.setUTCMonth(d.getUTCMonth()-i);return d.toISOString().slice(0,7)});
+export function AiCostsPanel(){
+ const [month,setMonth]=useState(months()[0]),[draft,setDraft]=useState<Record<string,string>>({});
+ const {data,error,loading,refresh}=useAPI<Costs>('admin/ai-costs?month='+month);
+ const usd=(c:number)=>money(c,'USD');
+ async function save(provider:string){try{await api('admin/ai-costs/invoices','POST',{provider,month,amount:Number(draft[provider])});toast.success('Invoice saved');setDraft(d=>{const n={...d};delete n[provider];return n});await refresh()}catch(e){toast.error((e as Error).message)}}
+ return <><div className="admin-heading"><div><span className="eyebrow">MONEY</span><h1>AI costs</h1><p>What the AI providers cost per month: the cost recorded for each finished step (reported by the provider when it says so, otherwise the step’s listed price), next to the invoice you enter from the provider’s billing page. Use it to correct the estimated AI cost of your templates.</p></div><Pick label="Month" value={month} onChange={setMonth} options={months()}/></div>
+  {loading?<Loading/>:error||!data?<ErrorBox message={error} retry={refresh}/>:<>
+  <section className="panel"><h2>By provider</h2>{!data.providers.length?<p className="panel-note">No finished AI steps this month.</p>:<div className="table-panel"><Table><TableHeader><TableRow><TableHead>Provider</TableHead><TableHead>Videos</TableHead><TableHead>Recorded cost</TableHead><TableHead>Invoice (USD)</TableHead><TableHead>Difference</TableHead></TableRow></TableHeader><TableBody>{data.providers.map(p=><TableRow key={p.provider}><TableCell><strong>{p.provider}</strong><small className="block">{p.steps} steps{p.reportedByProvider?` · ${p.reportedByProvider} priced by the provider`:' · listed prices'}</small></TableCell><TableCell>{p.videos}</TableCell><TableCell>{usd(p.recorded)}</TableCell>
+   <TableCell>{p.provider==='mock'?'—':<form className="code-form" onSubmit={e=>{e.preventDefault();void save(p.provider)}}><input type="number" min={0} step="0.01" aria-label={'Invoice for '+p.provider} value={draft[p.provider]??(p.invoice===null?'':String(p.invoice/100))} onChange={e=>setDraft(d=>({...d,[p.provider]:e.target.value}))} placeholder="0.00"/>{draft[p.provider]!==undefined&&<button className="button secondary small">Save</button>}</form>}</TableCell>
+   <TableCell className={p.difference===null?'':Math.abs(p.difference)>p.recorded*0.1?'profit-negative':'profit-positive'}>{p.difference===null?'—':(p.difference>0?'+':'')+usd(p.difference)}{p.difference!==null&&p.recorded>0&&<small className="block">{(p.difference/p.recorded*100).toFixed(0)}% {p.difference>0?'more than recorded':'less than recorded'}</small>}</TableCell></TableRow>)}</TableBody></Table></div>}</section>
+  <section className="panel"><h2>By template</h2><p className="panel-note">Average AI cost per finished video: the estimate used for prices and margins, and what was recorded. If they differ a lot, update the estimated AI cost in the template.</p>{!data.templates.length?<p className="panel-note">No finished videos this month.</p>:<div className="table-panel"><Table><TableHeader><TableRow><TableHead>Template</TableHead><TableHead>Videos</TableHead><TableHead>Estimated per video</TableHead><TableHead>Recorded per video</TableHead></TableRow></TableHeader><TableBody>{data.templates.map(t=><TableRow key={t.templateId}><TableCell><a href={'/admin/templates/'+t.templateId}>{t.name}</a></TableCell><TableCell>{t.videos}</TableCell><TableCell>{usd(t.estimated)}</TableCell><TableCell className={t.estimated&&Math.abs(t.recorded-t.estimated)>t.estimated*0.2?'profit-negative':''}>{usd(t.recorded)}</TableCell></TableRow>)}</TableBody></Table></div>}</section></>}</>;
+}

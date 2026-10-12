@@ -491,6 +491,12 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const portraitDone=(await waitDone(userCookie,portraitGen.generationId)).g;
  ok('A photo template delivers an image, through an image upscale step',photoCard.kind==='image'&&portraitDone.status==='completed'&&portraitDone.assetMime.startsWith('image/')&&(await db.prepare("SELECT COUNT(*) AS n FROM generated_assets WHERE generation_id=? AND mime LIKE 'image/%'").bind(portraitGen.generationId).first()).n===2);
  await request('/api/admin/templates/'+photoTpl.id,{method:'DELETE',cookie:adminCookie});
+ // V15: finished steps record their AI cost; the admin compares it with estimates and enters the provider's invoice.
+ const month=new Date().toISOString().slice(0,7);const costs=(await request('/api/admin/ai-costs?month='+month,{cookie:adminCookie})).body;
+ await request('/api/admin/ai-costs/invoices',{method:'POST',cookie:adminCookie,data:{provider:'higgsfield',month,amount:12.5,note:'October bill'}});
+ const withInvoice=(await request('/api/admin/ai-costs?month='+month,{cookie:adminCookie})).body.providers.find(p=>p.provider==='higgsfield');
+ await request('/api/admin/ai-costs',{cookie:userCookie,expected:403});
+ ok('Finished steps record their AI cost, compared per template and with the provider invoice',costs.providers.some(p=>p.provider==='mock'&&p.recorded>0)&&costs.templates.some(t=>t.recorded>0)&&withInvoice.invoice===1250&&withInvoice.difference===1250);
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});
