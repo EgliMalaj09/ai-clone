@@ -148,6 +148,8 @@ try{
   await request('/api/unsubscribe?u='+unsubUrl.searchParams.get('u')+'&s=bad',{method:'POST',origin:null,expected:400});
   await request('/api/unsubscribe'+unsubUrl.search,{method:'POST',origin:null});
   ok('One-click unsubscribe works without signing in',(await db.prepare("SELECT marketing_opt_in FROM users WHERE email='fan@studio.test'").first()).marketing_opt_in===0);
+  // C11.1: a paid purchase sends a receipt.
+  ok('A paid credit purchase sends a receipt email',mails.some(m=>m.to===env.ADMIN_EMAIL&&m.subject.includes('receipt')&&m.text.includes('not a tax invoice')));
   const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
   await db.prepare("UPDATE credit_purchases SET provider='mock',status='pending' WHERE id=?").bind(stale.purchaseId).run();
   await request('/api/credits/purchases/'+stale.purchaseId+'/retry',{method:'POST',cookie:admin,data:{},expected:403});ok('A test purchase cannot reopen checkout after a production switch');

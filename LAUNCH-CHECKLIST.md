@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 20 | 30 |
+| 1. Codebase | 21 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 38 | 45 |
@@ -104,8 +104,8 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C6.3 Albanian text (or Albanian + English) for both emails.
   - [~] C6.4 Brand name moved to one config value (`BRAND_NAME`, temporary "Project Studio"); no more "PROJECT STUDIO" in emails. **TODO before launch:** set the final brand once D5 is decided (part of X2).
   - [x] C6.5 Already fixed: resend returns "already verified" for verified accounts (F13); `/reset-password` and `/verify` without a link show a clear "incomplete link" message with a way to request a new one (F14).
-- [ ] **C11 🟡 Other emails customers expect.**
-  - [ ] C11.1 Receipt email after a credit purchase (skip if POK already sends one; check during T2).
+- [x] **C11 🟡 Other emails customers expect.**
+  - [x] C11.1 Receipt email after a credit purchase (skip if POK already sends one; check during T2). ✅ After each paid purchase the customer gets a receipt email in their language (pack, credits, amount, discount code if used, purchase and POK transaction IDs), marked as not a tax invoice. Sent once per purchase. See DECISIONS.md #18.
   - [x] C11.2 "Your video is ready" and "Your video failed, credits returned" emails. ✅ Branded HTML + plain-text emails sent by the queue when a creation is delivered ("Watch my video") or fails/is refused (credits returned, amount shown). Best-effort and idempotent per attempt. English for now (Albanian with C10).
 - [x] **C7 🟡 Error tracking (L10).** Send Worker errors to a tracker (e.g. Sentry) and log provider and webhook failures with the generation or purchase ID. ✅ Every server error, failed generation, payment/webhook, email, credit and queue problem goes through one reporter: logged with its IDs (generation, purchase, user), kept 30 days in a new `error_events` table and listed under **Admin → Operations → Recent errors**, and sent to Sentry when a `SENTRY_DSN` is saved in Admin → Connections (optional). See DECISIONS.md #4.
 - [x] **C8 🟡 Analytics (F9).** ✅ Page and template views are now recorded for guests too (the analytics endpoint moved to the public section with an IP rate limit; home/explore and template pages fire views regardless of sign-in), so the dashboard funnel includes anonymous visitors.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | C11.1 | Done | Receipt email after each paid credit purchase (once per purchase, customer's language, not a tax invoice). 1 production check |
 | 2026-10-12 | V16 | Done | A/B tests (template_experiments, migration 0028): stable split by account id, applied to catalog API, storefront, template page, related, generation pricing and repeat price; views/creations tagged with experiment and version; admin start/stop and results. 3 integration checks |
 | 2026-10-12 | V15 | Done | AI cost tracking: each finished step records its cost (provider-reported when an adapter returns it, otherwise the step's listed price); Admin → AI costs shows per month and provider the recorded cost next to the invoice you enter (difference and %), and per template the estimated vs recorded cost per video. Migration 0027. 1 integration check |
 | 2026-10-12 | V8, V9 | Done | Photo templates: generationType image can be published (no video step allowed); customers see 'Photo' on cards, a photo 'What you receive', and the image in My creations, share pages and the community. Upscale step: works on the previous result (or the photo) and goes through the image or video API to match; editor button 'Add upscale step' (fal clarity-upscaler / video-upscaler, to confirm on first real runs with C32.8). 1 integration check |

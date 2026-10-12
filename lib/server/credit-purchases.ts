@@ -107,7 +107,7 @@ export async function confirmPackPayment(purchaseId:string,sessionId:string,tran
   moves:[{account:SYSTEM.issued,amount:-p.credits},{account:available(p.user_id),amount:p.credits}],
   extra:tx=>{const g=onlyIfApplied(tx);return [stmt(`UPDATE credit_purchases SET status='paid',provider_transaction_id=?,paid_at=? WHERE id=? AND status IN ('pending','failed') AND ${g.sql}`,transactionId,now(),p.id,...g.args)];}})
   .catch(e=>{if(e instanceof HttpError&&e.status===409)return null;throw e;});
- if(result?.applied){await event('credits_purchased',p.user_id,{purchaseId:p.id,credits:p.credits});await recordDiscountUse({id:p.id as string,user_id:p.user_id as string,promo_code:(p.promo_code as string|null)??null});await rewardReferral(p.user_id as string);}
+ if(result?.applied){await event('credits_purchased',p.user_id,{purchaseId:p.id,credits:p.credits});await sendReceipt(p,transactionId);await recordDiscountUse({id:p.id as string,user_id:p.user_id as string,promo_code:(p.promo_code as string|null)??null});await rewardReferral(p.user_id as string);}
  return !!result?.applied;
 }
 export async function failPackPayment(purchaseId:string,sessionId?:string){
@@ -196,4 +196,14 @@ async function reverseGiftPayment(p:Row,reason:string,actorId?:string){
   .catch(e=>{if(e instanceof HttpError&&e.status===409)return null;throw e;});
  if(result?.applied)await reportError('payment','Gift purchase reversed; its code was cancelled',{level:'warning',context:{purchaseId:p.id as string,redeemedBy:(redemption?.user_id as string|undefined)??null}});
  return !!result?.applied;
+}
+
+/** Receipt email after a paid purchase (C11.1), in the customer's language. Not a fiscal invoice (see D8). */
+async function sendReceipt(p:Row,transactionId:string){
+ try{
+  const u=await one('SELECT email,locale FROM users WHERE id=?',p.user_id);if(!u)return;
+  const {sendMail}=await import('./security');const {noticeMailContent}=await import('./email-templates');const {serviceConfig}=await import('./connections');const {money}=await import('../contracts');const c=await serviceConfig();const lang=u.locale==='en'?'en':'sq';
+  const lines=[`${p.package_name}: ${p.credits} ${lang==='sq'?'kredite':'credits'}`,`${money(Number(p.amount),p.currency as string)}${p.full_amount?` (${money(Number(p.full_amount),p.currency as string)} − ${p.promo_code})`:''}`,`ID: ${String(p.id).slice(-10).toUpperCase()} · ${transactionId}`].join(' · ');
+  await sendMail(u.email as string,noticeMailContent({lang,brand:c.brandName,subject:'Your {brand} receipt',heading:'Thank you for your purchase',lead:'Your credits are in your account. {lines}. This receipt is not a tax invoice.',vars:{lines},link:c.origin+'/credits',linkLabel:'See my credits',supportEmail:c.mailFrom}),'receipt-'+p.id);
+ }catch(e){await reportError('email','Receipt email needs review',{error:e,context:{purchaseId:p.id as string}});}
 }
