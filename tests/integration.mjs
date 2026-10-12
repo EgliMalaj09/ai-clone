@@ -240,6 +240,14 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('A signed POK webhook cannot pay a purchase by itself',(await balance(userCookie)).available===beforePack);
  for(let i=0;i<2;i++)await request(`/api/credits/purchases/${purchase.purchaseId}/pay`,{method:'POST',cookie:userCookie,data:{result:'success'}});
  ok('Test checkout grants pack credits once and tolerates replay',(await balance(userCookie)).available===beforePack+300);
+ // V38: a creator/campaign link tags the sign-ups made through it and counts those who go on to buy.
+ const clink=(await request('/api/admin/creator-links',{method:'POST',cookie:adminCookie,data:{code:'anisa',name:'Anisa (IG)',note:'May campaign'},expected:201})).body;ok('Admin creates a creator link',!!clink.id);
+ await request('/api/admin/creator-links',{method:'POST',cookie:adminCookie,data:{code:'anisa',name:'Dup'},expected:409});ok('Creator link codes are unique',true);
+ const fan=await request('/api/auth/register',{method:'POST',data:{name:'Fan','email':'fan@studio.test',password:'Fan-password-123',acceptTerms:true,confirmAge:true,ref:'ANISA'},expected:201});
+ ok('Sign-up with a creator link is tagged',(await db.prepare('SELECT signup_source FROM users WHERE id=?').bind(fan.body.user.id).first()).signup_source==='ANISA');
+ const afterSignup=(await request('/api/admin/creator-links',{cookie:adminCookie})).body.links.find(l=>l.id===clink.id);ok('Creator link counts the sign-up, no purchase yet',afterSignup.signups===1&&afterSignup.buyers===0&&afterSignup.credits===0);
+ const fanBuy=(await request('/api/credits/checkout',{method:'POST',cookie:fan.cookie,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;await request(`/api/credits/purchases/${fanBuy.purchaseId}/pay`,{method:'POST',cookie:fan.cookie,data:{result:'success'}});
+ const afterBuy=(await request('/api/admin/creator-links',{cookie:adminCookie})).body.links.find(l=>l.id===clink.id);ok('Creator link counts a paying customer and the credits sold',afterBuy.buyers===1&&afterBuy.purchases===1&&afterBuy.credits===300);
  // Creation/file deletion proves bytes are removed, rather than merely hidden.
  const assetKey=outputs.results[0].storage_key;await request('/api/generations/'+generationId,{method:'DELETE',cookie:userCookie});ok('Delete creation removes the video from object storage',await bucket.get(assetKey)===null);await request('/api/media/'+result.g.assetId,{cookie:userCookie,expected:404});
  const orphan=await upload(userCookie);const orphanDb=await db.prepare('SELECT storage_key FROM user_uploads WHERE id=?').bind(orphan.body.id).first();await request('/api/uploads/'+orphan.body.id,{method:'DELETE',cookie:userCookie});ok('Delete upload removes stored bytes',await bucket.get(orphanDb.storage_key)===null);

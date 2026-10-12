@@ -29,6 +29,7 @@ import {aiCosts,saveInvoice} from './ai-costs';
 import {applyExperiment,experimentResults,experimentTag,runningExperiments,startExperiment,stopExperiment} from './experiments';
 import {feed,hideFromFeed,rateCreation,setPublic,toggleLike} from './feed';
 import {attachReferral,createCode,listCodes,redeemCode,referralInfo,setCodeActive,setReferralCredits} from './promos';
+import {createCreatorLink,listCreatorLinks,setCreatorLinkActive} from './creators';
 import {adminIdeas,listIdeas,suggestIdea,toggleVote,updateIdea} from './template-requests';
 import {cancelAnnouncement,createAnnouncement,listAnnouncements,sendTest,unsubscribe} from './announcements';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
@@ -292,6 +293,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
  }
  if(p[1]==='announcements'){if(method==='GET'&&!p[2])return json(await listAnnouncements());if(method==='POST'&&p[2]==='test')return json(await sendTest(user,await body(req)));if(method==='POST'&&!p[2])return json(await createAnnouncement(user,await body(req)),201);if(method==='POST'&&p[3]==='cancel')return json(await cancelAnnouncement(user,p[2]));}
  if(p[1]==='promos'){if(method==='GET'&&!p[2])return json(await listCodes());if(method==='POST'&&!p[2])return json(await createCode(user,await body(req)),201);if(method==='PATCH'&&p[2]==='referral')return json(await setReferralCredits(user,Number((await body(req)).credits)));if(method==='PATCH'&&p[2])return json(await setCodeActive(user,p[2],(await body(req)).active===true));}
+ if(p[1]==='creator-links'){if(method==='GET'&&!p[2])return json(await listCreatorLinks());if(method==='POST'&&!p[2])return json(await createCreatorLink(user,await body(req)),201);if(method==='PATCH'&&p[2])return json(await setCreatorLinkActive(user,p[2],(await body(req)).active===true));}
  if(p[1]==='ideas'){if(method==='GET'&&!p[2])return json(await adminIdeas());if(method==='PATCH'&&p[2])return json(await updateIdea(user,p[2],await body(req)));}
  if(p[1]==='experiments'&&p[3]==='stop'&&method==='POST')return json(await stopExperiment(user,p[2]));
  if(p[1]==='templates'&&p[2]&&p[3]==='experiments'){if(method==='GET')return json(await experimentResults(p[2]));if(method==='POST')return json(await startExperiment(user,p[2],await body(req)),201);}

@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 21 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 38 | 45 |
+| 3B. Version 1 features | 39 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -273,7 +273,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 
 **Found by comparing with Genematic (similar product)**
 - [x] **V37 🟡 Quality levels per template.** Let a template offer "Standard" and "Premium" (e.g. a cheaper and a better AI model), each with its own credit cost, shown before generating.
-- [ ] **V38 🟡 Creator tracking links.** Personal links/codes for creators (D17) and referrals (V4), showing sign-ups and purchases per creator in the admin.
+- [x] **V38 🟡 Creator tracking links.** Personal links/codes for creators (D17) and referrals (V4), showing sign-ups and purchases per creator in the admin. ✅ Admin → Promo codes now has 'Creator & campaign links': a named share link (/register?ref=CODE) per creator or campaign. Sign-ups through it are tagged (users.signup_source) and the table shows sign-ups, paying customers, purchases and credits sold per link. Payout amounts to creators stay an owner decision (D17). Migration 0029. See DECISIONS.md #20.
 - [x] **V39 🟡 Product templates for businesses.** Templates that turn a product photo (not a face) into an ad clip, for shops and small businesses; separate category and photo guidelines (C31) without the face rules.
 - [x] **V40 🟡 Public feed.** A public feed of results customers chose to share (opt-in), with likes, that links each video to its template; extends the gallery in V6.
 - [ ] **V41 🟡 Watermark on free results.** Results made with free welcome credits carry a small logo watermark; paid results don't (from D16).
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V38 | Done | Creator & campaign tracking links: per-link share URL, sign-up attribution and admin stats (sign-ups, buyers, purchases, credits). Payouts left to owner (D17). Migration 0029. 5 integration checks |
 | 2026-10-12 | C11.1 | Done | Receipt email after each paid credit purchase (once per purchase, customer's language, not a tax invoice). 1 production check |
 | 2026-10-12 | V16 | Done | A/B tests (template_experiments, migration 0028): stable split by account id, applied to catalog API, storefront, template page, related, generation pricing and repeat price; views/creations tagged with experiment and version; admin start/stop and results. 3 integration checks |
 | 2026-10-12 | V15 | Done | AI cost tracking: each finished step records its cost (provider-reported when an adapter returns it, otherwise the step's listed price); Admin → AI costs shows per month and provider the recorded cost next to the invoice you enter (difference and %), and per template the estimated vs recorded cost per video. Migration 0027. 1 integration check |

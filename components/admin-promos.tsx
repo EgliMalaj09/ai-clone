@@ -1,14 +1,28 @@
 'use client';
 import {useState} from 'react';
-import {TicketPercent} from 'lucide-react';
+import {TicketPercent,Link2,Copy} from 'lucide-react';
 import {toast} from 'sonner';
 import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table';
 import {Switch} from '@/components/ui/switch';
 import {api,useAPI,Busy,ErrorBox,Field,Loading,Pick,date} from './shared';
 import {credits} from '@/lib/contracts';
 
-// Promo codes and the referral reward (V4).
+// Promo codes and the referral reward (V4), plus creator/campaign tracking links (V38).
 type Code={id:string;code:string;kind:string;credits:number;percent:number;maxUses:number|null;uses:number;expiresAt:number|null;active:boolean;note:string;createdAt:number};
+type CreatorLink={id:string;code:string;name:string;note:string;active:boolean;createdAt:number;url:string;signups:number;buyers:number;purchases:number;credits:number};
+
+// Creator & campaign tracking links (V38): a share link per creator/campaign; the table shows who signed up and bought.
+function CreatorLinks(){
+ const {data,error,loading,refresh}=useAPI<{links:CreatorLink[]}>('admin/creator-links');
+ const [form,setForm]=useState({code:'',name:'',note:''}),[busy,setBusy]=useState(false);
+ async function create(e:React.FormEvent){e.preventDefault();setBusy(true);try{await api('admin/creator-links','POST',{code:form.code,name:form.name,note:form.note});toast.success('Link created');setForm({code:'',name:'',note:''});await refresh()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
+ if(loading||!data)return error?<ErrorBox message={error} retry={refresh}/>:<Loading/>;
+ return <><section className="panel"><h2><Link2 size={19}/> Creator & campaign links</h2><p className="panel-note">A share link per creator or campaign. Anyone who signs up through it is counted here, with how many went on to buy. What you pay creators is up to you (see the launch checklist, D17); this only measures.</p>
+  <form onSubmit={create}><div className="form-grid"><Field label="Code" hint="Letters and numbers, e.g. ANISA or TIKTOK-MAY."><input required value={form.code} onChange={e=>setForm(f=>({...f,code:e.target.value.toUpperCase()}))} maxLength={30}/></Field><Field label="Creator or campaign name"><input required value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} maxLength={80} placeholder="e.g. Anisa (Instagram)"/></Field></div>
+   <Field label="Note (only for you)"><input value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))} maxLength={200}/></Field>
+   <button className="button primary small" disabled={busy||form.code.trim().length<3||!form.name.trim()}>{busy?<Busy/>:'Create link'}</button></form></section>
+  <section className="panel"><h2>Links</h2>{data.links.length?<div className="table-panel"><Table><TableHeader><TableRow><TableHead>Link</TableHead><TableHead>Sign-ups</TableHead><TableHead>Paying</TableHead><TableHead>Purchases</TableHead><TableHead>Credits sold</TableHead><TableHead>Active</TableHead></TableRow></TableHeader><TableBody>{data.links.map(l=><TableRow key={l.id}><TableCell><strong>{l.name}</strong><small className="block mono">{l.code}</small>{l.note&&<small className="block">{l.note}</small>}<button type="button" className="text-button" onClick={()=>{navigator.clipboard?.writeText(l.url).then(()=>toast.success('Link copied'),()=>toast.error('Could not copy'))}}><Copy size={13}/> Copy link</button></TableCell><TableCell>{l.signups}</TableCell><TableCell>{l.buyers}</TableCell><TableCell>{l.purchases}</TableCell><TableCell>{credits(l.credits)}</TableCell><TableCell><Switch checked={l.active} aria-label={'Link '+l.code+' active'} onCheckedChange={async v=>{try{await api('admin/creator-links/'+l.id,'PATCH',{active:v});await refresh()}catch(e){toast.error((e as Error).message)}}}/></TableCell></TableRow>)}</TableBody></Table></div>:<p className="panel-note">No links yet.</p>}</section></>;
+}
 export function PromosPanel(){
  const {data,error,loading,refresh}=useAPI<{referralCredits:number;codes:Code[]}>('admin/promos');
  const [form,setForm]=useState({code:'',kind:'credits',credits:'100',percent:'20',maxUses:'',expires:'',note:''}),[busy,setBusy]=useState(false),[referral,setReferral]=useState<string|null>(null);
@@ -22,5 +36,6 @@ export function PromosPanel(){
    <div className="form-grid"><Field label="Valid until (optional)"><input type="date" value={form.expires} onChange={set('expires')}/></Field><Field label="Note (only for you)"><input value={form.note} onChange={set('note')} maxLength={200} placeholder="e.g. Instagram campaign"/></Field></div>
    <button className="button primary small" disabled={busy||form.code.trim().length<3}>{busy?<Busy/>:'Create code'}</button></form></section>
   <section className="panel"><h2>Invite friends</h2><p className="panel-note">When someone joins with a customer’s invite link and makes their first purchase, both get these credits. 0 turns invites off (the invite box is then hidden).</p><form onSubmit={async e=>{e.preventDefault();try{await api('admin/promos/referral','PATCH',{credits:Number(referral??data.referralCredits)});toast.success('Saved');setReferral(null);await refresh()}catch(e){toast.error((e as Error).message)}}}><Field label="Credits for each person"><input type="number" min={0} max={100000} value={referral??String(data.referralCredits)} onChange={e=>setReferral(e.target.value)}/></Field><button className="button secondary small" disabled={referral===null}>Save</button></form></section></div>
-  <section className="panel"><h2>Codes</h2>{data.codes.length?<div className="table-panel"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Gives</TableHead><TableHead>Used</TableHead><TableHead>Valid until</TableHead><TableHead>Active</TableHead></TableRow></TableHeader><TableBody>{data.codes.map(c=><TableRow key={c.id}><TableCell><strong className="mono">{c.code}</strong>{c.note&&<small className="block">{c.note}</small>}</TableCell><TableCell>{c.kind==='credits'?credits(c.credits):c.percent+'% off a pack'}</TableCell><TableCell>{c.uses}{c.maxUses!==null?' / '+c.maxUses:''}</TableCell><TableCell>{c.expiresAt?date(c.expiresAt):'—'}</TableCell><TableCell><Switch checked={c.active} aria-label={'Code '+c.code+' active'} onCheckedChange={async v=>{try{await api('admin/promos/'+c.id,'PATCH',{active:v});await refresh()}catch(e){toast.error((e as Error).message)}}}/></TableCell></TableRow>)}</TableBody></Table></div>:<p className="panel-note">No codes yet.</p>}</section></>;
+  <section className="panel"><h2>Codes</h2>{data.codes.length?<div className="table-panel"><Table><TableHeader><TableRow><TableHead>Code</TableHead><TableHead>Gives</TableHead><TableHead>Used</TableHead><TableHead>Valid until</TableHead><TableHead>Active</TableHead></TableRow></TableHeader><TableBody>{data.codes.map(c=><TableRow key={c.id}><TableCell><strong className="mono">{c.code}</strong>{c.note&&<small className="block">{c.note}</small>}</TableCell><TableCell>{c.kind==='credits'?credits(c.credits):c.percent+'% off a pack'}</TableCell><TableCell>{c.uses}{c.maxUses!==null?' / '+c.maxUses:''}</TableCell><TableCell>{c.expiresAt?date(c.expiresAt):'—'}</TableCell><TableCell><Switch checked={c.active} aria-label={'Code '+c.code+' active'} onCheckedChange={async v=>{try{await api('admin/promos/'+c.id,'PATCH',{active:v});await refresh()}catch(e){toast.error((e as Error).message)}}}/></TableCell></TableRow>)}</TableBody></Table></div>:<p className="panel-note">No codes yet.</p>}</section>
+  <CreatorLinks/></>;
 }

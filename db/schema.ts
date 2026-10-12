@@ -16,6 +16,8 @@ export const users=sqliteTable('users',{
  locale:text('locale').notNull().default('sq'),
  // Referrals (V4): this customer's invite code, and who invited them.
  referralCode:text('referral_code').unique(),referredBy:text('referred_by'),
+ // Creator/campaign link this customer signed up with (V38), when it wasn't a customer invite.
+ signupSource:text('signup_source'),
  // Email change waiting for confirmation from the new address (V18).
  pendingEmail:text('pending_email'),
  totpSecret:text('totp_secret'),totpPending:text('totp_pending'),totpEnabledAt:integer('totp_enabled_at'),totpLastStep:integer('totp_last_step').notNull().default(0),totpRecovery:text('totp_recovery').notNull().default('[]'),
@@ -196,6 +198,12 @@ export const promoRedemptions=sqliteTable('promo_redemptions',{
 export const providerInvoices=sqliteTable('provider_invoices',{
  id:text('id').primaryKey(),provider:text('provider').notNull(),month:text('month').notNull(),amount:integer('amount').notNull(),note:text('note').notNull().default(''),createdAt:integer('created_at').notNull(),
 },t=>[uniqueIndex('idx_provider_invoice_month').on(t.provider,t.month)]);
+// Creator & campaign tracking links (V38): a named code gives a shareable /register?ref=CODE link; sign-ups made with it
+// are tagged (users.signup_source) so the admin can see sign-ups and purchases per creator. Payouts are owner-set (D17).
+export const creatorLinks=sqliteTable('creator_links',{
+ id:text('id').primaryKey(),code:text('code').notNull().unique(),name:text('name').notNull(),note:text('note').notNull().default(''),
+ active:integer('active').notNull().default(1),createdBy:text('created_by'),createdAt:integer('created_at').notNull(),
+});
 // A/B tests (V16): a second preview or credit cost for one template, shown to half of the signed-in customers.
 export const templateExperiments=sqliteTable('template_experiments',{
  id:text('id').primaryKey(),templateId:text('template_id').notNull().references(()=>templates.id,{onDelete:'cascade'}),kind:text('kind').notNull(),// preview | price

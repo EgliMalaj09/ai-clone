@@ -61,8 +61,11 @@ export async function referralInfo(user:StudioUser){
 }
 /** At sign-up: remember who invited this customer (never themselves). */
 export async function attachReferral(userId:string,code:string|undefined){
- if(!code)return;const inviter=await one('SELECT id FROM users WHERE referral_code=?',normalize(code));
- if(inviter&&inviter.id!==userId)await run('UPDATE users SET referred_by=? WHERE id=? AND referred_by IS NULL',inviter.id,userId);
+ if(!code)return;const norm=normalize(code);const inviter=await one('SELECT id FROM users WHERE referral_code=?',norm);
+ if(inviter&&inviter.id!==userId){await run('UPDATE users SET referred_by=? WHERE id=? AND referred_by IS NULL',inviter.id,userId);return;}
+ // Not a customer invite: maybe a creator/campaign tracking link (V38).
+ const link=await one('SELECT code FROM creator_links WHERE code=? AND active=1',norm);
+ if(link)await run('UPDATE users SET signup_source=? WHERE id=? AND signup_source IS NULL',link.code,userId);
 }
 /** After a paid purchase: the first one of an invited customer rewards both of them, once. */
 export async function rewardReferral(userId:string){
