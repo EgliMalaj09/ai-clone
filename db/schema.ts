@@ -137,3 +137,8 @@ export const removalRequests=sqliteTable('removal_requests',{
  status:text('status').notNull().default('open'),// open | removed | kept
  adminNote:text('admin_note'),createdAt:integer('created_at').notNull(),resolvedAt:integer('resolved_at'),resolvedBy:text('resolved_by'),
 },t=>[index('idx_removals_status').on(t.status,t.createdAt)]);
+// Template history (V33): every saved version of a template's prompt and workflow, to compare and roll back.
+export const templateVersions=sqliteTable('template_versions',{
+ id:text('id').primaryKey(),templateId:text('template_id').notNull().references(()=>templates.id,{onDelete:'cascade'}),
+ snapshot:text('snapshot').notNull(),createdAt:integer('created_at').notNull(),createdBy:text('created_by'),
+},t=>[index('idx_template_versions').on(t.templateId,t.createdAt)]);

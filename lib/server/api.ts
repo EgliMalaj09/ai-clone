@@ -23,6 +23,7 @@ import {reportError} from './errors';
 import {adminExport} from './exports';
 import {shareGeneration,sharedMap,sharedVideoRedirect,stopSharing} from './share';
 import {createRemovalRequest,listRemovals,resolveRemoval} from './removals';
+import {listVersions,recordVersion,restoreVersion} from './template-history';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
 import {langFromCookie,translate,type Lang} from '../i18n';
 /** Friendly, translated messages for the form fields customers fill in; other validation messages stay technical. */
@@ -246,7 +247,9 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   return json({users:users?.count||0,metrics,financials,credits,top,recent,profitable,daily,recentPurchases,demo:config().demo,...await publicAvailability()});
  }
  if(p[1]==='templates'){
+  if(method==='GET'&&p[3]==='versions'&&p[2])return json(await listVersions(p[2]));
   if(method==='GET'){if(p[2]){const t=await getAdminTemplate(p[2]);must(t,'Template not found.',404);return json({template:t});}const [t,values,rates]=await Promise.all([all('SELECT * FROM templates ORDER BY sort_order ASC,created_at DESC'),creditValues(),exchangeRates()]);const acct=values['EUR']!==undefined?'EUR':(Object.keys(values)[0]||'EUR');return json({templates:t.map(t=>({...publicTemplate(t),estimatedCost:convertMinor(Number(t.estimated_cost||0),t.currency as string,acct,rates),provider:t.provider,model:t.model,costCurrency:acct,creditValue:values[acct]!==undefined?Math.round((t.credit_cost as number)*values[acct]):null,publishAt:t.publish_at??null,archivedAt:t.archived_at??null}))});}
+  if(method==='POST'&&p[2]&&p[3]==='versions'&&p[4]&&p[5]==='restore')return json(await restoreVersion(p[2],p[4],user.id));
   if(method==='POST'&&p[2]&&p[3]==='restore'){const r=await one('UPDATE templates SET archived_at=NULL,updated_at=? WHERE id=? AND archived_at IS NOT NULL RETURNING id',now(),p[2]);must(r,'Only an archived template can be restored.',409);await audit(user.id,'template.restore',p[2]);return json({ok:true});}
   // V13: manual order for the Recommended sort, and bulk publish / unpublish / archive.
   if(method==='POST'&&p[2]==='order'){const b=z.object({ids:z.array(z.string().max(150)).min(1).max(1000)}).parse(await body(req));must(new Set(b.ids).size===b.ids.length,'Each template can appear once.');await batch(b.ids.map((id,i)=>stmt('UPDATE templates SET sort_order=? WHERE id=?',i+1,id)));await audit(user.id,'template.reorder','templates');return json({ok:true});}
@@ -259,7 +262,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='POST'||method==='PATCH'){
    if(p[3]==='duplicate'){const original=await getAdminTemplate(p[2]);must(original,'Template not found.',404);const suffix=uid().slice(0,6);const t={...original,id:uid('tpl_'),slug:original.slug+'-copy-'+suffix,name:original.name+' (copy)',active:false,publishAt:null,createdAt:now()};await batch(templateStatements(t));await audit(user.id,'template.duplicate',t.id);return json({template:t},201);}
    const b=templateSchema.parse(await body(req));await validateTemplateMedia(b);const existing=p[2]?await getAdminTemplate(p[2]):null;if(method==='PATCH'){must(existing,'Template not found.',404);must(!existing.archivedAt,'Restore this template from the archive first.',409);}must(!await one('SELECT id FROM templates WHERE slug=? AND id!=?',b.slug,existing?.id||''),'This URL slug is already in use.',409);
-   const t={...b,id:existing?.id||uid('tpl_'),createdAt:existing?.createdAt||now()} as AdminTemplate;await batch(templateStatements(t,!!existing));await audit(user.id,existing?'template.update':'template.create',t.id);if(existing){const kept=new Set(templateMediaUrls(t));await releaseTemplateMedia(templateMediaUrls(existing).filter(u=>!kept.has(u)));}return json({template:t},existing?200:201);
+   const t={...b,id:existing?.id||uid('tpl_'),createdAt:existing?.createdAt||now()} as AdminTemplate;await batch(templateStatements(t,!!existing));await recordVersion(t,user.id);await audit(user.id,existing?'template.update':'template.create',t.id);if(existing){const kept=new Set(templateMediaUrls(t));await releaseTemplateMedia(templateMediaUrls(existing).filter(u=>!kept.has(u)));}return json({template:t},existing?200:201);
   }
   // V14: delete archives the template (hidden everywhere, restorable); only an archived template can be deleted for good.
   if(method==='DELETE'){const existing=await getAdminTemplate(p[2]);must(existing&&existing.id===p[2],'Template not found.',404);

@@ -382,6 +382,15 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const benItem=(await request('/api/admin/removals',{cookie:adminCookie})).body.requests.find(x=>x.email==='ben@example.test');
  await request('/api/admin/removals/'+benItem.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'keep',note:'We could not find this video.'}});
  ok('A request without a link is reviewed by hand and can be closed',described.hidden===false&&(await request('/api/admin/removals?status=kept',{cookie:adminCookie})).body.requests.some(x=>x.id===benItem.id&&x.adminNote));
+ // V33: each save keeps a version; restore brings back the old prompt and keeps the history.
+ const hist=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA History',slug:'qa-history',hiddenPrompt:'First prompt',active:false},expected:201})).body.template;
+ await request('/api/admin/templates/'+hist.id,{method:'PATCH',cookie:adminCookie,data:{...hist,hiddenPrompt:'Second prompt'}});
+ await request('/api/admin/templates/'+hist.id,{method:'PATCH',cookie:adminCookie,data:{...hist,hiddenPrompt:'Second prompt'}});
+ const versions=(await request('/api/admin/templates/'+hist.id+'/versions',{cookie:adminCookie})).body.versions;
+ ok('Template saves keep a history of changes (unchanged saves add nothing)',versions.length===2&&versions[0].changes.includes('hidden prompt')&&versions[1].snapshot.hiddenPrompt==='First prompt');
+ const restored=(await request('/api/admin/templates/'+hist.id+'/versions/'+versions[1].id+'/restore',{method:'POST',cookie:adminCookie,data:{}})).body.template;
+ ok('Restoring a version brings back its prompt and adds to the history',restored.hiddenPrompt==='First prompt'&&(await request('/api/admin/templates/'+hist.id,{cookie:adminCookie})).body.template.hiddenPrompt==='First prompt'&&(await request('/api/admin/templates/'+hist.id+'/versions',{cookie:adminCookie})).body.versions.length===3);
+ await request('/api/admin/templates/'+hist.id,{method:'DELETE',cookie:adminCookie});await request('/api/admin/templates/'+hist.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});
