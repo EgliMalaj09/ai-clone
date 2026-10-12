@@ -404,3 +404,5 @@ tr[draggable=true]{cursor:grab}
 .make-more-item img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px}
 .make-more-item.selected{border-color:var(--blue);box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 25%,transparent)}
 .make-more-item small{color:#68707a}
+.detail-content{min-width:0}
+.make-more{min-width:0;max-width:100%}
