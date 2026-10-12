@@ -356,6 +356,9 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('My creations shows the share link',(await request('/api/generations/'+toShare.id,{cookie:userCookie})).body.generations[0].shareUrl===shareInfo.url);
  await request('/api/generations/'+toShare.id+'/share',{method:'DELETE',cookie:userCookie});
  ok('Stopping sharing takes the page and video offline but keeps the creation',(await request(sharePath,{expected:404}))&&(await mf.dispatchFetch(config.APP_ORIGIN+'/api/share/'+shareInfo.id+'/video',{redirect:'manual'})).status===404&&(await request('/api/generations/'+toShare.id,{cookie:userCookie})).body.generations[0].status==='completed');
+ // V27: a customer who can't afford the cheapest video sees a reminder with a way to buy credits; one who can, doesn't.
+ const lowPage=(await request('/creations',{cookie:relogged.cookie})).text,richPage=(await request('/creations',{cookie:userCookie})).text;
+ ok('Low balance reminder shows only when credits can’t pay for a video',lowPage.includes('class="low-balance"')&&lowPage.includes('not enough for a video')&&!richPage.includes('class="low-balance"'));
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

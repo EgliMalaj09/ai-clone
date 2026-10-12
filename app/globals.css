@@ -309,3 +309,6 @@ tr[draggable=true]{cursor:grab}
 .share-copy p{color:#68707a;line-height:1.6;margin:0}
 @media (max-width:760px){.share-page{grid-template-columns:1fr;gap:24px;margin-top:10px}.share-copy h1{font-size:30px}}
 .share-state{display:flex;align-items:center;gap:4px;font-size:13px;color:#68707a}
+.low-balance{display:flex;flex-wrap:wrap;align-items:center;gap:10px;max-width:1440px;margin:12px auto 0;padding:10px 16px;border-radius:12px;background:#fff8ea;border:1px solid #f5c26b;color:#5c3b00;font-size:14px}
+.low-balance span{flex:1;min-width:220px}
+@media (max-width:760px){.low-balance{margin:10px 16px 0}}

@@ -432,6 +432,8 @@ export const sq:Record<string,string>={
  'Shared':'E ndarë',
  'This video is no longer shared.':'Kjo video nuk ndahet më.',
  'Stop sharing':'Ndalo ndarjen',
+ 'You have {amount} — not enough for a video (from {cheapest}).':'Ke {amount} — nuk mjaftojnë për një video (nga {cheapest}).',
+ 'Best value: {name}, {amount} for {price}.':'Vlera më e mirë: {name}, {amount} për {price}.',
  'Wrong face':'Fytyrë e gabuar',
  'Glitches or artifacts':'Defekte ose shtrembërime',
  'Doesn’t match the template':'Nuk përputhet me shabllonin',

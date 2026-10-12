@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 9 | 45 |
+| 3B. Version 1 features | 10 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -256,7 +256,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V24 🟡 Music on videos.** Optional background music track chosen from a licensed library, added to the downloaded video.
 - [x] **V25 🟡 Share straight to apps.** On phones, the native share sheet (WhatsApp, Instagram, TikTok) with the video file, not only a link.
 - [ ] **V26 🟡 "Your video is ready" browser notification.** In addition to the email (C11.2), so customers can leave the page while waiting.
-- [ ] **V27 🟡 Low balance reminder.** When credits drop below the cheapest template, show a reminder with the best pack.
+- [x] **V27 🟡 Low balance reminder.** When credits drop below the cheapest template, show a reminder with the best pack.
 - [ ] **V28 🟡 Gift credits.** Buy a pack as a gift and send it by email with a redeem code.
 - [ ] **V29 🟡 New template emails.** Announce new and seasonal templates to customers who opted in (C20.3), with an unsubscribe link.
 - [ ] **V30 🟡 Removal request form.** A public form for someone who finds themselves in a video they didn't agree to, going to the admin report queue (C21) with a fast takedown.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V27 | Done | Low balance reminder on Explore, My creations, Favorites and Account when credits can't pay for the cheapest video, naming the best-value pack that covers it, with a Buy credits button (translated). 1 integration check |
 | 2026-10-12 | V3, V25 | Done | Share page /v/<id> (share_links, migration 0014): stable link per video, Open Graph image + video card, view count, Make your own CTA, owner can Stop sharing, deleting the video revokes it; video served via short signed links. My creations: Shared state, Stop sharing, and on phones Send video → native share sheet with the MP4 file. Privacy text updated (EN+SQ). 3 integration checks |
 | 2026-10-12 | V20 | Done | POST /api/generations/:id/again (owner only, completed, current cost must match, idempotent key) reusing startGeneration; creations list returns repeatCost; Make it again button with confirm, translated. 1 integration check |
 | 2026-10-12 | V10 | Done | Roles user/support/admin: requireUser lets staff into the admin, adminAPI allow-list for support, role change via PATCH users (admin password, not self, keep one admin, sessions cleared), filtered sidebar, role panel. 3 security checks |
