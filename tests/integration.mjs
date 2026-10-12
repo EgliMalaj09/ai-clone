@@ -522,7 +522,7 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const abSeen=await Promise.all(abPeople.map(async u=>(await request('/api/templates/formula-driver',{cookie:u.cookie})).body.template.creditCost));
  const abGuest=(await request('/api/templates/formula-driver')).body.template.creditCost;
  ok('Each customer sees the price of their version; guests see version A',abPeople.every((u,i)=>abSeen[i]===(u.v==='B'?abBase-50:abBase))&&abGuest===abBase);
- const abBuyer=abPeople.find(u=>u.v==='B')||people[0];const buyerCost=abBuyer.v==='B'?abBase-50:abBase;
+ const abBuyer=abPeople.find(u=>u.v==='B')||abPeople[0];const buyerCost=abBuyer.v==='B'?abBase-50:abBase;
  await grant(abBuyer.id,2000);const abPhoto=await upload(abBuyer.cookie);
  await request('/api/analytics',{method:'POST',cookie:abBuyer.cookie,data:{name:'template_view',templateId:formula.id}});
  await request('/api/generations',{method:'POST',cookie:abBuyer.cookie,data:{templateId:formula.id,uploadIds:[abPhoto.body.id],idempotencyKey:randomUUID(),expectedCost:abBuyer.v==='B'?abBase:abBase-50,consent:true},expected:409});
@@ -544,5 +544,55 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const link=new URL(done.files.find(f=>f.kind==='output').downloadUrl);const fetched=await mf.dispatchFetch(config.APP_ORIGIN+link.pathname+link.search);
  ok('Export download links work without signing in, as attachments',fetched.status===200&&fetched.headers.get('content-disposition')?.includes('attachment'));await fetched.arrayBuffer();
  await request('/api/auth/logout',{method:'POST',cookie:userCookie,data:{}});await request('/api/favorites',{cookie:userCookie,expected:401});ok('Sign-out invalidates the session',true);
+ // V1: social sign-in. A separate instance carries Google/Apple keys and mocks the providers' token/identity endpoints.
+ const {Response:MFResponse}=require('miniflare');
+ const {generateKeyPairSync}=require('node:crypto');
+ const applePem=generateKeyPairSync('ec',{namedCurve:'P-256'}).privateKey.export({type:'pkcs8',format:'pem'}).toString();
+ const oauthEnv={...config,GOOGLE_CLIENT_ID:'test.apps.googleusercontent.com',GOOGLE_CLIENT_SECRET:'google-secret-abcdef123456',APPLE_CLIENT_ID:'com.studio.signin',APPLE_TEAM_ID:'ABCDE12345',APPLE_KEY_ID:'KEY1234567',APPLE_PRIVATE_KEY:applePem};
+ let googleUser={sub:'google-1',email:'google-new@studio.test',email_verified:true,name:'Google Newcomer'};
+ let appleUser={sub:'apple-1',email:'apple-user@privaterelay.appleid.com',email_verified:'true'};
+ const b64u=o=>Buffer.from(JSON.stringify(o)).toString('base64url');
+ const oauthMf=new Miniflare({...options,d1Databases:{DB:'studio-oauth'},bindings:oauthEnv,outboundService:async req=>{const u=new URL(req.url);
+  if(u.hostname==='oauth2.googleapis.com')return MFResponse.json({access_token:'ya29.fake',token_type:'Bearer'});
+  if(u.hostname==='openidconnect.googleapis.com')return MFResponse.json({sub:googleUser.sub,email:googleUser.email,email_verified:googleUser.email_verified,name:googleUser.name});
+  if(u.hostname==='appleid.apple.com')return MFResponse.json({id_token:b64u({alg:'ES256'})+'.'+b64u({iss:'https://appleid.apple.com',aud:oauthEnv.APPLE_CLIENT_ID,exp:Math.floor(Date.now()/1000)+3600,sub:appleUser.sub,email:appleUser.email,email_verified:appleUser.email_verified})+'.sig'});
+  throw new Error('Unexpected OAuth call: '+u.hostname);}});
+ try{
+  const odb=await oauthMf.getD1Database('DB');
+  for(const f of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort()){for(const s of (await readFile('drizzle/'+f,'utf8')).split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await odb.prepare(s).run();}
+  const odispatch=(route,{method='GET',headers={}}={})=>oauthMf.dispatchFetch(oauthEnv.APP_ORIGIN+route,{method,redirect:'manual',headers:{origin:oauthEnv.APP_ORIGIN,cookie:['studio_lang=en',headers.cookie].filter(Boolean).join('; '),...headers}});
+  const setCookies=r=>r.headers.getSetCookie?r.headers.getSetCookie():[r.headers.get('set-cookie')].filter(Boolean);
+  const session=r=>setCookies(r).map(c=>c.split(';')[0]).find(c=>c.startsWith('studio_session='));
+  async function flow(provider,{tamperNonce,code='testcode'}={}){
+   const start=await odispatch('/api/auth/oauth/'+provider+'?next=/account');
+   const state=new URL(start.headers.get('location')).searchParams.get('state');
+   let nonce=setCookies(start).map(c=>c.split(';')[0]).find(c=>c.startsWith('oauth_state='))?.split('=')[1];
+   if(tamperNonce)nonce='wrong-nonce';
+   const cb=await odispatch('/api/auth/oauth/'+provider+'/callback?code='+code+'&state='+encodeURIComponent(state),{headers:{cookie:'oauth_state='+nonce}});
+   return {start,cb,location:cb.headers.get('location'),session:session(cb)};
+  }
+  const start=await odispatch('/api/auth/oauth/google?next=/account');
+  ok('Social sign-in starts a Google flow with a signed state and nonce cookie',start.status===302&&start.headers.get('location').startsWith('https://accounts.google.com/')&&new URL(start.headers.get('location')).searchParams.get('state')&&setCookies(start).some(c=>c.startsWith('oauth_state=')));
+  const g1=await flow('google');
+  const me1=await (await odispatch('/api/me',{headers:{cookie:g1.session}})).json();
+  ok('A new Google account is created, verified and signed in',g1.cb.status===302&&g1.location.endsWith('/account')&&!!g1.session&&me1.user?.email==='google-new@studio.test'&&me1.user.emailVerified&&me1.user.name==='Google Newcomer');
+  const g2=await flow('google');const me2=await (await odispatch('/api/me',{headers:{cookie:g2.session}})).json();
+  ok('The same Google identity signs into the same account, not a duplicate',me2.user?.id===me1.user.id&&Number((await odb.prepare("SELECT COUNT(*) AS n FROM users WHERE email='google-new@studio.test'").first()).n)===1);
+  await oauthMf.dispatchFetch(oauthEnv.APP_ORIGIN+'/api/auth/register',{method:'POST',headers:{origin:oauthEnv.APP_ORIGIN,'content-type':'application/json',cookie:'studio_lang=en'},body:JSON.stringify({name:'Email First',email:'both@studio.test',password:'Email-password-123',acceptTerms:true,confirmAge:true})});
+  const emailUser=await odb.prepare("SELECT id FROM users WHERE email='both@studio.test'").first();
+  googleUser={sub:'google-link',email:'both@studio.test',email_verified:true,name:'Linked'};
+  const gLink=await flow('google');const meLink=await (await odispatch('/api/me',{headers:{cookie:gLink.session}})).json();
+  ok('A Google identity whose email matches an existing account links to it',meLink.user?.id===emailUser.id&&(await odb.prepare("SELECT COUNT(*) AS n FROM accounts WHERE user_id=? AND provider='google'").bind(emailUser.id).first()).n===1);
+  googleUser={sub:'google-csrf',email:'csrf@studio.test',email_verified:true,name:'CSRF'};
+  const csrf=await flow('google',{tamperNonce:true});
+  ok('A callback with a mismatched nonce is rejected with no session (CSRF)',csrf.cb.status===302&&csrf.location.includes('/login?error=')&&!csrf.session&&!(await odb.prepare("SELECT id FROM users WHERE email='csrf@studio.test'").first()));
+  googleUser={sub:'google-noemail',email:'unverified@studio.test',email_verified:false,name:'Unverified'};
+  const noEmail=await flow('google');
+  ok('An unverified Google email is refused and creates no account',noEmail.location.includes('error=no_email')&&!noEmail.session&&!(await odb.prepare("SELECT id FROM users WHERE email='unverified@studio.test'").first()));
+  const a1=await flow('apple');const meApple=await (await odispatch('/api/me',{headers:{cookie:a1.session}})).json();
+  ok('Apple sign-in creates a verified account from the id_token',a1.cb.status===302&&!!a1.session&&meApple.user?.email==='apple-user@privaterelay.appleid.com'&&meApple.user.emailVerified);
+  const loginHtml=await (await odispatch('/login')).text();
+  ok('The login page offers the configured social sign-ins',loginHtml.includes('Continue with Google')&&loginHtml.includes('Continue with Apple')&&loginHtml.includes('/api/auth/oauth/google'));
+ }finally{await oauthMf.dispose();}
  await writeFile('test-results/integration.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,checks},null,2));console.log('\n'+checks.length+' integration checks passed.');
 }catch(e){console.error('FAIL',e);await mkdir('test-results',{recursive:true});await writeFile('test-results/integration.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,error:String(e),checks},null,2));process.exitCode=1}finally{await mf.dispose()}

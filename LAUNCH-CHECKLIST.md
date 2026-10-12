@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 21 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 39 | 45 |
+| 3B. Version 1 features | 40 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -228,7 +228,7 @@ These come first, because the code and infrastructure work depends on them.
 Everything from the feature list in TODO.md, built before launch. Strike through any you decide to drop and note why in the change log.
 
 **Customer side**
-- [ ] **V1 🟡 Google and Apple sign-in.** The `accounts` table is ready for it; keep email sign-up as well.
+- [x] **V1 🟡 Google and Apple sign-in.** ✅ "Continue with Google" and "Continue with Apple" on sign-in/registration, shown only when each provider's keys are set (Admin → Connections → Social sign-in). OpenID Connect code flow in `lib/server/oauth.ts`; signed `state` + one-time nonce cookie guard against login CSRF. A social identity whose verified email matches an existing account links to it; new social accounts are created verified, with no password (set one later via "Forgot password"), and get welcome credits. Email sign-up kept. Owner still provides the Google/Apple credentials. Sign-up also now verifies by a 6-digit emailed code (in addition to the link). See DECISIONS.md #21–22. 8 integration + 3 production checks.
 - [ ] **V2 🟡 Watermarked preview.** A low-resolution, watermarked preview before credits are charged, to build trust. **Blocked (owner + service):** every preview is a real AI run that costs money even when the customer doesn't buy, and Workers can't watermark or downscale video, so it needs a media-processing service. Needs your decision on who pays for discarded previews (D16/D3). Today the template's example video and the free redo (C21) cover trust. See DECISIONS.md #19.
 - [x] **V3 🟡 Share page.** `/v/<id>` with an Open Graph preview and links the owner can revoke, instead of a raw 23-hour media link.
 - [x] **V4 🟡 Promo codes and referrals.** Codes that grant credits or discount packs, plus "invite a friend, both get credits". ✅ Admin → Promo codes: codes that give credits or a % off a pack (limits, expiry, on/off, one use per customer); customers enter them under Credits → Have a code? (discounted prices shown, POK charged the discounted amount, whole lek for ALL). Invite friends: each customer's link; both get the set credits after the friend's first paid purchase (Credits page box; 0 = off, the default). See DECISIONS.md #16.
@@ -373,6 +373,8 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V1 | Done | Google & Apple sign-in (OpenID Connect code flow, `lib/server/oauth.ts`): buttons shown when a provider's keys are set in Admin → Connections → Social sign-in; signed state + nonce cookie (login-CSRF safe); verified-email account linking; new social accounts created verified, passwordless, with welcome credits. Apple client secret is an ES256 JWT from the .p8. New config/connection fields (GOOGLE_*/APPLE_*). DECISIONS.md #21. 8 integration checks |
+| 2026-10-12 | C6/C20 | Enhanced | Sign-up email verification by a 6-digit code: the verify email now carries the code alongside the link, and registration shows a code-entry step (resend supported). Code stored hashed, scoped per account, 30-min expiry, 6 attempts/15 min. DECISIONS.md #22. 3 production checks |
 | 2026-10-12 | V38 | Done | Creator & campaign tracking links: per-link share URL, sign-up attribution and admin stats (sign-ups, buyers, purchases, credits). Payouts left to owner (D17). Migration 0029. 5 integration checks |
 | 2026-10-12 | C11.1 | Done | Receipt email after each paid credit purchase (once per purchase, customer's language, not a tax invoice). 1 production check |
 | 2026-10-12 | V16 | Done | A/B tests (template_experiments, migration 0028): stable split by account id, applied to catalog API, storefront, template page, related, generation pricing and repeat price; views/creations tagged with experiment and version; admin start/stop and results. 3 integration checks |

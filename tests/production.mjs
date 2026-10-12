@@ -63,6 +63,11 @@ try{
   ok('Configured production registration requires email verification',member.body.verificationRequired&&!member.body.user.emailVerified&&requests.some(r=>r.host==='api.resend.com'));
   const verifyMail=mails[mails.length-1];
   ok('The verification email is branded HTML with a verify button and link, plus a plain-text fallback',verifyMail.subject==='Verify your Project Studio email'&&verifyMail.from===keys.MAIL_FROM&&verifyMail.to==='member@studio.test'&&/<a [^>]*href="[^"]*\/verify\?token=/.test(verifyMail.html)&&verifyMail.html.includes('Verify my email')&&verifyMail.html.includes('Project Studio')&&!verifyMail.html.includes('PROJECT STUDIO')&&verifyMail.text.includes('/verify?token=')&&verifyMail.text.includes('30 minutes'));
+  const verifyCode=verifyMail.html.match(/letter-spacing:8px[^>]*>(\d{6})</)?.[1];
+  ok('The verification email also carries a 6-digit code',/^\d{6}$/.test(verifyCode||'')&&verifyMail.text.includes(verifyCode));
+  await request('/api/auth/verify-code',{method:'POST',cookie:member.cookie,data:{code:verifyCode==='000000'?'111111':'000000'},expected:400});ok('A wrong verification code is rejected');
+  await request('/api/auth/verify-code',{method:'POST',cookie:member.cookie,data:{code:verifyCode}});
+  ok('The correct 6-digit code verifies the account',(await request('/api/me',{cookie:member.cookie})).body.user.emailVerified===true);
   await request('/api/admin/connections',{cookie:member.cookie,expected:403});ok('Members cannot inspect connection configuration');
   await request('/api/admin/connections',{method:'PATCH',cookie:member.cookie,data:{currentPassword:password,values:{HIGGSFIELD_API_KEY:keys.HIGGSFIELD_API_KEY}},expected:403});ok('Members cannot write connections even with a supplied password');
   const preset=(await request('/api/admin/workflows/preset',{method:'POST',cookie:admin,data:{...template,requiredImageCount:2}})).body;
@@ -120,7 +125,7 @@ try{
   // C10: emails go out in the customer's language (Albanian by default).
   await request('/api/auth/register',{method:'POST',lang:null,data:{name:'Klient Shqip',email:'shqip@studio.test',password:'Fjalekalim-123',acceptTerms:true,confirmAge:true},expected:201});
   const sqMail=mails.find(m=>m.to==='shqip@studio.test');
-  ok('An Albanian visitor gets the verification email in Albanian',sqMail&&sqMail.subject.startsWith('Verifiko email-in')&&sqMail.html.includes('lang="sq"')&&sqMail.text.includes('Hape këtë lidhje'));
+  ok('An Albanian visitor gets the verification email in Albanian',sqMail&&sqMail.subject.startsWith('Verifiko email-in')&&sqMail.html.includes('lang="sq"')&&sqMail.text.toLowerCase().includes('hape këtë lidhje')&&sqMail.text.includes('kod 6-shifror'));
   // V11: with email configured, the admin's reset link is emailed to the customer, not shown.
   const shqip=await db.prepare("SELECT id FROM users WHERE email='shqip@studio.test'").first();
   const sentLink=(await request('/api/admin/users/'+shqip.id+'/reset-link',{method:'POST',cookie:admin,data:{}})).body;

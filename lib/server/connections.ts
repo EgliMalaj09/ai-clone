@@ -9,6 +9,8 @@ const fields={
   POK_KEY_ID:'pokKeyId',POK_KEY_SECRET:'pokKeySecret',POK_MERCHANT_ID:'pokMerchantId',POK_ENVIRONMENT:'pokEnvironment',
   HIGGSFIELD_API_KEY:'higgsfieldKey',HIGGSFIELD_API_SECRET:'higgsfieldSecret',FAL_KEY:'falKey',REPLICATE_API_TOKEN:'replicateKey',
   RESEND_API_KEY:'mailKey',MAIL_FROM:'mailFrom',SENTRY_DSN:'sentryDsn',
+  GOOGLE_CLIENT_ID:'googleClientId',GOOGLE_CLIENT_SECRET:'googleClientSecret',
+  APPLE_CLIENT_ID:'appleClientId',APPLE_TEAM_ID:'appleTeamId',APPLE_KEY_ID:'appleKeyId',APPLE_PRIVATE_KEY:'applePrivateKey',
 } as const;
 type Field=keyof typeof fields;
 const names=Object.keys(fields) as Field[];
@@ -46,6 +48,8 @@ export async function serviceConfig(tolerant=false){
 
 /** Whether an AI provider has the keys it needs. */
 export function providerConfigured(id:string,c:ReturnType<typeof config>){return id==='higgsfield'?!!c.higgsfieldKey&&!!c.higgsfieldSecret:id==='fal'?!!c.falKey:id==='replicate'?!!c.replicateKey:id==='mock'?c.demo:false;}
+/** Which social sign-ins are ready (V1): Google needs its client id+secret; Apple needs the services id, team, key id and .p8. */
+export function oauthConfigured(c:ReturnType<typeof config>){return {google:!!c.googleClientId&&!!c.googleClientSecret,apple:!!c.appleClientId&&!!c.appleTeamId&&!!c.appleKeyId&&!!c.applePrivateKey};}
 export async function purchaseReadiness(){
   const c=await serviceConfig(true);
   const [heartbeat,enabled]=await Promise.all([
@@ -62,6 +66,7 @@ export async function purchaseReadiness(){
     registrationAvailable:c.demo||email,payments,email,ai,dispatcher,publicAccess,
     paymentMode:!payments?'missing':c.pokEnvironment==='production'?'live':'test',
     enabledProviders:enabled.filter(p=>p.id==='mock'?c.demo:providerConfigured(p.id as string,c)).map(p=>p.id as string),
+    oauthProviders:(['google','apple'] as const).filter(p=>oauthConfigured(c)[p]),
   };
 }
 /** Admin-controlled maintenance pause (C22): stop new purchases and/or new creations without a deploy. */
@@ -88,7 +93,7 @@ export async function assertGeneratable(template:AdminTemplate){
 export async function publicAvailability(template?:AdminTemplate|null){
   const r=await purchaseReadiness();
   const m=await maintenanceStatus();
-  return {registrationAvailable:r.registrationAvailable,purchasingAvailable:r.ready&&!m.purchasesPaused,generationAvailable:generationReady(r)&&!m.creationsPaused&&(!template||templateRunnable(template,r)),maintenance:m};
+  return {registrationAvailable:r.registrationAvailable,purchasingAvailable:r.ready&&!m.purchasesPaused,generationAvailable:generationReady(r)&&!m.creationsPaused&&(!template||templateRunnable(template,r)),maintenance:m,oauthProviders:r.oauthProviders};
 }
 export async function connectionStatus(){
   const c=await serviceConfig(true),readiness=await purchaseReadiness();
@@ -97,10 +102,10 @@ export async function connectionStatus(){
     fields:Object.fromEntries(names.map(name=>[name,{configured:!!c[fields[name]],source:runtime()[name]?'environment':saved.some(r=>r.key==='connection.'+name)?'encrypted':'missing',...(name==='MAIL_FROM'?{value:c.mailFrom}:name==='POK_ENVIRONMENT'?{value:c.pokEnvironment||'staging'}:name==='POK_MERCHANT_ID'?{value:c.pokMerchantId}:{})}])),
   };
 }
-const keySchema=z.enum(['POK_KEY_ID','POK_KEY_SECRET','POK_MERCHANT_ID','POK_ENVIRONMENT','HIGGSFIELD_API_KEY','HIGGSFIELD_API_SECRET','FAL_KEY','REPLICATE_API_TOKEN','RESEND_API_KEY','MAIL_FROM','SENTRY_DSN']);
+const keySchema=z.enum(['POK_KEY_ID','POK_KEY_SECRET','POK_MERCHANT_ID','POK_ENVIRONMENT','HIGGSFIELD_API_KEY','HIGGSFIELD_API_SECRET','FAL_KEY','REPLICATE_API_TOKEN','RESEND_API_KEY','MAIL_FROM','SENTRY_DSN','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','APPLE_CLIENT_ID','APPLE_TEAM_ID','APPLE_KEY_ID','APPLE_PRIVATE_KEY']);
 export async function updateConnections(req:Request,user:StudioUser){
   await rateLimit('connections:'+user.id,8,900000);
-  const body=z.object({currentPassword:z.string().min(1).max(128),values:z.record(keySchema,z.string().trim().min(1).max(1024)).default({}),remove:z.array(keySchema).max(12).default([])}).strict().parse(await jsonBody(req));
+  const body=z.object({currentPassword:z.string().min(1).max(128),values:z.record(keySchema,z.string().trim().min(1).max(2048)).default({}),remove:z.array(keySchema).max(18).default([])}).strict().parse(await jsonBody(req));
   const account=await one('SELECT password_hash FROM users WHERE id=?',user.id);
   must(account&&await checkPassword(body.currentPassword,account.password_hash),'Your administrator password is incorrect.',403);
   const entries=Object.entries(body.values) as [Field,string][];
@@ -108,8 +113,14 @@ export async function updateConnections(req:Request,user:StudioUser){
   must(changed.length>0&&new Set(changed).size===changed.length,'Choose distinct connections to save or remove.');
   for(const name of changed)must(!runtime()[name],'This connection is managed in the hosting environment: '+name,409);
   for(const [name,value] of entries){
-    must(!/[\r\n\u0000]/.test(value),'Connection values cannot contain control characters.');
+    // The Apple sign-in key is a multi-line PEM (.p8); every other value is a single line.
+    must(name==='APPLE_PRIVATE_KEY'?!/\u0000/.test(value):!/[\r\n\u0000]/.test(value),'Connection values cannot contain control characters.');
     if(name==='POK_KEY_ID'||name==='POK_KEY_SECRET'||name==='POK_MERCHANT_ID')must(value.length>=6&&!/\s/.test(value),'Use the complete value from your POK merchant dashboard.');
+    if(name==='GOOGLE_CLIENT_ID')must(/\.apps\.googleusercontent\.com$/.test(value),'Use the OAuth client ID from Google Cloud (ends in .apps.googleusercontent.com).');
+    if(name==='GOOGLE_CLIENT_SECRET')must(value.length>=16&&!/\s/.test(value),'Paste the client secret from the same Google OAuth client.');
+    if(name==='APPLE_CLIENT_ID')must(/^[A-Za-z0-9.\-]{3,}$/.test(value),'Use your Apple Services ID (e.g. com.yourbrand.signin).');
+    if(name==='APPLE_TEAM_ID'||name==='APPLE_KEY_ID')must(/^[A-Z0-9]{10}$/.test(value),'Use the 10-character Team ID and Key ID from your Apple developer account.');
+    if(name==='APPLE_PRIVATE_KEY')must(value.includes('BEGIN PRIVATE KEY'),'Paste the contents of the .p8 key file downloaded from Apple.');
     if(name==='POK_ENVIRONMENT')must(value==='staging'||value==='production','Choose staging (test payments) or production (real payments).');
     if(name==='RESEND_API_KEY')must(/^re_[A-Za-z0-9_-]{12,}$/.test(value),'Use a valid Resend API key.');
     if(name==='FAL_KEY'||name==='REPLICATE_API_TOKEN')must(value.length>=16&&!/\s/.test(value),'Use the complete provider API key.');

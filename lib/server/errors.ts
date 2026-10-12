@@ -4,7 +4,7 @@ import {serviceConfig} from './connections';
 // Error tracking (C7): every server error and provider/webhook failure is logged, kept for 30 days in error_events
 // (Admin → Operations), and forwarded to Sentry when a DSN is configured. Reporting never throws.
 
-export type ErrorSource='api'|'page'|'generation'|'provider'|'payment'|'webhook'|'email'|'credits'|'queue'|'storage';
+export type ErrorSource='api'|'page'|'generation'|'provider'|'payment'|'webhook'|'email'|'credits'|'queue'|'storage'|'auth';
 type Context=Record<string,string|number|boolean|null|undefined>;
 
 const errorText=(e:unknown)=>e instanceof Error?e.message:typeof e==='string'?e:e===undefined?'':'unknown';

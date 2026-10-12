@@ -88,7 +88,7 @@ export function generationMailContent(kind:GenerationMailKind,{brand,templateNam
  return noticeMail(copy,{brand,link,linkLabel:tr(kind==='ready'?'Watch my video':'Open My creations'),supportEmail,lang});
 }
 /** Builds the subject, HTML and plain-text bodies for an authentication email. */
-export function authMailContent(type:AuthMailType,{brand,url,supportEmail,lang='en'}:{brand:string;url:string;supportEmail?:string;lang?:Lang}):MailContent{
+export function authMailContent(type:AuthMailType,{brand,url,supportEmail,lang='en',code}:{brand:string;url:string;supportEmail?:string;lang?:Lang;code?:string}):MailContent{
  const tr=(s:string,v?:Record<string,string>)=>translate(lang,s,v);
  const raw=COPY[type],c={heading:tr(raw.heading),lead:tr(raw.lead),button:tr(raw.button),ignore:tr(raw.ignore)},safeUrl=escape(url),support=supportEmail?.trim();
  const subject=tr(raw.subject,{brand});
@@ -97,8 +97,9 @@ export function authMailContent(type:AuthMailType,{brand,url,supportEmail,lang='
   c.heading,
   '',
   c.lead,
+  ...(code?['',tr('Enter this 6-digit code to verify your email:'),code]:[]),
   '',
-  tr('Open this link within 30 minutes:'),
+  tr(code?'Or open this link within 30 minutes:':'Open this link within 30 minutes:'),
   url,
   '',
   c.ignore,
@@ -122,6 +123,10 @@ export function authMailContent(type:AuthMailType,{brand,url,supportEmail,lang='
      <h1 style="margin:0 0 12px;font-family:'Segoe UI',Arial,sans-serif;font-size:22px;line-height:1.3;color:#ffffff;">${escape(c.heading)}</h1>
      <p style="margin:0 0 24px;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;line-height:1.6;color:#aeb6c4;">${escape(c.lead)}</p>
     </td></tr>
+    ${code?`<tr><td style="padding:0 32px 8px;">
+     <p style="margin:0 0 8px;font-family:'Segoe UI',Arial,sans-serif;font-size:13px;color:#8a93a3;">${escape(tr('Enter this 6-digit code to verify your email:'))}</p>
+     <div style="font-family:'Segoe UI',Arial,sans-serif;font-size:32px;font-weight:700;letter-spacing:8px;color:#ffffff;background:#0f1115;border:1px solid #262b36;border-radius:12px;padding:16px 0;text-align:center;">${escape(code)}</div>
+    </td></tr>`:''}
     <tr><td style="padding:0 32px 8px;">
      <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:10px;background:#6366f1;">
       <a href="${safeUrl}" style="display:inline-block;padding:13px 28px;font-family:'Segoe UI',Arial,sans-serif;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">${escape(c.button)}</a>
