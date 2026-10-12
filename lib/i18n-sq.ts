@@ -30,6 +30,7 @@ export const sq:Record<string,string>={
  'A fresh start.':'Një fillim i ri.',
  'Welcome back.':'Mirë se u ktheve.',
  'Or buy just this video — {price}':'Ose bli vetëm këtë video — {price}',
+ 'Enter the 6-digit code from your email':'Shkruaj kodin 6-shifror nga email-i yt',
  'Starting checkout...':'Duke hapur arkën...',
  'CHECK YOUR EMAIL':'KONTROLLO EMAIL-IN',
  'One code away':'Vetëm një kod larg',
