@@ -42,7 +42,7 @@ const FAQ:{title:string;items:[string,string][]}[]=[
   ['My video came out badly.','Open it in [My creations](/creations) and choose “Report a problem” within 7 days. If your photo followed the guidelines, we make one free redo with the same photo.'],
  ]},
  {title:'Privacy and your data',items:[
-  ['Who can see my photos and videos?','Only you and the studio administrators. A video becomes visible to others only when you share a link to it.'],
+  ['Who can see my photos and videos?','Only you and the studio administrators. A video becomes visible to others only when you share a link to it or add it to the community gallery, and you can undo both at any time.'],
   ['How long do you keep my photos?','Photos that are not used for a video are deleted automatically after 24 hours. Photos and videos you keep stay in your account until you delete them.'],
   ['How do I delete my data?','Delete single videos from My creations and photos from [Account](/account), or delete your whole account there. You can also download a copy of all your data from Account first.'],
  ]},

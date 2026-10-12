@@ -68,6 +68,8 @@ export const generations=sqliteTable('generations',{
  creditCost:integer('credit_cost').notNull().default(0),holdId:text('hold_id'),
  // Set when this generation is a free goodwill redo started from a report (C21), linking it back to the case.
  reportId:text('report_id'),
+ // Ratings and the public gallery/feed (V6/V40): the customer's 1–5 rating and, only if they choose, when the video was made public.
+ rating:integer('rating'),ratedAt:integer('rated_at'),publicAt:integer('public_at'),likes:integer('likes').notNull().default(0),
 },t=>[index('idx_generations_user_date').on(t.userId,t.createdAt),index('idx_generation_queue').on(t.status,t.nextRunAt,t.leaseUntil),index('idx_generations_thumbnail').on(t.thumbnail)]);
 // Customer reports on finished videos and the admin's decision (C21). One open report per video; a good photo earns one free redo.
 export const generationReports=sqliteTable('generation_reports',{
@@ -159,3 +161,7 @@ export const templateRequests=sqliteTable('template_requests',{
 export const templateRequestVotes=sqliteTable('template_request_votes',{
  requestId:text('request_id').notNull().references(()=>templateRequests.id,{onDelete:'cascade'}),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),createdAt:integer('created_at').notNull(),
 },t=>[uniqueIndex('idx_template_request_vote').on(t.requestId,t.userId)]);
+// Likes on public videos (V40), one per customer and video.
+export const feedLikes=sqliteTable('feed_likes',{
+ generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),createdAt:integer('created_at').notNull(),
+},t=>[uniqueIndex('idx_feed_like').on(t.generationId,t.userId)]);

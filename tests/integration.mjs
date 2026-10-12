@@ -410,6 +410,22 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('Customers suggest template ideas and vote once each',mineIdea.votes===2&&mineIdea.voted&&(await request('/api/ideas')).body.ideas.find(i=>i.id===idea.id).votes===1);
  await request('/api/admin/ideas/'+idea.id,{method:'PATCH',cookie:adminCookie,data:{status:'declined'}});
  ok('Declined ideas are hidden from customers',!(await request('/api/ideas')).body.ideas.some(i=>i.id===idea.id)&&(await request('/api/admin/ideas',{cookie:adminCookie})).body.ideas.some(i=>i.id===idea.id&&i.status==='declined')&&(await request('/ideas')).text.includes('What should we make next?'));
+ // V6/V40: ratings, opt-in community gallery and feed with likes; stopping sharing or staff hiding takes a video out.
+ const pub=(await request('/api/generations?status=completed&limit=24',{cookie:userCookie})).body.generations.find(g=>g.assetId&&!g.isPublic);
+ await request('/api/generations/'+pub.id+'/rating',{method:'POST',cookie:userCookie,data:{stars:6},expected:400});
+ await request('/api/generations/'+pub.id+'/rating',{method:'POST',cookie:relogged.cookie,data:{stars:5},expected:404});
+ await request('/api/generations/'+pub.id+'/rating',{method:'POST',cookie:userCookie,data:{stars:5}});
+ ok('Customers rate their finished videos',(await request('/api/generations/'+pub.id,{cookie:userCookie})).body.generations[0].rating===5);
+ ok('Videos are not public until the owner chooses',!(await request('/api/feed')).body.items.some(i=>i.id===pub.id));
+ await request('/api/generations/'+pub.id+'/public',{method:'POST',cookie:userCookie,data:{public:true}});
+ const feedItem=(await request('/api/feed')).body.items.find(i=>i.id===pub.id);const pubTpl=(await request('/api/generations/'+pub.id,{cookie:userCookie})).body.generations[0].templateSlug;
+ ok('A public video shows in the feed and on its template page',feedItem&&feedItem.video.includes('signature=')&&(await request('/template/'+pubTpl)).text.includes('See what others made'));
+ const liked=(await request('/api/generations/'+pub.id+'/like',{method:'POST',cookie:relogged.cookie,data:{}})).body;await request('/api/generations/'+pub.id+'/like',{method:'POST',data:{},expected:401});
+ ok('Signed-in customers like public videos',liked.liked&&liked.likes===1&&(await request('/api/feed?sort=popular',{cookie:relogged.cookie})).body.items.find(i=>i.id===pub.id).liked);
+ await request('/api/generations/'+pub.id+'/share',{method:'DELETE',cookie:userCookie});
+ ok('Stopping sharing also takes the video out of the community',!(await request('/api/feed')).body.items.some(i=>i.id===pub.id)&&!(await request('/api/generations/'+pub.id,{cookie:userCookie})).body.generations[0].isPublic);
+ await request('/api/generations/'+pub.id+'/public',{method:'POST',cookie:userCookie,data:{public:true}});await request('/api/admin/feed/'+pub.id+'/hide',{method:'POST',cookie:adminCookie,data:{}});
+ ok('Staff can hide a video from the community',!(await request('/api/feed')).body.items.some(i=>i.id===pub.id));
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

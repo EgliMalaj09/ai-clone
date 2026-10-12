@@ -29,7 +29,7 @@ export async function createRemovalRequest(input:unknown,lang:Lang){
  const id=uid('rr_');
  await run('INSERT INTO removal_requests (id,generation_id,share_id,video_reference,name,email,relation,details,locale,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',id,generationId,shareId,b.video,b.name,b.email,b.relation,b.details,lang,now());
  // Fast takedown: the public share page goes offline until the request is reviewed.
- if(generationId)await run('UPDATE share_links SET revoked_at=? WHERE generation_id=? AND revoked_at IS NULL',now(),generationId);
+ if(generationId){await run('UPDATE share_links SET revoked_at=? WHERE generation_id=? AND revoked_at IS NULL',now(),generationId);await run('UPDATE generations SET public_at=NULL WHERE id=?',generationId);}
  await event('removal_requested',null,{requestId:id,hidden:!!generationId});
  await reportError('queue','New removal request needs review',{level:'warning',context:{requestId:id,generationId}});
  return {ok:true,hidden:!!generationId};

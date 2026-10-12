@@ -3,7 +3,8 @@ import type {AdminTemplate,PublicTemplate,PhotoGuidelines,SupportInfo} from './c
 
 export type Pagination={page:number;limit:number;total:number;pages:number};
 
-export type Creation={id:string;templateName:string;templateSlug:string;thumbnail:string;status:string;creditCost:number;creditStatus:'pending'|'captured'|'released'|null;createdAt:number;startedAt:number|null;completedAt:number|null;error:string|null;assetId:string|null;isRedo:boolean;report:ReportSummary|null;repeatCost:number|null;shareUrl:string|null};
+export type Creation={id:string;templateName:string;templateSlug:string;thumbnail:string;status:string;creditCost:number;creditStatus:'pending'|'captured'|'released'|null;createdAt:number;startedAt:number|null;completedAt:number|null;error:string|null;assetId:string|null;isRedo:boolean;report:ReportSummary|null;repeatCost:number|null;shareUrl:string|null;rating:number|null;isPublic:boolean};
+export type FeedItem={id:string;templateName:string;templateSlug:string;thumbnail:string;video:string;shareUrl:string;likes:number;liked:boolean;publicAt:number};
 export type ReportSummary={status:string;resolution:string|null;reason:string;guideline:string|null;adminReason:string|null;createdAt:number};
 export type CreationsPage={generations:Creation[];activeCount:number;pagination:Pagination};
 export type ReportRow={id:string;generationId:string;templateName:string;thumbnail:string;reason:string;comment:string;status:string;resolution:string|null;guideline:string|null;adminReason:string|null;redoGenerationId:string|null;email:string|null;userReportCount:number;flagged:boolean;createdAt:number;resolvedAt:number|null};

@@ -16,7 +16,7 @@ export async function shareGeneration(userId:string,generationId:string){
  await event('video_shared',userId,{generationId});
  return {url:shareUrl(id),id};
 }
-export async function stopSharing(userId:string,generationId:string){await run('UPDATE share_links SET revoked_at=? WHERE generation_id=? AND user_id=? AND revoked_at IS NULL',now(),generationId,userId);}
+export async function stopSharing(userId:string,generationId:string){await run('UPDATE share_links SET revoked_at=? WHERE generation_id=? AND user_id=? AND revoked_at IS NULL',now(),generationId,userId);await run('UPDATE generations SET public_at=NULL WHERE id=? AND user_id=?',generationId,userId);}
 /** Which of these creations currently have a share link (for My creations). */
 export async function sharedMap(ids:string[]){if(!ids.length)return new Map<string,string>();const rows=await all(`SELECT generation_id,id FROM share_links WHERE revoked_at IS NULL AND generation_id IN (${ids.map(()=>'?').join(',')})`,...ids);return new Map(rows.map(r=>[r.generation_id as string,shareUrl(r.id as string)]));}
 

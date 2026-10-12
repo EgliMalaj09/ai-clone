@@ -25,6 +25,7 @@ import {shareGeneration,sharedMap,sharedVideoRedirect,stopSharing} from './share
 import {createRemovalRequest,listRemovals,resolveRemoval} from './removals';
 import {listVersions,recordVersion,restoreVersion} from './template-history';
 import {templateStats} from './template-stats';
+import {feed,hideFromFeed,rateCreation,setPublic,toggleLike} from './feed';
 import {adminIdeas,listIdeas,suggestIdea,toggleVote,updateIdea} from './template-requests';
 import {cancelAnnouncement,createAnnouncement,listAnnouncements,sendTest,unsubscribe} from './announcements';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
@@ -53,7 +54,7 @@ async function generationsFor(userId:string,url:URL,id?:string){
  const reportsMap=await reportsForGenerations(rows.map(g=>g.id as string));const shares=await sharedMap(rows.map(g=>g.id as string));
  // V20: a finished video can be made again while its template is live and its photos are still there.
  const photoIds=[...new Set(rows.flatMap(g=>parse<string[]>(g.input_ids,[])))];const kept=new Set(photoIds.length?(await all(`SELECT id FROM user_uploads WHERE user_id=? AND id IN (${photoIds.map(()=>'?').join(',')})`,userId,...photoIds)).map(r=>r.id as string):[]);
- const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);const inputs=parse<string[]>(g.input_ids,[]);return {...generationPublic(g),report:r?publicReport(r):null,shareUrl:shares.get(g.id as string)??null,repeatCost:g.status==='completed'&&g.current_cost&&inputs.length&&inputs.every(id=>kept.has(id))?Number(g.current_cost):null};});
+ const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);const inputs=parse<string[]>(g.input_ids,[]);return {...generationPublic(g),rating:g.rating??null,isPublic:!!g.public_at,report:r?publicReport(r):null,shareUrl:shares.get(g.id as string)??null,repeatCost:g.status==='completed'&&g.current_cost&&inputs.length&&inputs.every(id=>kept.has(id))?Number(g.current_cost):null};});
  return {generations,activeCount:active?.total||0,pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
 }
 async function deleteAccount(user:StudioUser){must(!isStaff(user.role),'A staff account cannot be deleted here. Ask an administrator to change its role first.',409);must(!await userHasOpenReport(user.id),'A video is under review. Please wait until the report is resolved before deleting the account.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);
@@ -124,6 +125,7 @@ export async function handleAPI(req:Request){try{
  if(p.join('/')==='credit-packages'&&method==='GET')return json({packages:await listPackages()});
  if(p.join('/')==='removal-requests'&&method==='POST'){await rateLimit('removal:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),5,3600000);return json(await createRemovalRequest(await body(req),langFromCookie(req.headers.get('cookie'))),201);}
  if(p[0]==='share'&&p[2]==='video'&&method==='GET')return await sharedVideoRedirect(p[1]);
+ if(p.join('/')==='feed'&&method==='GET')return json(await feed(url,await getUser(req.headers)));
  if(p.join('/')==='ideas'&&method==='GET')return json(await listIdeas(await getUser(req.headers)));
  if(p[0]==='me'&&method==='GET')return json({user:await getUser(req.headers),demo:config().demo});
  if(p[0]==='analytics'&&method==='POST'){const viewer=await getUser(req.headers);await rateLimit('analytics:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),180,60000);const b=await body(req);const name=z.enum(['homepage_view','template_view','template_selected','upload_started','checkout_started']).parse(b.name);await event(name,viewer?.id??null,{templateId:typeof b.templateId==='string'?b.templateId.slice(0,150):null});return json({ok:true});}
@@ -173,6 +175,9 @@ export async function handleAPI(req:Request){try{
   if(method==='POST'&&!p[1]){await rateLimit('generate:'+user.id,30,3600000);return json(await startGeneration(user,await body(req)),201);}
   if(method==='GET')return json(await generationsFor(user.id,url,p[1]));
   if(method==='POST'&&p[2]==='report'){return json(await createReport(user,p[1],await body(req)),201);}
+  if(method==='POST'&&p[2]==='rating')return json(await rateCreation(user,p[1],Number((await body(req)).stars)));
+  if(method==='POST'&&p[2]==='public')return json(await setPublic(user,p[1],(await body(req)).public===true));
+  if(method==='POST'&&p[2]==='like')return json(await toggleLike(user,p[1]));
   if(method==='POST'&&p[2]==='again'){await rateLimit('generate:'+user.id,30,3600000);const b=z.object({idempotencyKey:z.string().uuid(),expectedCost:z.number().int()}).parse(await body(req));const g=await one("SELECT template_id,input_ids FROM generations WHERE id=? AND user_id=? AND status='completed' AND deleted_at IS NULL",p[1],user.id);must(g,'Completed creation not found.',404);return json(await startGeneration(user,{templateId:g.template_id,uploadIds:parse<string[]>(g.input_ids,[]),idempotencyKey:b.idempotencyKey,expectedCost:b.expectedCost,consent:true}),201);}
   if(method==='DELETE'&&!p[2]){must(!await hasOpenReport(p[1]),'This creation is under review. You can delete it once the report is resolved.',409);await removeGeneration(p[1],user.id);return json({ok:true});}
   if(method==='POST'&&p[2]==='share')return json(await shareGeneration(user.id,p[1]));
@@ -213,7 +218,7 @@ const socialLink=z.union([z.literal(''),z.string().trim().max(200).url().refine(
 function supportMay(method:string,p:string[],url:URL){
  if(p[1]==='users'){if(method==='GET')return true;if(method==='POST'&&p[3]==='reset-link')return true;return false;}
  if(p[1]==='generations')return method==='GET'||method==='POST'&&p[3]==='retry';
- if(p[1]==='reports'||p[1]==='removals')return true;
+ if(p[1]==='reports'||p[1]==='removals'||p[1]==='feed')return true;
  if(p[1]==='operations')return method==='GET'||p[2]==='dispatch';
  return p[1]==='me'&&url.pathname.length>0;
 }
@@ -279,6 +284,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
    if(new URL(req.url).searchParams.get('permanent')!=='1'){await run('UPDATE templates SET archived_at=?,active=0,publish_at=NULL,updated_at=? WHERE id=?',now(),now(),p[2]);await audit(user.id,'template.archive',p[2]);return json({ok:true,archived:true});}
    must(existing.archivedAt,'Archive the template before deleting it permanently.',409);await run('DELETE FROM templates WHERE id=?',p[2]);await audit(user.id,'template.delete',p[2]);await releaseTemplateMedia(templateMediaUrls(existing));return json({ok:true});}
  }
+ if(p[1]==='feed'&&p[3]==='hide'&&method==='POST')return json(await hideFromFeed(user,p[2]));
  if(p[1]==='removals'){if(method==='GET'&&!p[2])return json(await listRemovals(new URL(req.url)));if(method==='POST'&&p[3]==='resolve')return json(await resolveRemoval(user,p[2],await body(req)));}
  if(p[1]==='reports'){
   if(method==='GET'&&!p[2])return json(await listReports(new URL(req.url)));
@@ -341,7 +347,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
  }
  if(p[1]==='settings'){
   if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),photoGuidelines:await photoGuidelines(),support:await supportInfo(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus(),maintenance:await maintenanceStatus(),limits:await spendingLimits(),exchangeRates:await exchangeRates()});}
-  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({welcomeCredits:z.number().int().min(0).max(100000).optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional(),limits:z.object({concurrent:z.number().int().min(0).max(100),daily:z.number().int().min(0).max(1000),studioDailyCost:z.number().int().min(0).max(1000000000)}).optional(),exchangeRates:z.object({EUR:z.number().positive().max(100000),ALL:z.number().positive().max(100000)}).optional(),support:z.object({email:z.union([z.literal(''),z.string().trim().email().max(120)]),phone:z.string().trim().max(40).regex(/^[+\d ()-]*$/,'Use digits, spaces and + only for the phone number.'),responseTime:z.string().trim().max(120),instagram:socialLink,tiktok:socialLink,facebook:socialLink}).optional()}).parse(await body(req));
+  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({welcomeCredits:z.number().int().min(0).max(100000).optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional(),limits:z.object({concurrent:z.number().int().min(0).max(100),daily:z.number().int().min(0).max(1000),studioDailyCost:z.number().int().min(0).max(1000000000)}).optional(),exchangeRates:z.object({EUR:z.number().positive().max(100000),ALL:z.number().positive().max(100000)}).optional(),support:z.object({email:z.union([z.literal(''),z.string().trim().email().max(120)]),phone:z.string().trim().max(40).regex(/^[+\d ()-]*$/,'Use digits, spaces and + only for the phone number.'),responseTime:z.string().trim().max(120),instagram:socialLink,tiktok:socialLink,facebook:socialLink,reviewUrl:socialLink.default('')}).optional()}).parse(await body(req));
    if(b.support){await run("INSERT INTO app_settings (key,value) VALUES ('support_info',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(b.support));await audit(user.id,'settings.update','support_info');}
    if(b.welcomeCredits!==undefined){await run("INSERT INTO app_settings (key,value) VALUES ('welcome_credits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(b.welcomeCredits));await audit(user.id,'settings.update','welcome_credits');}
    if(b.photoGuidelines){const value={do:cleanGuidelineList(b.photoGuidelines.do),dont:cleanGuidelineList(b.photoGuidelines.dont)};must(value.do.length&&value.dont.length,'Add at least one “do” and one “don’t” guideline.');await run("INSERT INTO app_settings (key,value) VALUES ('photo_guidelines',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(value));await audit(user.id,'settings.update','photo_guidelines');}

@@ -37,8 +37,8 @@ export const MINIMUM_AGE=13;
 // English only for now; Albanian follows with the site-wide translation (C10).
 export type PhotoGuidelines={do:string[];dont:string[]};
 /** Support contact and social accounts shown on the Contact page and in the footer (C26); edited in Admin → Settings. */
-export type SupportInfo={email:string;phone:string;responseTime:string;instagram:string;tiktok:string;facebook:string};
-export const EMPTY_SUPPORT_INFO:SupportInfo={email:'',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''};
+export type SupportInfo={email:string;phone:string;responseTime:string;instagram:string;tiktok:string;facebook:string;reviewUrl:string};
+export const EMPTY_SUPPORT_INFO:SupportInfo={email:'',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:'',reviewUrl:''};
 /** The business behind the studio (D9). TODO(D9): add the NIPT and address once confirmed. */
 export const BUSINESS={name:'VASIL XHAJA',country:'Albania'};
 export const DEFAULT_PHOTO_GUIDELINES:PhotoGuidelines={

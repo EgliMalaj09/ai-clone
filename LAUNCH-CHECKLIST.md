@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 19 | 45 |
+| 3B. Version 1 features | 22 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -233,7 +233,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V3 🟡 Share page.** `/v/<id>` with an Open Graph preview and links the owner can revoke, instead of a raw 23-hour media link.
 - [ ] **V4 🟡 Promo codes and referrals.** Codes that grant credits or discount packs, plus "invite a friend, both get credits".
 - [ ] **V5 🟡 Progress and ETA.** Progress estimate on creations; use fal.ai webhooks instead of polling.
-- [ ] **V6 🟡 Ratings and gallery.** Customers rate results; an opt-in "made with this template" gallery.
+- [x] **V6 🟡 Ratings and gallery.** Customers rate results; an opt-in "made with this template" gallery.
 - [x] **V7 🟡 Installable app (PWA).** Add to home screen on phones, with an app icon and offline page. ✅ Web app manifest (standalone, theme colour, shortcuts), icons incl. maskable and Apple home-screen icon, a network-first service worker with a bilingual offline page. Icons are made from today's logo; replace them with the final brand (X2.2).
 - [ ] **V8 🟡 Image-only templates.** Photo results (portraits, photoshoots) as a cheaper product; allow publishing workflows that end in an image.
 - [ ] **V9 🟡 Upscale / post-processing step.** A built-in step type using a real upscaling model.
@@ -275,9 +275,9 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V37 🟡 Quality levels per template.** Let a template offer "Standard" and "Premium" (e.g. a cheaper and a better AI model), each with its own credit cost, shown before generating.
 - [ ] **V38 🟡 Creator tracking links.** Personal links/codes for creators (D17) and referrals (V4), showing sign-ups and purchases per creator in the admin.
 - [ ] **V39 🟡 Product templates for businesses.** Templates that turn a product photo (not a face) into an ad clip, for shops and small businesses; separate category and photo guidelines (C31) without the face rules.
-- [ ] **V40 🟡 Public feed.** A public feed of results customers chose to share (opt-in), with likes, that links each video to its template; extends the gallery in V6.
+- [x] **V40 🟡 Public feed.** A public feed of results customers chose to share (opt-in), with likes, that links each video to its template; extends the gallery in V6.
 - [ ] **V41 🟡 Watermark on free results.** Results made with free welcome credits carry a small logo watermark; paid results don't (from D16).
-- [ ] **V42 🟡 Ask for a review.** After a good result (e.g. a high rating in V6), ask the customer to leave a Google or Trustpilot review.
+- [x] **V42 🟡 Ask for a review.** After a good result (e.g. a high rating in V6), ask the customer to leave a Google or Trustpilot review.
 - [x] **V43 🟡 Template requests.** Customers suggest templates they want; the admin sees requests and votes.
 - [ ] **V44 🟡 Community templates with royalties.** Genematic lets creators publish scenarios and earn tokens each time they're used. Large feature (creator accounts, review of submitted prompts, royalty payouts in credits); strike it if it's too much for version 1.
 
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V6, V40, V42 | Done | Ratings (1–5 stars) on finished videos; opt-in Share to the community (consent dialog) puts a video on the new /feed Community page (newest / most liked, likes for signed-in customers) and in a 'See what others made' gallery on its template page; stop sharing, deletion, removal requests and staff Hide take it out. Customers who rate 4–5 stars are invited to review (review link set in Admin → Settings → Support). Header nav fits at tablet widths. Privacy text and FAQ updated (EN+SQ). Migration 0020. 6 integration checks |
 | 2026-10-12 | V43 | Done | Template ideas: public /ideas page (footer "Suggest a template", link from empty search) where signed-in customers suggest ideas and vote once each; Admin → Template ideas sorted by votes with status (open / coming soon / available / declined) and a linked template. Migration 0019. 2 integration checks |
 | 2026-10-12 | V36, V29 | Done | Admin → Announcements: write the email in Albanian and English (or pick a template to announce it with a ready message), send yourself a test, then send to verified customers who opted in; the dispatcher sends 40 per minute, can be stopped, each customer gets their language once. One-click unsubscribe (signed link + List-Unsubscribe header) and a news toggle in Account. Migration 0018. 2 production + 1 integration check |
 | 2026-10-12 | V34 | Done | lib/server/template-stats.ts + /api/admin/template-stats; Statistics column set in the template list with period picker. 1 integration check |
