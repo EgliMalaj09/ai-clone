@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 28 | 45 |
+| 3B. Version 1 features | 31 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -251,8 +251,8 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V19 🟡 Photo editing before upload.** Crop, rotate and zoom so the face is centred, and see a preview of what will be sent.
 - [x] **V20 🟡 "Make it again".** One button on a finished video to run the same template with the same photo again (a new result, charged again). ✅ "Make it again" on a finished video (while its template is live and the photo is kept): confirms the current credit cost, then starts a new creation with the same photo.
 - [ ] **V21 🟡 One photo, several templates.** Pick several templates and create them all from one photo in one step, with the total credit cost shown.
-- [ ] **V22 🟡 Template options.** Templates can offer choices the customer picks (e.g. outfit colour, background, day/night) that change the hidden prompt.
-- [ ] **V23 🟡 Format choice.** Choose 9:16 (Stories/TikTok), 1:1 or 16:9 where the template supports it.
+- [x] **V22 🟡 Template options.** Templates can offer choices the customer picks (e.g. outfit colour, background, day/night) that change the hidden prompt.
+- [x] **V23 🟡 Format choice.** Choose 9:16 (Stories/TikTok), 1:1 or 16:9 where the template supports it.
 - [ ] **V24 🟡 Music on videos.** Optional background music track chosen from a licensed library, added to the downloaded video.
 - [x] **V25 🟡 Share straight to apps.** On phones, the native share sheet (WhatsApp, Instagram, TikTok) with the video file, not only a link.
 - [x] **V26 🟡 "Your video is ready" browser notification.** In addition to the email (C11.2), so customers can leave the page while waiting. ✅ While a video is being made, My creations offers "Notify me"; when it finishes (or fails, credits returned) the browser shows a notification through the service worker, also when the tab is in the background; clicking it opens My creations. Works while the site is open in some tab — push to a closed browser would need Web Push keys (see DECISIONS.md #11).
@@ -272,7 +272,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V36 🟡 Announcements to customers.** Send an email to all opted-in customers from the admin (new templates, offers), using C20.3 consent.
 
 **Found by comparing with Genematic (similar product)**
-- [ ] **V37 🟡 Quality levels per template.** Let a template offer "Standard" and "Premium" (e.g. a cheaper and a better AI model), each with its own credit cost, shown before generating.
+- [x] **V37 🟡 Quality levels per template.** Let a template offer "Standard" and "Premium" (e.g. a cheaper and a better AI model), each with its own credit cost, shown before generating.
 - [ ] **V38 🟡 Creator tracking links.** Personal links/codes for creators (D17) and referrals (V4), showing sign-ups and purchases per creator in the admin.
 - [ ] **V39 🟡 Product templates for businesses.** Templates that turn a product photo (not a face) into an ad clip, for shops and small businesses; separate category and photo guidelines (C31) without the face rules.
 - [x] **V40 🟡 Public feed.** A public feed of results customers chose to share (opt-in), with likes, that links each video to its template; extends the gallery in V6.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V22, V23, V37 | Done | Template options: up to 4 groups per template (template editor → Customer options) — style choices add words to the hidden prompt, a format choice sets 9:16/1:1/16:9/4:5, quality levels add credits and can switch the main video model. Customers pick them on the template page (EN/SQ labels); the price, reservation, snapshot and Make it again follow the picks; cards show the opening price. Prompts and models stay private. Migration 0025. 3 integration checks |
 | 2026-10-12 | V28 | Done | Gift purchases: gift fields on credit_purchases (migration 0024), confirmGiftPayment (issued→system:gifts, one-time gift code, emails), redemption from system:gifts, reverseGiftPayment, ledger kinds gift_sale/gift, Credits page gift form, redeem code prefilled from ?code=. 3 credits checks |
 | 2026-10-12 | V4 | Done | Promo codes (promo_codes, promo_redemptions), discount applied in startPackCheckout and counted when paid, credit codes granted from system:promo (new ledger kinds promo/referral), referral codes + referred_by, reward after the first paid purchase, admin page and settings, customer code box and invite panel (translated). Migration 0023. 4 credits checks |
 | 2026-10-12 | V35 | Done | Backup model per workflow step (validated), queue tryFallback on provider failure or failed submissions, logged as a warning with the generation ID, editor fields. 1 provider check |

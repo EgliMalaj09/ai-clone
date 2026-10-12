@@ -451,6 +451,21 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const doneRun=await waitDone(adminCookie,testRun.generationId);const adminAfter=await balance(adminCookie);const runRow=await db.prepare('SELECT test_run,credit_cost,hold_id FROM generations WHERE id=?').bind(testRun.generationId).first();
  ok('A free admin test run completes without reserving or charging credits',doneRun.g.status==='completed'&&runRow.test_run===1&&runRow.credit_cost===0&&!runRow.hold_id&&adminAfter.available===adminBefore.available&&adminAfter.held===adminBefore.held);
  await request('/api/admin/templates/'+draftTpl.id,{method:'DELETE',cookie:adminCookie});
+ // V22/V23/V37: template options change the prompt (style), format and model/price (quality); prompts and models stay private.
+ const optTpl=(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template;
+ const optGroups=[{id:'mood',kind:'style',label:'Mood',labelSq:'Atmosfera',choices:[{id:'day',label:'Day',prompt:'sunny afternoon'},{id:'night',label:'Night',prompt:'neon night lights'}]},{id:'format',kind:'format',label:'Format',choices:[{id:'vertical',label:'Vertical',aspectRatio:'9:16'},{id:'square',label:'Square',aspectRatio:'1:1'}]},{id:'quality',kind:'quality',label:'Quality',choices:[{id:'standard',label:'Standard'},{id:'premium',label:'Premium',credits:100,model:'studio-demo-premium'}]}];
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...optTpl,optionGroups:[{id:'format',kind:'format',label:'Format',choices:[{id:'a',label:'A'},{id:'b',label:'B'}]}]},expected:400});
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...optTpl,optionGroups:optGroups}});
+ const pubOpt=(await request('/api/templates/formula-driver')).body;
+ ok('Template options are public without their prompts or models',pubOpt.template.options.length===3&&!JSON.stringify(pubOpt).includes('neon night')&&!JSON.stringify(pubOpt).includes('studio-demo-premium'));
+ const optPhoto=await upload(userCookie);const optBase=optTpl.creditCost;const optPicks={mood:'night',format:'square',quality:'premium'};
+ await request('/api/generations',{method:'POST',cookie:userCookie,data:{templateId:formula.id,uploadIds:[optPhoto.body.id],idempotencyKey:randomUUID(),expectedCost:optBase,consent:true,options:optPicks},expected:409});
+ const optGen=(await request('/api/generations',{method:'POST',cookie:userCookie,data:{templateId:formula.id,uploadIds:[optPhoto.body.id],idempotencyKey:randomUUID(),expectedCost:optBase+100,consent:true,options:optPicks},expected:201})).body;
+ const optGenRow=await db.prepare('SELECT credit_cost,workflow_snapshot,options FROM generations WHERE id=?').bind(optGen.generationId).first();const optSnap=JSON.parse(optGenRow.workflow_snapshot);const optVid=optSnap.steps.at(-1);
+ ok('Picked options set the price, format, prompt and main model of that video',optGenRow.credit_cost===optBase+100&&optSnap.aspectRatio==='1:1'&&optVid.aspectRatio==='1:1'&&optVid.prompt.includes('neon night lights')&&optVid.model==='studio-demo-premium'&&JSON.parse(optGenRow.options).quality==='premium');
+ await waitDone(userCookie,optGen.generationId);
+ ok('Make it again keeps the options and their price',(await request('/api/generations/'+optGen.generationId,{cookie:userCookie})).body.generations[0].repeatCost===optBase+100);
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...optTpl,optionGroups:[]}});
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

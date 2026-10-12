@@ -44,6 +44,8 @@ export const templates=sqliteTable('templates',{
  photoTips:text('photo_tips').notNull().default(''),
  // Catalog management (V13/V14): manual order (lower first), a scheduled publish time, and archive instead of delete.
  sortOrder:integer('sort_order').notNull().default(0),publishAt:integer('publish_at'),archivedAt:integer('archived_at'),
+ // Template options (V22/V23/V37): choices the customer picks (style, format, quality) that change the prompt, format, model and price.
+ options:text('options').notNull().default('[]'),
 },t=>[index('idx_templates_active_category').on(t.active,t.category)]);
 export const templateWorkflows=sqliteTable('template_workflows',{
  id:text('id').primaryKey(),templateId:text('template_id').notNull().unique().references(()=>templates.id,{onDelete:'cascade'}),version:integer('version').notNull().default(1),
@@ -76,6 +78,8 @@ export const generations=sqliteTable('generations',{
  rating:integer('rating'),ratedAt:integer('rated_at'),publicAt:integer('public_at'),likes:integer('likes').notNull().default(0),
  // Free admin test run (V32): real AI, no credits reserved or charged, no content strike.
  testRun:integer('test_run').notNull().default(0),
+ // The options the customer picked for this video (V22), so it can be shown and made again the same way.
+ options:text('options').notNull().default('{}'),
 },t=>[index('idx_generations_user_date').on(t.userId,t.createdAt),index('idx_generation_queue').on(t.status,t.nextRunAt,t.leaseUntil),index('idx_generations_thumbnail').on(t.thumbnail)]);
 // Customer reports on finished videos and the admin's decision (C21). One open report per video; a good photo earns one free redo.
 export const generationReports=sqliteTable('generation_reports',{

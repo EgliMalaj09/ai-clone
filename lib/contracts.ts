@@ -8,7 +8,17 @@ export type PublicTemplate = {
   photoTips: string;
   /** Manual catalog position (V13); lower comes first in Recommended. */
   sortOrder?: number;
+  /** Choices the customer picks (V22/V23/V37); prompts and models stay private. */
+  options?: PublicOptionGroup[];
 };
+/** Template options (V22 style, V23 format, V37 quality). The first choice of each group is the default. */
+export type OptionChoice={id:string;label:string;labelSq?:string;credits?:number;aspectRatio?:string;prompt?:string;model?:string};
+export type OptionGroup={id:string;kind:'style'|'format'|'quality';label:string;labelSq?:string;choices:OptionChoice[]};
+export type PublicOptionGroup={id:string;kind:OptionGroup['kind'];label:string;labelSq?:string;choices:Omit<OptionChoice,'prompt'|'model'>[]};
+export const publicOptions=(groups:OptionGroup[]):PublicOptionGroup[]=>groups.map(g=>({id:g.id,kind:g.kind,label:g.label,labelSq:g.labelSq,choices:g.choices.map(c=>({id:c.id,label:c.label,labelSq:c.labelSq,credits:c.credits||0,aspectRatio:c.aspectRatio}))}));
+/** The picked choice of each group (the first one when nothing valid was picked). */
+export const pickedChoices=<C extends {id:string}>(groups:{id:string;choices:C[]}[],picks:Record<string,string>={})=>groups.map(g=>g.choices.find(c=>c.id===picks[g.id])||g.choices[0]).filter(Boolean) as C[];
+export const optionsCost=(base:number,groups:{id:string;choices:{id:string;credits?:number}[]}[],picks:Record<string,string>={})=>base+pickedChoices(groups,picks).reduce((n,c)=>n+(c.credits||0),0);
 export type WorkflowStep = {
   id: string; type: 'image'|'transform'|'video'|'upscale'|'process'; provider: string;
   model: string; prompt: string; negativePrompt: string; inputs: Record<string,string>;
@@ -22,6 +32,7 @@ export type AdminTemplate = PublicTemplate & {
   hiddenPrompt: string; negativePrompt: string; settings: Record<string,unknown>; workflow: WorkflowStep[];
   /** Scheduled publishing (V13): the template goes live at this time. */
   publishAt?: number|null;
+  optionGroups?: OptionGroup[];
   archivedAt?: number|null;
 };
 export type StudioUser = {id:string;name:string;email:string;role:string;status:string;createdAt:number;avatar:string|null;emailVerified:boolean;contentStrikes:number;blocked:boolean;twoFactor?:boolean;locale?:'sq'|'en';pendingEmail?:string|null;marketingOptIn?:boolean};

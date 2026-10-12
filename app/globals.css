@@ -390,3 +390,10 @@ tr[draggable=true]{cursor:grab}
 .pack-card s{color:#68707a;font-weight:400}
 .gift-fields{padding:12px 14px;border:1px solid var(--line);border-radius:12px;margin:6px 0 10px}
 .consent svg{vertical-align:-2px}
+.option-editor{border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.option-choice{align-items:end}
+.option-choice-actions{display:flex;align-items:center;padding-bottom:8px}
+.template-options{display:grid;gap:12px;margin:18px 0}
+.option-group>span{display:block;font-size:13px;color:#68707a;margin-bottom:6px}
+.option-group>div{display:flex;flex-wrap:wrap;gap:6px}
+.option-group small{opacity:.75;margin-left:2px}

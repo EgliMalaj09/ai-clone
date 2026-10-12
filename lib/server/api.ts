@@ -35,7 +35,7 @@ import {langFromCookie,translate,type Lang} from '../i18n';
 const fieldMessages:Record<string,string>={email:'Enter a valid email address.',password:'Use a password with 10 to 128 characters.',newPassword:'Use a password with 10 to 128 characters.',name:'Enter a name with 2 to 80 characters.',acceptTerms:'Accept the Terms and Privacy Policy to continue.',confirmAge:'Confirm your age to continue.'};
 const zodDefault=/^(String must|Invalid|Required|Expected|Number must)/;
 const fieldMessage=(lang:Lang,path:string,message:string)=>fieldMessages[path]?translate(lang,zodDefault.test(message)?fieldMessages[path]:message):zodDefault.test(message)?`${path}: ${message}`:translate(lang,message);
-import {TERMS_VERSION,cleanGuidelineList,isStaff,type AdminTemplate,type StudioUser} from '../contracts';
+import {TERMS_VERSION,cleanGuidelineList,isStaff,optionsCost,pickedChoices,type AdminTemplate,type StudioUser} from '../contracts';
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});
 const body=jsonBody;
@@ -48,7 +48,7 @@ async function generationsFor(userId:string,url:URL,id?:string){
  else if(status!=='all'){must(['completed','failed'].includes(status),'Unknown creation status.');conditions.push('g.status=?');args.push(status);}
  const where=' WHERE '+conditions.join(' AND ');
  const count=await one('SELECT COUNT(*) AS total FROM generations g'+where,...args);
- const rows=await all("SELECT g.*,a.id AS asset_id,h.status AS credit_status,tp.credit_cost AS current_cost FROM generations g LEFT JOIN generated_assets a ON a.generation_id=g.id AND a.kind='output' LEFT JOIN credit_holds h ON h.id=g.hold_id LEFT JOIN templates tp ON tp.id=g.template_id AND tp.active=1"+where+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);
+ const rows=await all("SELECT g.*,a.id AS asset_id,h.status AS credit_status,tp.credit_cost AS current_cost,tp.options AS current_options FROM generations g LEFT JOIN generated_assets a ON a.generation_id=g.id AND a.kind='output' LEFT JOIN credit_holds h ON h.id=g.hold_id LEFT JOIN templates tp ON tp.id=g.template_id AND tp.active=1"+where+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);
  if(id)must(rows.length,'Creation not found.',404);
  // Counted independently of the status filter so the client knows whether to keep polling.
  const active=await one("SELECT COUNT(*) AS total FROM generations WHERE user_id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing')",userId);
@@ -58,7 +58,7 @@ async function generationsFor(userId:string,url:URL,id?:string){
  const typical=new Map<string,number>();for(const tid of running){const r=await one("SELECT AVG(d) AS avg FROM (SELECT completed_at-started_at AS d FROM generations WHERE template_id=? AND status='completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 20)",tid);typical.set(tid,Math.round(Number(r?.avg||120000)/1000));}
  // V20: a finished video can be made again while its template is live and its photos are still there.
  const photoIds=[...new Set(rows.flatMap(g=>parse<string[]>(g.input_ids,[])))];const kept=new Set(photoIds.length?(await all(`SELECT id FROM user_uploads WHERE user_id=? AND id IN (${photoIds.map(()=>'?').join(',')})`,userId,...photoIds)).map(r=>r.id as string):[]);
- const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);if(g.test_run)g.template_name=g.template_name+' · test run';const inputs=parse<string[]>(g.input_ids,[]);return {...generationPublic(g),typicalSeconds:typical.get(g.template_id as string)??null,rating:g.rating??null,isPublic:!!g.public_at,report:r?publicReport(r):null,shareUrl:shares.get(g.id as string)??null,repeatCost:!g.test_run&&g.status==='completed'&&g.current_cost&&inputs.length&&inputs.every(id=>kept.has(id))?Number(g.current_cost):null};});
+ const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);if(g.test_run)g.template_name=g.template_name+' · test run';const inputs=parse<string[]>(g.input_ids,[]);return {...generationPublic(g),typicalSeconds:typical.get(g.template_id as string)??null,rating:g.rating??null,isPublic:!!g.public_at,report:r?publicReport(r):null,shareUrl:shares.get(g.id as string)??null,repeatCost:!g.test_run&&g.status==='completed'&&g.current_cost&&inputs.length&&inputs.every(id=>kept.has(id))?optionsCost(Number(g.current_cost),parse(g.current_options,[]),parse(g.options,{})):null,options:parse<Record<string,string>>(g.options,{})};});
  return {generations,activeCount:active?.total||0,pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
 }
 async function deleteAccount(user:StudioUser){must(!isStaff(user.role),'A staff account cannot be deleted here. Ask an administrator to change its role first.',409);must(!await userHasOpenReport(user.id),'A video is under review. Please wait until the report is resolved before deleting the account.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);
@@ -77,18 +77,22 @@ async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(u
  const prior=await repeat();if(prior)return prior;
  const t=await getAdminTemplate(b.templateId);must(t?.active,'This template is currently unavailable.',404);
  must(t.creditCost>0,'This template is not available yet.',409);
- must(t.creditCost===b.expectedCost,'This template’s credit cost changed. Refresh to review it.',409);
+ // V22/V23/V37: the picked options add to the price and change the prompt, format and model of this video only.
+ const groups=t.optionGroups||[],chosen=pickedChoices(groups,b.options),cost=optionsCost(t.creditCost,groups,b.options);
+ must(cost===b.expectedCost,'This template’s credit cost changed. Refresh to review it.',409);
  must(b.uploadIds.length===t.requiredImageCount&&new Set(b.uploadIds).size===b.uploadIds.length,`Upload ${t.requiredImageCount} different photo${t.requiredImageCount>1?'s':''}.`);
  for(const id of b.uploadIds)must(await one('SELECT id FROM user_uploads WHERE id=? AND user_id=?',id,user.id),'An uploaded photo is unavailable or belongs to another account.',403);
  await assertGeneratable(t);
  await assertWithinLimits(user.id);
- const balance=await balanceOf(user.id);must(balance.available>=t.creditCost,`You need ${t.creditCost} credits for this video and have ${balance.available}.`,402);
+ const balance=await balanceOf(user.id);must(balance.available>=cost,`You need ${cost} credits for this video and have ${balance.available}.`,402);
  const generationId=uid('gen_'),created=now();
- const snapshot={name:t.name,slug:t.slug,aspectRatio:t.aspectRatio,duration:t.duration,steps:t.workflow.map(s=>({...s,prompt:s.prompt||t.hiddenPrompt,negativePrompt:s.negativePrompt||t.negativePrompt,settings:{...t.settings,...s.settings}}))};
- const hold=await placeHold({userId:user.id,amount:t.creditCost,generationId,key,extra:(holdId,tx)=>{const g=onlyIfApplied(tx);return [stmt(`INSERT INTO generations (id,user_id,template_id,template_name,template_slug,thumbnail,status,currency,estimated_cost,credit_cost,hold_id,workflow_snapshot,input_ids,next_run_at,created_at) SELECT ?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,? WHERE ${g.sql}`,
-  generationId,user.id,t.id,t.name,t.slug,t.thumbnail,t.currency,t.estimatedCost,t.creditCost,holdId,JSON.stringify(snapshot),JSON.stringify(b.uploadIds),created,created,...g.args)];}});
+ const aspect=chosen.find(c=>c.aspectRatio)?.aspectRatio,extra=chosen.map(c=>c.prompt).filter(Boolean).join(' '),model=chosen.find(c=>c.model)?.model,main=t.workflow.map(s=>s.type).lastIndexOf('video')>=0?t.workflow.map(s=>s.type).lastIndexOf('video'):t.workflow.length-1;
+ const picks=Object.fromEntries(groups.map((g,i)=>[g.id,chosen[i]?.id]));
+ const snapshot={name:t.name,slug:t.slug,aspectRatio:aspect||t.aspectRatio,duration:t.duration,options:picks,steps:t.workflow.map((s,i)=>({...s,...(aspect?{aspectRatio:aspect}:{}),...(model&&i===main?{model}:{}),prompt:(s.prompt||t.hiddenPrompt)+(extra?' '+extra:''),negativePrompt:s.negativePrompt||t.negativePrompt,settings:{...t.settings,...s.settings}}))};
+ const hold=await placeHold({userId:user.id,amount:cost,generationId,key,extra:(holdId,tx)=>{const g=onlyIfApplied(tx);return [stmt(`INSERT INTO generations (id,user_id,template_id,template_name,template_slug,thumbnail,status,currency,estimated_cost,credit_cost,hold_id,workflow_snapshot,input_ids,next_run_at,created_at,options) SELECT ?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,? WHERE ${g.sql}`,
+  generationId,user.id,t.id,t.name,t.slug,t.thumbnail,t.currency,t.estimatedCost,cost,holdId,JSON.stringify(snapshot),JSON.stringify(b.uploadIds),created,created,JSON.stringify(picks),...g.args)];}});
  if(!hold.applied){const again=await repeat();must(again,'This creation could not be started. Please try again.',409);return again;}
- await event('generation_requested',user.id,{generationId,credits:t.creditCost});
+ await event('generation_requested',user.id,{generationId,credits:cost});
  return {generationId,balance:{available:hold.available,held:hold.held}};
 }
 
@@ -190,7 +194,7 @@ export async function handleAPI(req:Request){try{
   if(method==='POST'&&p[2]==='rating')return json(await rateCreation(user,p[1],Number((await body(req)).stars)));
   if(method==='POST'&&p[2]==='public')return json(await setPublic(user,p[1],(await body(req)).public===true));
   if(method==='POST'&&p[2]==='like')return json(await toggleLike(user,p[1]));
-  if(method==='POST'&&p[2]==='again'){await rateLimit('generate:'+user.id,30,3600000);const b=z.object({idempotencyKey:z.string().uuid(),expectedCost:z.number().int()}).parse(await body(req));const g=await one("SELECT template_id,input_ids FROM generations WHERE id=? AND user_id=? AND status='completed' AND deleted_at IS NULL",p[1],user.id);must(g,'Completed creation not found.',404);return json(await startGeneration(user,{templateId:g.template_id,uploadIds:parse<string[]>(g.input_ids,[]),idempotencyKey:b.idempotencyKey,expectedCost:b.expectedCost,consent:true}),201);}
+  if(method==='POST'&&p[2]==='again'){await rateLimit('generate:'+user.id,30,3600000);const b=z.object({idempotencyKey:z.string().uuid(),expectedCost:z.number().int()}).parse(await body(req));const g=await one("SELECT template_id,input_ids,options FROM generations WHERE id=? AND user_id=? AND status='completed' AND deleted_at IS NULL",p[1],user.id);must(g,'Completed creation not found.',404);return json(await startGeneration(user,{templateId:g.template_id,uploadIds:parse<string[]>(g.input_ids,[]),idempotencyKey:b.idempotencyKey,expectedCost:b.expectedCost,consent:true,options:parse(g.options,{})}),201);}
   if(method==='DELETE'&&!p[2]){must(!await hasOpenReport(p[1]),'This creation is under review. You can delete it once the report is resolved.',409);await removeGeneration(p[1],user.id);return json({ok:true});}
   if(method==='POST'&&p[2]==='share')return json(await shareGeneration(user.id,p[1]));
   if(method==='DELETE'&&p[2]==='share'){await stopSharing(user.id,p[1]);return json({ok:true});}
