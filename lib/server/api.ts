@@ -189,6 +189,17 @@ export async function handleAPI(req:Request){try{
  }
  if(p[0]==='generations'){
   if(method==='POST'&&!p[1]){await rateLimit('generate:'+user.id,30,3600000);return json(await startGeneration(user,await body(req)),201);}
+  // V21: one photo, several templates in one step. The total is checked first; each video then reserves its own credits.
+  if(method==='POST'&&p[1]==='batch'){await rateLimit('generate:'+user.id,30,3600000);const b=z.object({uploadIds:z.array(z.string().max(100)).min(1).max(4),idempotencyKey:z.string().uuid(),consent:z.literal(true),items:z.array(z.object({templateId:z.string().max(150),expectedCost:z.number().int(),options:z.record(z.string().max(40)).default({})})).min(1).max(5)}).parse(await body(req));
+   must(new Set(b.items.map(i=>i.templateId)).size===b.items.length,'Choose each template once.');
+   const total=b.items.reduce((n,i)=>n+i.expectedCost,0),bal=await balanceOf(user.id);
+   // Items already started by an earlier attempt with this key don't need credits again.
+   const keyFor=async(i:number)=>{const h=await hash(b.idempotencyKey+':'+i);return `${h.slice(0,8)}-${h.slice(8,12)}-4${h.slice(13,16)}-a${h.slice(17,20)}-${h.slice(20,32)}`;};
+   let pending=0;for(let i=0;i<b.items.length;i++)if(!await one('SELECT id FROM credit_transactions WHERE idempotency_key=?',`generate:${user.id}:${await keyFor(i)}`))pending+=b.items[i].expectedCost;
+   must(bal.available>=pending,`You need ${total} credits for these videos and have ${bal.available}.`,402);
+   if(pending)await assertWithinLimits(user.id,b.items.length);
+   const ids:string[]=[];for(let i=0;i<b.items.length;i++){const it=b.items[i];ids.push((await startGeneration(user,{templateId:it.templateId,uploadIds:b.uploadIds,idempotencyKey:await keyFor(i),expectedCost:it.expectedCost,consent:true,options:it.options})).generationId);}
+   return json({generationIds:ids,balance:await balanceOf(user.id)},201);}
   if(method==='GET')return json(await generationsFor(user.id,url,p[1]));
   if(method==='POST'&&p[2]==='report'){return json(await createReport(user,p[1],await body(req)),201);}
   if(method==='POST'&&p[2]==='rating')return json(await rateCreation(user,p[1],Number((await body(req)).stars)));

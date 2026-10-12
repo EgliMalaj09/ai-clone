@@ -397,3 +397,10 @@ tr[draggable=true]{cursor:grab}
 .option-group>span{display:block;font-size:13px;color:#68707a;margin-bottom:6px}
 .option-group>div{display:flex;flex-wrap:wrap;gap:6px}
 .option-group small{opacity:.75;margin-left:2px}
+.make-more{margin:16px 0 6px}
+.make-more h4{font-size:14px;margin:0 0 8px}
+.make-more-list{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.make-more-item{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:3px;width:104px;border:1px solid var(--line);border-radius:12px;background:white;padding:6px;cursor:pointer;color:var(--ink);text-align:left;font-size:12px}
+.make-more-item img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px}
+.make-more-item.selected{border-color:var(--blue);box-shadow:0 0 0 2px color-mix(in srgb,var(--blue) 25%,transparent)}
+.make-more-item small{color:#68707a}

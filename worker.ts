@@ -11,7 +11,7 @@ const worker={
  async fetch(request:Request,env:Cloudflare.Env,ctx:ExecutionContext){
   const response=await handler.fetch(request,env,ctx);
   const path=new URL(request.url).pathname;
-  if(request.method==='POST'&&response.status<400&&(path==='/api/generations'||/\/api\/admin\/generations\/[^/]+\/retry$/.test(path)))ctx.waitUntil(drainWindow().catch(e=>reportError('queue','Background queue needs another dispatch',{error:e})));
+  if(request.method==='POST'&&response.status<400&&(path==='/api/generations'||path==='/api/generations/batch'||/\/api\/admin\/generations\/[^/]+\/retry$/.test(path)))ctx.waitUntil(drainWindow().catch(e=>reportError('queue','Background queue needs another dispatch',{error:e})));
   const out=new Response(response.body,response);out.headers.set('X-Content-Type-Options','nosniff');out.headers.set('Referrer-Policy','strict-origin-when-cross-origin');out.headers.set('Permissions-Policy','camera=(), microphone=(), geolocation=()');out.headers.set('Content-Security-Policy',"base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'");if(new URL(request.url).protocol==='https:')out.headers.set('Strict-Transport-Security','max-age=31536000');return out;
  },
  // Awaited rather than passed to waitUntil, so a failure shows as an error in the Worker's cron event log.

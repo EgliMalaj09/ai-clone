@@ -436,6 +436,10 @@ export const sq:Record<string,string>={
  '{name}: your credits were returned.':'{name}: kreditet të janë kthyer.',
  'Want a heads-up? We can notify you here when your video is ready, even if you switch tabs.':'Do një njoftim? Mund të të njoftojmë këtu kur videoja të jetë gati, edhe nëse kalon në një skedë tjetër.',
  'Notify me':'Më njofto',
+ 'Make more with the same photo':'Bëj më shumë me të njëjtën foto',
+ '{n} videos in total: {amount}.':'{n} video gjithsej: {amount}.',
+ 'Generate {n} videos':'Krijo {n} video',
+ 'Choose each template once.':'Zgjidh secilin shabllon një herë.',
  'Products':'Produkte',
  'Add your product photos':'Shto fotot e produktit',
  'Add your product photo':'Shto foton e produktit',
@@ -839,6 +843,7 @@ export const sq:Record<string,string>={
 export const sqPatterns:[RegExp,string|((m:RegExpMatchArray)=>string)][]=[
  [/^Upload (\d+) photos — one clear face in each$/,m=>`Ngarko ${m[1]} foto — një fytyrë e qartë në secilën`],
  [/^Upload (\d+) product photos — one product in each$/,m=>`Ngarko ${m[1]} foto produkti — një produkt në secilën`],
+ [/^You need (\d+) credits for these videos and have (-?\d+)\.$/,m=>`Këto video kërkojnë ${m[1]} kredite dhe ti ke ${m[2]}.`],
  [/^You need (\d+) credits for this video and have (-?\d+)\.$/,m=>`Kjo video kërkon ${m[1]} kredite dhe ti ke ${m[2]}.`],
  [/^Upload (\d+) different photos?\.$/,m=>m[1]==='1'?'Ngarko 1 foto.':`Ngarko ${m[1]} foto të ndryshme.`],
  [/^This photo is too small \((\d+) × (\d+)\)\. Use a photo at least 512 × 512 pixels\.$/,m=>`Kjo foto është shumë e vogël (${m[1]} × ${m[2]}). Përdor një foto të paktën 512 × 512 piksel.`],

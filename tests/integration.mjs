@@ -472,6 +472,15 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('Product templates use product photo rules (EN and SQ)',prodTpl.subject==='product'&&prodPage.includes('One product, clearly visible')&&prodPage.includes('Plain, uncluttered background')&&!prodPage.includes('Face clearly visible')&&prodSq.includes('Një produkt, qartë i dukshëm'));
  ok('Two-photo templates show the Albanian photo count',(await request('/template/wedding-cinematic',{lang:null})).text.includes('Ngarko 2 foto — një fytyrë e qartë në secilën'));
  await request('/api/admin/templates/'+prodTpl.id,{method:'DELETE',cookie:adminCookie});
+ // V21: one photo, several templates in one step; the total must be covered and a repeat of the same request starts nothing new.
+ const batchPhoto=await upload(userCookie);const tpls=(await request('/api/templates?limit=50')).body.templates.filter(t=>t.requiredImageCount===1).slice(0,3);
+ const items=tpls.map(t=>({templateId:t.id,expectedCost:t.creditCost}));const batchKey=randomUUID();const beforeBatch=await balance(userCookie);
+ await request('/api/generations/batch',{method:'POST',cookie:relogged.cookie,data:{uploadIds:[batchPhoto.body.id],idempotencyKey:randomUUID(),consent:true,items},expected:402});
+ const batch1=(await request('/api/generations/batch',{method:'POST',cookie:userCookie,data:{uploadIds:[batchPhoto.body.id],idempotencyKey:batchKey,consent:true,items},expected:201})).body;
+ const batch2=(await request('/api/generations/batch',{method:'POST',cookie:userCookie,data:{uploadIds:[batchPhoto.body.id],idempotencyKey:batchKey,consent:true,items},expected:201})).body;
+ const totalBatch=items.reduce((n,i)=>n+i.expectedCost,0);
+ ok('One photo starts several templates at once, and repeating the request starts nothing new',batch1.generationIds.length===3&&JSON.stringify(batch1.generationIds)===JSON.stringify(batch2.generationIds)&&beforeBatch.available-batch2.balance.available===totalBatch);
+ for(const id of batch1.generationIds)await waitDone(userCookie,id);
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

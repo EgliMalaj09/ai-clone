@@ -13,15 +13,16 @@ export async function spendingLimits(){
 }
 
 /** Enforced before a new creation reserves credits. A 0 limit means "no limit" for that dimension. */
-export async function assertWithinLimits(userId:string){
+export async function assertWithinLimits(userId:string,adding=1){
  const l=await spendingLimits(),dayAgo=now()-DAY_MS;
  if(l.concurrent>0){
   const c=await one("SELECT COUNT(*) AS n FROM generations WHERE user_id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing')",userId);
-  must(Number(c?.n||0)<l.concurrent,`You already have ${l.concurrent} video${l.concurrent>1?'s':''} in progress. Please wait for one to finish.`,429);
+  // `adding` > 1 checks room for several videos at once (V21).
+  must(Number(c?.n||0)+adding-1<l.concurrent,`You already have ${l.concurrent} video${l.concurrent>1?'s':''} in progress. Please wait for one to finish.`,429);
  }
  if(l.daily>0){
   const d=await one('SELECT COUNT(*) AS n FROM generations WHERE user_id=? AND created_at>=?',userId,dayAgo);
-  must(Number(d?.n||0)<l.daily,`You’ve reached today’s limit of ${l.daily} videos. Please try again tomorrow.`,429);
+  must(Number(d?.n||0)+adding-1<l.daily,`You’ve reached today’s limit of ${l.daily} videos. Please try again tomorrow.`,429);
  }
  if(l.studioDailyCost>0){
   const s=await one('SELECT COALESCE(SUM(estimated_cost),0) AS c FROM generations WHERE created_at>=? AND deleted_at IS NULL',dayAgo);

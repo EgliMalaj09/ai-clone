@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 32 | 45 |
+| 3B. Version 1 features | 33 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -250,7 +250,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V18 🟡 Change email address.** Today the email is read-only, so a customer who changes email is stuck. Change it with a confirmation link sent to the new address. ✅ Account → Change email address (with password): a confirmation link goes to the new address (30 minutes); the change happens when it's opened, and the old address gets a notice. Pending changes can be cancelled. Demo studio without email changes it at once.
 - [ ] **V19 🟡 Photo editing before upload.** Crop, rotate and zoom so the face is centred, and see a preview of what will be sent.
 - [x] **V20 🟡 "Make it again".** One button on a finished video to run the same template with the same photo again (a new result, charged again). ✅ "Make it again" on a finished video (while its template is live and the photo is kept): confirms the current credit cost, then starts a new creation with the same photo.
-- [ ] **V21 🟡 One photo, several templates.** Pick several templates and create them all from one photo in one step, with the total credit cost shown.
+- [x] **V21 🟡 One photo, several templates.** Pick several templates and create them all from one photo in one step, with the total credit cost shown.
 - [x] **V22 🟡 Template options.** Templates can offer choices the customer picks (e.g. outfit colour, background, day/night) that change the hidden prompt.
 - [x] **V23 🟡 Format choice.** Choose 9:16 (Stories/TikTok), 1:1 or 16:9 where the template supports it.
 - [ ] **V24 🟡 Music on videos.** Optional background music track chosen from a licensed library, added to the downloaded video.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V21 | Done | One photo, several templates: after adding the photo(s), 'Make more with the same photo' lets the customer add up to 2 other templates (same photo count), shows the total, and starts them together via /api/generations/batch (total and running-video limits checked first, repeat-safe keys). 1 integration check |
 | 2026-10-12 | V39 | Done | Product templates: template editor → What's in the photo (person / product); product templates show product photo rules and texts (EN+SQ) instead of face rules; new Products category. Also fixed the Albanian count line for multi-photo templates. Migration 0026. 2 integration checks |
 | 2026-10-12 | V22, V23, V37 | Done | Template options: up to 4 groups per template (template editor → Customer options) — style choices add words to the hidden prompt, a format choice sets 9:16/1:1/16:9/4:5, quality levels add credits and can switch the main video model. Customers pick them on the template page (EN/SQ labels); the price, reservation, snapshot and Make it again follow the picks; cards show the opening price. Prompts and models stay private. Migration 0025. 3 integration checks |
 | 2026-10-12 | V28 | Done | Gift purchases: gift fields on credit_purchases (migration 0024), confirmGiftPayment (issued→system:gifts, one-time gift code, emails), redemption from system:gifts, reverseGiftPayment, ledger kinds gift_sale/gift, Credits page gift form, redeem code prefilled from ?code=. 3 credits checks |
