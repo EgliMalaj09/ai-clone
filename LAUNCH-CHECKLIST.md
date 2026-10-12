@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 7 | 45 |
+| 3B. Version 1 features | 9 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -230,7 +230,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 **Customer side**
 - [ ] **V1 🟡 Google and Apple sign-in.** The `accounts` table is ready for it; keep email sign-up as well.
 - [ ] **V2 🟡 Watermarked preview.** A low-resolution, watermarked preview before credits are charged, to build trust.
-- [ ] **V3 🟡 Share page.** `/v/<id>` with an Open Graph preview and links the owner can revoke, instead of a raw 23-hour media link.
+- [x] **V3 🟡 Share page.** `/v/<id>` with an Open Graph preview and links the owner can revoke, instead of a raw 23-hour media link.
 - [ ] **V4 🟡 Promo codes and referrals.** Codes that grant credits or discount packs, plus "invite a friend, both get credits".
 - [ ] **V5 🟡 Progress and ETA.** Progress estimate on creations; use fal.ai webhooks instead of polling.
 - [ ] **V6 🟡 Ratings and gallery.** Customers rate results; an opt-in "made with this template" gallery.
@@ -254,7 +254,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V22 🟡 Template options.** Templates can offer choices the customer picks (e.g. outfit colour, background, day/night) that change the hidden prompt.
 - [ ] **V23 🟡 Format choice.** Choose 9:16 (Stories/TikTok), 1:1 or 16:9 where the template supports it.
 - [ ] **V24 🟡 Music on videos.** Optional background music track chosen from a licensed library, added to the downloaded video.
-- [ ] **V25 🟡 Share straight to apps.** On phones, the native share sheet (WhatsApp, Instagram, TikTok) with the video file, not only a link.
+- [x] **V25 🟡 Share straight to apps.** On phones, the native share sheet (WhatsApp, Instagram, TikTok) with the video file, not only a link.
 - [ ] **V26 🟡 "Your video is ready" browser notification.** In addition to the email (C11.2), so customers can leave the page while waiting.
 - [ ] **V27 🟡 Low balance reminder.** When credits drop below the cheapest template, show a reminder with the best pack.
 - [ ] **V28 🟡 Gift credits.** Buy a pack as a gift and send it by email with a redeem code.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V3, V25 | Done | Share page /v/<id> (share_links, migration 0014): stable link per video, Open Graph image + video card, view count, Make your own CTA, owner can Stop sharing, deleting the video revokes it; video served via short signed links. My creations: Shared state, Stop sharing, and on phones Send video → native share sheet with the MP4 file. Privacy text updated (EN+SQ). 3 integration checks |
 | 2026-10-12 | V20 | Done | POST /api/generations/:id/again (owner only, completed, current cost must match, idempotent key) reusing startGeneration; creations list returns repeatCost; Make it again button with confirm, translated. 1 integration check |
 | 2026-10-12 | V10 | Done | Roles user/support/admin: requireUser lets staff into the admin, adminAPI allow-list for support, role change via PATCH users (admin password, not self, keep one admin, sessions cleared), filtered sidebar, role panel. 3 security checks |
 | 2026-10-12 | V13, V14 | Done | Templates: drag-and-drop (and arrow) ordering saved as sort_order for Recommended; select + bulk publish/unpublish/archive (publish checks the same rules as saving); scheduled publishing (publish_at, validated, published by the dispatcher every minute, logged); Delete now archives, with an Archive view to Restore or delete permanently. Migration 0013. 5 integration checks |

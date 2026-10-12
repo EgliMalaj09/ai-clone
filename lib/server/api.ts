@@ -12,7 +12,7 @@ import {operationsSummary,adminActivity,accountSecurity,adminRecords} from './op
 import {all,audit,batch,config,ensureSeed,event,getAdminTemplate,HttpError,must,now,one,parse,photoGuidelines,supportInfo,publicTemplate,run,stmt,templateStatements,uid,type Row} from './data';
 import {authSchema,registerSchema,generationSchema,templateSchema} from './validation';
 import {checkPassword,clearCookie,constantEqual,getUser,hash,makeAuthToken,passwordHash,protectOrigin,rateLimit,requireUser,safeUser,sendAuthMail,sessionCookie} from './security';
-import {imageMime,mediaUrl,storage,validSignature} from './storage';
+import {imageMime,storage,validSignature} from './storage';
 import {pokWebhook} from './payments';
 import {removeGeneration,tickQueue} from './queue';
 import {createReport,listReports,reportDetail,resolveReport,reportsForGenerations,publicReport,hasOpenReport,uploadsLockedByReport,userHasOpenReport} from './reports';
@@ -21,6 +21,7 @@ import {exchangeRates,convertMinor} from './rates';
 import {dispatcherStatus,recordDispatch} from './dispatcher';
 import {reportError} from './errors';
 import {adminExport} from './exports';
+import {shareGeneration,sharedMap,sharedVideoRedirect,stopSharing} from './share';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
 import {langFromCookie,translate,type Lang} from '../i18n';
 /** Friendly, translated messages for the form fields customers fill in; other validation messages stay technical. */
@@ -44,10 +45,10 @@ async function generationsFor(userId:string,url:URL,id?:string){
  if(id)must(rows.length,'Creation not found.',404);
  // Counted independently of the status filter so the client knows whether to keep polling.
  const active=await one("SELECT COUNT(*) AS total FROM generations WHERE user_id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing')",userId);
- const reportsMap=await reportsForGenerations(rows.map(g=>g.id as string));
+ const reportsMap=await reportsForGenerations(rows.map(g=>g.id as string));const shares=await sharedMap(rows.map(g=>g.id as string));
  // V20: a finished video can be made again while its template is live and its photos are still there.
  const photoIds=[...new Set(rows.flatMap(g=>parse<string[]>(g.input_ids,[])))];const kept=new Set(photoIds.length?(await all(`SELECT id FROM user_uploads WHERE user_id=? AND id IN (${photoIds.map(()=>'?').join(',')})`,userId,...photoIds)).map(r=>r.id as string):[]);
- const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);const inputs=parse<string[]>(g.input_ids,[]);return {...generationPublic(g),report:r?publicReport(r):null,repeatCost:g.status==='completed'&&g.current_cost&&inputs.length&&inputs.every(id=>kept.has(id))?Number(g.current_cost):null};});
+ const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);const inputs=parse<string[]>(g.input_ids,[]);return {...generationPublic(g),report:r?publicReport(r):null,shareUrl:shares.get(g.id as string)??null,repeatCost:g.status==='completed'&&g.current_cost&&inputs.length&&inputs.every(id=>kept.has(id))?Number(g.current_cost):null};});
  return {generations,activeCount:active?.total||0,pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
 }
 async function deleteAccount(user:StudioUser){must(!isStaff(user.role),'A staff account cannot be deleted here. Ask an administrator to change its role first.',409);must(!await userHasOpenReport(user.id),'A video is under review. Please wait until the report is resolved before deleting the account.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);
@@ -114,6 +115,7 @@ export async function handleAPI(req:Request){try{
  if(p.join('/')==='health'&&method==='GET')return json({status:'ok',demo:config().demo});
  if(p[0]==='templates'&&method==='GET'&&p.length<=2)return json(await queryCatalog(url,p[1]));
  if(p.join('/')==='credit-packages'&&method==='GET')return json({packages:await listPackages()});
+ if(p[0]==='share'&&p[2]==='video'&&method==='GET')return await sharedVideoRedirect(p[1]);
  if(p[0]==='me'&&method==='GET')return json({user:await getUser(req.headers),demo:config().demo});
  if(p[0]==='analytics'&&method==='POST'){const viewer=await getUser(req.headers);await rateLimit('analytics:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),180,60000);const b=await body(req);const name=z.enum(['homepage_view','template_view','template_selected','upload_started','checkout_started']).parse(b.name);await event(name,viewer?.id??null,{templateId:typeof b.templateId==='string'?b.templateId.slice(0,150):null});return json({ok:true});}
  if(p[0]==='auth'){
@@ -157,8 +159,9 @@ export async function handleAPI(req:Request){try{
   if(method==='GET')return json(await generationsFor(user.id,url,p[1]));
   if(method==='POST'&&p[2]==='report'){return json(await createReport(user,p[1],await body(req)),201);}
   if(method==='POST'&&p[2]==='again'){await rateLimit('generate:'+user.id,30,3600000);const b=z.object({idempotencyKey:z.string().uuid(),expectedCost:z.number().int()}).parse(await body(req));const g=await one("SELECT template_id,input_ids FROM generations WHERE id=? AND user_id=? AND status='completed' AND deleted_at IS NULL",p[1],user.id);must(g,'Completed creation not found.',404);return json(await startGeneration(user,{templateId:g.template_id,uploadIds:parse<string[]>(g.input_ids,[]),idempotencyKey:b.idempotencyKey,expectedCost:b.expectedCost,consent:true}),201);}
-  if(method==='DELETE'){must(!await hasOpenReport(p[1]),'This creation is under review. You can delete it once the report is resolved.',409);await removeGeneration(p[1],user.id);return json({ok:true});}
-  if(method==='POST'&&p[2]==='share'){const a=await one("SELECT a.id FROM generated_assets a JOIN generations g ON g.id=a.generation_id WHERE g.id=? AND g.user_id=? AND g.deleted_at IS NULL AND g.status='completed' AND a.kind='output'",p[1],user.id);must(a,'Completed creation not found.',404);return json({url:await mediaUrl(a.id,now()+23*3600000)});}
+  if(method==='DELETE'&&!p[2]){must(!await hasOpenReport(p[1]),'This creation is under review. You can delete it once the report is resolved.',409);await removeGeneration(p[1],user.id);return json({ok:true});}
+  if(method==='POST'&&p[2]==='share')return json(await shareGeneration(user.id,p[1]));
+  if(method==='DELETE'&&p[2]==='share'){await stopSharing(user.id,p[1]);return json({ok:true});}
  }
  if(p.join('/')==='queue/tick'&&method==='POST'){await rateLimit('tick:'+user.id,50);await tickQueue(user.id);return json({ok:true});}
  if(p[0]==='credits'){

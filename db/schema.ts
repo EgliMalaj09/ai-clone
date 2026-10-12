@@ -123,3 +123,8 @@ export const errorEvents=sqliteTable('error_events',{
  id:text('id').primaryKey(),source:text('source').notNull(),level:text('level').notNull().default('error'),message:text('message').notNull(),detail:text('detail').notNull().default(''),
  context:text('context').notNull().default('{}'),createdAt:integer('created_at').notNull(),
 },t=>[index('idx_error_events_created').on(t.createdAt)]);
+// Share links (V3): a public page /v/<id> for one finished video; the owner can stop sharing at any time.
+export const shareLinks=sqliteTable('share_links',{
+ id:text('id').primaryKey(),generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),
+ createdAt:integer('created_at').notNull(),revokedAt:integer('revoked_at'),views:integer('views').notNull().default(0),
+},t=>[index('idx_share_generation').on(t.generationId)]);

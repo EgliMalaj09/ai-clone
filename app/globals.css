@@ -300,3 +300,12 @@ summary:focus-visible,[tabindex]:focus-visible,[role=checkbox]:focus-visible,[ro
 tr[draggable=true]{cursor:grab}
 .role-form{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
 .role-form h3{margin:0 0 6px;font-size:15px}
+
+/* Share page (V3) */
+.share-page{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:48px;align-items:center;max-width:980px;margin:30px auto 60px}
+.share-video video{width:100%;border-radius:22px;background:#0f1115;aspect-ratio:9/16;object-fit:cover}
+.share-copy{display:flex;flex-direction:column;align-items:flex-start;gap:16px}
+.share-copy h1{font-size:40px;line-height:1.1;margin:0}
+.share-copy p{color:#68707a;line-height:1.6;margin:0}
+@media (max-width:760px){.share-page{grid-template-columns:1fr;gap:24px;margin-top:10px}.share-copy h1{font-size:30px}}
+.share-state{display:flex;align-items:center;gap:4px;font-size:13px;color:#68707a}
