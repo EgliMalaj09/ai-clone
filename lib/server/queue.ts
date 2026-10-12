@@ -1,5 +1,5 @@
 import {all,batch,config,event,must,now,one,parse,run,stmt,uid,type Row} from './data';
-import type {WorkflowStep} from '../contracts';
+import {RETENTION_DAYS,type WorkflowStep} from '../contracts';
 import {buildInput,ProviderRefusal,providerFor} from './providers';
 import {ingestRemote,mediaUrl,storage} from './storage';
 import {settleHold} from './credits';
@@ -119,14 +119,28 @@ export async function tickQueue(userId?:string){
  const maintenance=await one("INSERT INTO app_settings (key,value) VALUES ('last_maintenance',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE CAST(value AS INTEGER)<? RETURNING value",String(now()),now()-3600000);
  if(maintenance){
   await batch([stmt('DELETE FROM rate_limits WHERE reset_at<?',now()-3600000),stmt('DELETE FROM sessions WHERE expires_at<?',now()),stmt('DELETE FROM auth_tokens WHERE expires_at<?',now())]);
-  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads,sweepPendingPurchases,pruneErrors])await task().catch(e=>reportError('queue','Maintenance task needs another run',{error:e,context:{task:task.name}}));
+  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads,sweepExpiredCreations,sweepExpiredUploads,sweepPendingPurchases,pruneErrors])await task().catch(e=>reportError('queue','Maintenance task needs another run',{error:e,context:{task:task.name}}));
  }
  await run("INSERT INTO app_settings (key,value) VALUES ('queue_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(now()));
  // Announcements (V36): the next batch of emails, if one is being sent.
  await sendAnnouncementBatch().catch(e=>reportError('email','Announcement batch needs another run',{error:e}));
  // Scheduled publishing (V13): templates go live on the first dispatcher run after their time.
  for(const t of await all('UPDATE templates SET active=1,publish_at=NULL,updated_at=? WHERE active=0 AND archived_at IS NULL AND publish_at IS NOT NULL AND publish_at<=? RETURNING id',now(),now()))await run('INSERT INTO audit_logs (id,user_id,action,target_id,created_at) VALUES (?,NULL,?,?,?)',uid(),'template.scheduled-publish',t.id,now());const rows=await all("SELECT id FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND next_run_at<=? AND lease_until<? AND deleted_at IS NULL"+(userId?' AND user_id=?':'')+' ORDER BY created_at LIMIT 5',now(),now(),...(userId?[userId]:[]));await Promise.allSettled(rows.map(g=>tickGeneration(g.id)));return rows.length;}
-export async function removeGeneration(id:string,userId:string){const g=await one('SELECT * FROM generations WHERE id=? AND user_id=? AND deleted_at IS NULL',id,userId);must(g,'Creation not found.',404);must(!active.includes(g.status),'Please wait for the running generation to finish before deleting it.',409);const assets=await all('SELECT * FROM generated_assets WHERE generation_id=?',id);for(const a of assets)await storage.delete(a.storage_key);await batch([stmt('UPDATE share_links SET revoked_at=? WHERE generation_id=? AND revoked_at IS NULL',now(),id),stmt('DELETE FROM generated_assets WHERE generation_id=?',id),stmt("UPDATE generations SET deleted_at=?,context='{}',input_ids='[]' WHERE id=?",now(),id)]);}
+/** Delete a creation's files from storage, revoke its share links and soft-delete it. Shared by manual delete and the retention sweep. */
+async function purgeCreation(id:string){const assets=await all('SELECT storage_key FROM generated_assets WHERE generation_id=?',id);for(const a of assets)await storage.delete(a.storage_key as string);await batch([stmt('UPDATE share_links SET revoked_at=? WHERE generation_id=? AND revoked_at IS NULL',now(),id),stmt('DELETE FROM generated_assets WHERE generation_id=?',id),stmt("UPDATE generations SET deleted_at=?,context='{}',input_ids='[]' WHERE id=?",now(),id)]);}
+export async function removeGeneration(id:string,userId:string){const g=await one('SELECT status FROM generations WHERE id=? AND user_id=? AND deleted_at IS NULL',id,userId);must(g,'Creation not found.',404);must(!active.includes(g.status),'Please wait for the running generation to finish before deleting it.',409);await purgeCreation(id);}
+
+const RETENTION_MS=RETENTION_DAYS*24*3600000;
+/** Finished creations older than the retention window: delete their files and soft-delete them (D11/V46). */
+export async function sweepExpiredCreations(){
+ const rows=await all("SELECT id FROM generations WHERE deleted_at IS NULL AND status NOT IN ('queued','preparing','generating','finalizing') AND COALESCE(completed_at,created_at)<? ORDER BY COALESCE(completed_at,created_at) LIMIT 50",now()-RETENTION_MS);
+ for(const r of rows)await purgeCreation(r.id as string);
+}
+/** Uploaded photos older than the retention window, saved ones included (D11/V46). Unused photos already go at 24 h (sweepUnusedUploads). */
+export async function sweepExpiredUploads(){
+ const rows=await all('SELECT id FROM user_uploads WHERE created_at<? ORDER BY created_at LIMIT 50',now()-RETENTION_MS);
+ for(const r of rows){const gone=await one('DELETE FROM user_uploads WHERE id=? RETURNING storage_key',r.id);if(gone)await storage.delete(gone.storage_key as string);}
+}
 
 /** Settle holds whose generation finished without settling them (e.g. an interrupted capture or release). */
 export async function sweepCreditHolds(){

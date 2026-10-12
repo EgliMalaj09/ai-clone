@@ -327,7 +327,7 @@ export const sq:Record<string,string>={
  'Who can see my photos and videos?':'Kush i sheh fotot dhe videot e mia?',
  'Only you and the studio administrators. A video becomes visible to others only when you share a link to it or add it to the community gallery, and you can undo both at any time.':'Vetëm ti dhe administratorët e studios. Një video bëhet e dukshme për të tjerët vetëm kur ndan një lidhje të saj ose e shton në galerinë e komunitetit, dhe mund t’i zhbësh të dyja kur të duash.',
  'How long do you keep my photos?':'Sa kohë i mbani fotot e mia?',
- 'Photos that are not used for a video are deleted automatically after 24 hours, unless you save them to My photos. Saved photos and your videos stay in your account until you delete them.':'Fotot që nuk përdoren për një video fshihen automatikisht pas 24 orësh, përveç nëse i ruan te Fotot e mia. Fotot e ruajtura dhe videot e tua mbeten në llogari derisa t’i fshish.',
+ 'Photos you do not use for a video are deleted automatically after 24 hours. Everything else — your saved photos and your finished videos — is kept for 30 days and then deleted automatically. You can delete anything sooner from My creations or Account.':'Fotot që nuk i përdor për një video fshihen automatikisht pas 24 orësh. Çdo gjë tjetër — fotot e tua të ruajtura dhe videot e përfunduara — mbahet për 30 ditë dhe pastaj fshihet automatikisht. Mund të fshish çdo gjë më herët nga Krijimet e mia ose Llogaria.',
  'How do I delete my data?':'Si i fshij të dhënat e mia?',
  'Delete single videos from My creations and photos from [Account](/account), or delete your whole account there. You can also download a copy of all your data from Account first.':'Fshi videot një nga një te Krijimet e mia dhe fotot te [Llogaria](/account), ose fshi gjithë llogarinë atje. Mund të shkarkosh më parë edhe një kopje të të gjitha të dhënave nga Llogaria.',
  // Pricing and credits
@@ -539,7 +539,8 @@ export const sq:Record<string,string>={
  'Use a saved photo':'Përdor një foto të ruajtur',
  'My photos':'Fotot e mia',
  'Saved photo':'Foto e ruajtur',
- 'Save photos to reuse them for any template. Saved photos stay until you delete them; other uploads are deleted after 24 hours unless a video uses them. Photos are private.':'Ruaj fotot për t’i përdorur sërish për çdo shabllon. Fotot e ruajtura mbeten derisa t’i fshish; ngarkimet e tjera fshihen pas 24 orësh nëse nuk i përdor ndonjë video. Fotot janë private.',
+ 'Save photos to reuse them for any template. Saved photos and your videos are kept for 30 days, then deleted automatically; unused uploads go after 24 hours. Photos are private.':'Ruaj fotot për t’i përdorur sërish për çdo shabllon. Fotot e ruajtura dhe videot e tua mbahen për 30 ditë, pastaj fshihen automatikisht; ngarkimet e papërdorura fshihen pas 24 orësh. Fotot janë private.',
+ 'Your photos and videos are kept for 30 days, then deleted automatically. Download anything you want to keep.':'Fotot dhe videot e tua mbahen për 30 ditë, pastaj fshihen automatikisht. Shkarko çdo gjë që do të mbash.',
  'The photo is removed from storage. Videos you already made with it are kept.':'Fotoja hiqet nga ruajtja. Videot që ke bërë tashmë me të mbeten.',
  'Name for this photo':'Emri i kësaj fotoje',
  'e.g. Me, My partner':'p.sh. Unë, Partneri im',

@@ -83,6 +83,8 @@ export const categories=['All templates','Cinematic','Transformation','Action','
 /** How a template's output is described to the customer (C27): orientation and where it fits. */
 export const formatLabel=(ratio:string)=>({'9:16':'Vertical 9:16 — Stories, Reels, TikTok','16:9':'Landscape 16:9 — YouTube, TV','1:1':'Square 1:1 — feed posts','4:5':'Portrait 4:5 — Instagram feed'} as Record<string,string>)[ratio]||ratio;
 export const credits=(n:number)=>new Intl.NumberFormat('en-US').format(n)+' credit'+(n===1?'':'s');
+/** How long finished videos and uploaded photos are kept before automatic deletion (D11/V46). Shown to the customer and enforced by the maintenance sweep. */
+export const RETENTION_DAYS=30;
 /** Formats minor units exactly (C13): lek shows no decimals for whole amounts, but a fractional amount is never rounded away (299.50 stays 299.50). */
 export const money=(amount:number,currency='USD')=>{const whole=Number.isInteger(amount/100);return new Intl.NumberFormat('en-US',{style:'currency',currency,...(whole?{}:{minimumFractionDigits:2,maximumFractionDigits:2})}).format(amount/100);};
 // Lowest price of one credit per currency (minor units, fractional), from the active packs. Lets guests see roughly what credits cost.

@@ -455,6 +455,15 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const savedGen=await generate(userCookie,formula,[keepUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost,expected:201});await waitDone(userCookie,savedGen.body.generationId);
  await request('/api/uploads/'+keepUp.body.id,{method:'DELETE',cookie:userCookie});
  ok('Deleting a saved photo keeps the videos made with it',(await request('/api/generations/'+savedGen.body.generationId,{cookie:userCookie})).body.generations[0].status==='completed');
+ // V46 (D11): after 30 days the maintenance sweep deletes finished videos and photos, saved photos included.
+ const oldUp=await upload(userCookie);const oldGen=await generate(userCookie,formula,[oldUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost});await waitDone(userCookie,oldGen.body.generationId);
+ await db.prepare('UPDATE user_uploads SET saved_at=?,created_at=? WHERE id=?').bind(Date.now(),Date.now()-31*24*3600000,oldUp.body.id).run();
+ await db.prepare('UPDATE generations SET started_at=?,completed_at=? WHERE id=?').bind(Date.now()-31*24*3600000,Date.now()-31*24*3600000,oldGen.body.generationId).run();
+ await db.prepare("UPDATE app_settings SET value='0' WHERE key='last_maintenance'").run();await request('/api/queue/tick',{method:'POST',cookie:userCookie,data:{}});
+ const expiredGen=await db.prepare('SELECT deleted_at FROM generations WHERE id=?').bind(oldGen.body.generationId).first();
+ const expiredAssets=(await db.prepare('SELECT COUNT(*) AS n FROM generated_assets WHERE generation_id=?').bind(oldGen.body.generationId).first()).n;
+ const expiredUp=await db.prepare('SELECT id FROM user_uploads WHERE id=?').bind(oldUp.body.id).first();
+ ok('After 30 days the video is soft-deleted with its files removed, and even a saved photo is gone',!!expiredGen.deleted_at&&expiredAssets===0&&!expiredUp);
  // V5: running creations carry a time estimate from the template's recent videos.
  const etaUp=await upload(userCookie);const etaGen=await generate(userCookie,formula,[etaUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost});
  const etaRow=(await request('/api/generations/'+etaGen.body.generationId,{cookie:userCookie})).body.generations[0];
