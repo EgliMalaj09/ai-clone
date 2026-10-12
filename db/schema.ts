@@ -46,6 +46,8 @@ export const templates=sqliteTable('templates',{
  sortOrder:integer('sort_order').notNull().default(0),publishAt:integer('publish_at'),archivedAt:integer('archived_at'),
  // Template options (V22/V23/V37): choices the customer picks (style, format, quality) that change the prompt, format, model and price.
  options:text('options').notNull().default('[]'),
+ // What the customer photographs (V39): a person (face rules) or a product (product photo rules).
+ subject:text('subject').notNull().default('person'),
 },t=>[index('idx_templates_active_category').on(t.active,t.category)]);
 export const templateWorkflows=sqliteTable('template_workflows',{
  id:text('id').primaryKey(),templateId:text('template_id').notNull().unique().references(()=>templates.id,{onDelete:'cascade'}),version:integer('version').notNull().default(1),

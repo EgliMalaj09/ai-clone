@@ -10,6 +10,8 @@ export type PublicTemplate = {
   sortOrder?: number;
   /** Choices the customer picks (V22/V23/V37); prompts and models stay private. */
   options?: PublicOptionGroup[];
+  /** 'product' templates (V39) ask for a product photo instead of a face. */
+  subject?: 'person'|'product';
 };
 /** Template options (V22 style, V23 format, V37 quality). The first choice of each group is the default. */
 export type OptionChoice={id:string;label:string;labelSq?:string;credits?:number;aspectRatio?:string;prompt?:string;model?:string};
@@ -69,10 +71,13 @@ export const DEFAULT_PHOTO_GUIDELINES:PhotoGuidelines={
  ],
 };
 /** The "how many photos" line, driven by the template's required photo count. */
+/** Photo rules for product templates (V39): no face rules. */
+export const PRODUCT_PHOTO_GUIDELINES:PhotoGuidelines={do:['The product fills most of the photo','Plain, uncluttered background','Bright, even light without strong shadows','Sharp, with logos and labels readable'],dont:['No other products in the photo','No hands or people covering it','No heavy filters or text added on top','Don’t crop off parts of the product']};
+export const productCountLine=(count:number)=>count>1?`Upload ${count} product photos — one product in each`:'One product, clearly visible';
 export const photoCountLine=(count:number)=>count>1?`Upload ${count} photos — one clear face in each`:'One person, with the face clearly visible';
 /** Keeps only non-empty, trimmed, length-capped lines; used for admin-edited guidelines. */
 export const cleanGuidelineList=(lines:string[],max=12)=>lines.map(l=>l.trim()).filter(Boolean).slice(0,max);
-export const categories=['All templates','Cinematic','Transformation','Action','Fashion','Couples','Fantasy','Social','Business','Travel','Anime','Sports','Lifestyle','Funny'];
+export const categories=['All templates','Cinematic','Transformation','Action','Fashion','Couples','Fantasy','Social','Business','Travel','Anime','Sports','Lifestyle','Funny','Products'];
 /** How a template's output is described to the customer (C27): orientation and where it fits. */
 export const formatLabel=(ratio:string)=>({'9:16':'Vertical 9:16 — Stories, Reels, TikTok','16:9':'Landscape 16:9 — YouTube, TV','1:1':'Square 1:1 — feed posts','4:5':'Portrait 4:5 — Instagram feed'} as Record<string,string>)[ratio]||ratio;
 export const credits=(n:number)=>new Intl.NumberFormat('en-US').format(n)+' credit'+(n===1?'':'s');

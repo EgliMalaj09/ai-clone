@@ -466,6 +466,12 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await waitDone(userCookie,optGen.generationId);
  ok('Make it again keeps the options and their price',(await request('/api/generations/'+optGen.generationId,{cookie:userCookie})).body.generations[0].repeatCost===optBase+100);
  await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...optTpl,optionGroups:[]}});
+ // V39: product templates show product photo rules instead of face rules; the Albanian count line works for several photos.
+ const prodTpl=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Product Ad',slug:'qa-product-ad',category:'Products',subject:'product',active:true,creditCost:300},expected:201})).body.template;
+ const prodPage=(await request('/template/qa-product-ad')).text,prodSq=(await request('/template/qa-product-ad',{lang:null})).text;
+ ok('Product templates use product photo rules (EN and SQ)',prodTpl.subject==='product'&&prodPage.includes('One product, clearly visible')&&prodPage.includes('Plain, uncluttered background')&&!prodPage.includes('Face clearly visible')&&prodSq.includes('Një produkt, qartë i dukshëm'));
+ ok('Two-photo templates show the Albanian photo count',(await request('/template/wedding-cinematic',{lang:null})).text.includes('Ngarko 2 foto — një fytyrë e qartë në secilën'));
+ await request('/api/admin/templates/'+prodTpl.id,{method:'DELETE',cookie:adminCookie});
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

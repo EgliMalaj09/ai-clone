@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 31 | 45 |
+| 3B. Version 1 features | 32 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -274,7 +274,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 **Found by comparing with Genematic (similar product)**
 - [x] **V37 🟡 Quality levels per template.** Let a template offer "Standard" and "Premium" (e.g. a cheaper and a better AI model), each with its own credit cost, shown before generating.
 - [ ] **V38 🟡 Creator tracking links.** Personal links/codes for creators (D17) and referrals (V4), showing sign-ups and purchases per creator in the admin.
-- [ ] **V39 🟡 Product templates for businesses.** Templates that turn a product photo (not a face) into an ad clip, for shops and small businesses; separate category and photo guidelines (C31) without the face rules.
+- [x] **V39 🟡 Product templates for businesses.** Templates that turn a product photo (not a face) into an ad clip, for shops and small businesses; separate category and photo guidelines (C31) without the face rules.
 - [x] **V40 🟡 Public feed.** A public feed of results customers chose to share (opt-in), with likes, that links each video to its template; extends the gallery in V6.
 - [ ] **V41 🟡 Watermark on free results.** Results made with free welcome credits carry a small logo watermark; paid results don't (from D16).
 - [x] **V42 🟡 Ask for a review.** After a good result (e.g. a high rating in V6), ask the customer to leave a Google or Trustpilot review.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V39 | Done | Product templates: template editor → What's in the photo (person / product); product templates show product photo rules and texts (EN+SQ) instead of face rules; new Products category. Also fixed the Albanian count line for multi-photo templates. Migration 0026. 2 integration checks |
 | 2026-10-12 | V22, V23, V37 | Done | Template options: up to 4 groups per template (template editor → Customer options) — style choices add words to the hidden prompt, a format choice sets 9:16/1:1/16:9/4:5, quality levels add credits and can switch the main video model. Customers pick them on the template page (EN/SQ labels); the price, reservation, snapshot and Make it again follow the picks; cards show the opening price. Prompts and models stay private. Migration 0025. 3 integration checks |
 | 2026-10-12 | V28 | Done | Gift purchases: gift fields on credit_purchases (migration 0024), confirmGiftPayment (issued→system:gifts, one-time gift code, emails), redemption from system:gifts, reverseGiftPayment, ledger kinds gift_sale/gift, Credits page gift form, redeem code prefilled from ?code=. 3 credits checks |
 | 2026-10-12 | V4 | Done | Promo codes (promo_codes, promo_redemptions), discount applied in startPackCheckout and counted when paid, credit codes granted from system:promo (new ledger kinds promo/referral), referral codes + referred_by, reward after the first paid purchase, admin page and settings, customer code box and invite panel (translated). Migration 0023. 4 credits checks |
