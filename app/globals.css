@@ -379,3 +379,7 @@ tr[draggable=true]{cursor:grab}
 .saved-photo input{padding:7px 9px;font-size:13px}
 .saved-actions{display:flex;justify-content:space-between;align-items:center}
 .is-default{color:#c98a00}
+.progress-wrap{width:min(220px,80%);display:flex;flex-direction:column;align-items:center;gap:6px;margin:6px auto}
+.progress-bar{width:100%;height:6px;border-radius:999px;background:rgba(255,255,255,.25);overflow:hidden}
+.progress-bar span{display:block;height:100%;background:#fff;border-radius:999px;transition:width 1s linear}
+.progress-wrap small{font-size:12px;opacity:.9}

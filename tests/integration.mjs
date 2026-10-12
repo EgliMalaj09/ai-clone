@@ -439,6 +439,10 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const savedGen=await generate(userCookie,formula,[keepUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost,expected:201});await waitDone(userCookie,savedGen.body.generationId);
  await request('/api/uploads/'+keepUp.body.id,{method:'DELETE',cookie:userCookie});
  ok('Deleting a saved photo keeps the videos made with it',(await request('/api/generations/'+savedGen.body.generationId,{cookie:userCookie})).body.generations[0].status==='completed');
+ // V5: running creations carry a time estimate from the template's recent videos.
+ const etaUp=await upload(userCookie);const etaGen=await generate(userCookie,formula,[etaUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost});
+ const etaRow=(await request('/api/generations/'+etaGen.body.generationId,{cookie:userCookie})).body.generations[0];
+ ok('Running creations include a typical duration for the progress estimate',typeof etaRow.typicalSeconds==='number'&&etaRow.typicalSeconds>0);await waitDone(userCookie,etaGen.body.generationId);
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

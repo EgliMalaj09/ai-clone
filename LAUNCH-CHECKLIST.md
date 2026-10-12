@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 23 | 45 |
+| 3B. Version 1 features | 24 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -232,7 +232,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V2 🟡 Watermarked preview.** A low-resolution, watermarked preview before credits are charged, to build trust.
 - [x] **V3 🟡 Share page.** `/v/<id>` with an Open Graph preview and links the owner can revoke, instead of a raw 23-hour media link.
 - [ ] **V4 🟡 Promo codes and referrals.** Codes that grant credits or discount packs, plus "invite a friend, both get credits".
-- [ ] **V5 🟡 Progress and ETA.** Progress estimate on creations; use fal.ai webhooks instead of polling.
+- [x] **V5 🟡 Progress and ETA.** Progress estimate on creations; use fal.ai webhooks instead of polling. ✅ Videos being made show a progress bar and "about N min left", estimated from how long that template's last 20 videos took (2 minutes when there's no history); it never shows 100% before the video is ready. Provider webhooks are not used — see DECISIONS.md #15.
 - [x] **V6 🟡 Ratings and gallery.** Customers rate results; an opt-in "made with this template" gallery.
 - [x] **V7 🟡 Installable app (PWA).** Add to home screen on phones, with an app icon and offline page. ✅ Web app manifest (standalone, theme colour, shortcuts), icons incl. maskable and Apple home-screen icon, a network-first service worker with a bilingual offline page. Icons are made from today's logo; replace them with the final brand (X2.2).
 - [ ] **V8 🟡 Image-only templates.** Photo results (portraits, photoshoots) as a cheaper product; allow publishing workflows that end in an image.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V5 | Done | Progress estimate: typicalSeconds per running creation (average of the template's last 20 completed), animated progress bar with time left in My creations (translated). 1 integration check |
 | 2026-10-12 | V17 | Done | Saved photos: unticked 'Save this photo for future videos' after upload; 'Use a saved photo' picker per slot and the default photo pre-filled; Account → My photos with names, a default, delete, and Save for recent uploads; saved photos skip the 24-hour cleanup (max 20) and are never deleted by replacing/removing them on a template page; deleting keeps past videos; privacy text, FAQ (EN+SQ) updated. Photos were cleaned at upload (C2) and stay private. Migration 0021. 3 integration checks |
 | 2026-10-12 | V6, V40, V42 | Done | Ratings (1–5 stars) on finished videos; opt-in Share to the community (consent dialog) puts a video on the new /feed Community page (newest / most liked, likes for signed-in customers) and in a 'See what others made' gallery on its template page; stop sharing, deletion, removal requests and staff Hide take it out. Customers who rate 4–5 stars are invited to review (review link set in Admin → Settings → Support). Header nav fits at tablet widths. Privacy text and FAQ updated (EN+SQ). Migration 0020. 6 integration checks |
 | 2026-10-12 | V43 | Done | Template ideas: public /ideas page (footer "Suggest a template", link from empty search) where signed-in customers suggest ideas and vote once each; Admin → Template ideas sorted by votes with status (open / coming soon / available / declined) and a linked template. Migration 0019. 2 integration checks |
