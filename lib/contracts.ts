@@ -22,7 +22,7 @@ export type AdminTemplate = PublicTemplate & {
   publishAt?: number|null;
   archivedAt?: number|null;
 };
-export type StudioUser = {id:string;name:string;email:string;role:string;status:string;createdAt:number;avatar:string|null;emailVerified:boolean;contentStrikes:number;blocked:boolean;twoFactor?:boolean;locale?:'sq'|'en';pendingEmail?:string|null};
+export type StudioUser = {id:string;name:string;email:string;role:string;status:string;createdAt:number;avatar:string|null;emailVerified:boolean;contentStrikes:number;blocked:boolean;twoFactor?:boolean;locale?:'sq'|'en';pendingEmail?:string|null;marketingOptIn?:boolean};
 // The published version of the Terms and Privacy Policy. Bump this whenever the legal pages change
 // so new sign-ups record which version they accepted (C20.1). Keep it in sync with the legal pages (P3).
 /** Roles (V10): customers ('user'), support staff with limited admin access, and administrators. */

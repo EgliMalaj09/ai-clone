@@ -142,3 +142,11 @@ export const templateVersions=sqliteTable('template_versions',{
  id:text('id').primaryKey(),templateId:text('template_id').notNull().references(()=>templates.id,{onDelete:'cascade'}),
  snapshot:text('snapshot').notNull(),createdAt:integer('created_at').notNull(),createdBy:text('created_by'),
 },t=>[index('idx_template_versions').on(t.templateId,t.createdAt)]);
+// Announcements (V36/V29): emails to customers who opted in to news (C20.3), sent by the dispatcher in small batches.
+export const announcements=sqliteTable('announcements',{
+ id:text('id').primaryKey(),subjectSq:text('subject_sq').notNull(),bodySq:text('body_sq').notNull(),subjectEn:text('subject_en').notNull(),bodyEn:text('body_en').notNull(),
+ link:text('link'),linkLabel:text('link_label'),templateId:text('template_id'),
+ status:text('status').notNull().default('sending'),// sending | sent | cancelled
+ total:integer('total').notNull().default(0),sent:integer('sent').notNull().default(0),cursor:text('cursor').notNull().default(''),
+ createdBy:text('created_by'),createdAt:integer('created_at').notNull(),finishedAt:integer('finished_at'),
+});

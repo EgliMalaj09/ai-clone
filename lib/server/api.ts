@@ -25,6 +25,7 @@ import {shareGeneration,sharedMap,sharedVideoRedirect,stopSharing} from './share
 import {createRemovalRequest,listRemovals,resolveRemoval} from './removals';
 import {listVersions,recordVersion,restoreVersion} from './template-history';
 import {templateStats} from './template-stats';
+import {cancelAnnouncement,createAnnouncement,listAnnouncements,sendTest,unsubscribe} from './announcements';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
 import {langFromCookie,translate,type Lang} from '../i18n';
 /** Friendly, translated messages for the form fields customers fill in; other validation messages stay technical. */
@@ -112,6 +113,8 @@ export async function handleAPI(req:Request){try{
  const url=new URL(req.url);const p=url.pathname.slice(5).split('/').filter(Boolean);const method=req.method;
  await ensureSeed();
  if(p.join('/')==='webhooks/pok'&&method==='POST'){const purchase=await pokWebhook(req);if(purchase)await verifyPackCheckout(purchase);return json({received:true});}
+ // One-click unsubscribe (V36): mail apps POST here with no origin or cookie; the link itself is signed.
+ if(p.join('/')==='unsubscribe'&&method==='POST'){const u=url.searchParams.get('u')||'',s=url.searchParams.get('s')||'';const b=req.headers.get('content-type')?.includes('json')?await body(req).catch(()=>({})) as Record<string,unknown>:{};return json(await unsubscribe(u||String(b.u||''),s||String(b.s||'')));}
  protectOrigin(req);
  if(p.join('/')==='queue/dispatch'&&method==='POST'){must(config().cronSecret&&constantEqual(req.headers.get('authorization')||'','Bearer '+config().cronSecret),'Unauthorized queue worker.',401);const processed=await tickQueue();await recordDispatch('external');return json({processed});}
  const ip=req.headers.get('cf-connecting-ip')||'local';
@@ -187,7 +190,7 @@ export async function handleAPI(req:Request){try{
   }
  }
  if(p[0]==='account'){
-  if(method==='PATCH'){const b=await body(req);const name=z.string().trim().min(2).max(80).parse(b.name);await run('UPDATE users SET name=? WHERE id=?',name,user.id);return json({ok:true});}
+  if(method==='PATCH'){const b=await body(req);if(typeof b.marketingOptIn==='boolean'&&b.name===undefined){await run('UPDATE users SET marketing_opt_in=?,marketing_opt_in_at=? WHERE id=?',b.marketingOptIn?1:0,b.marketingOptIn?now():null,user.id);await audit(user.id,b.marketingOptIn?'account.news-on':'account.news-off',user.id);return json({ok:true});}const name=z.string().trim().min(2).max(80).parse(b.name);await run('UPDATE users SET name=? WHERE id=?',name,user.id);return json({ok:true});}
   if(method==='POST'&&p[1]==='email'){await rateLimit('change-email:'+user.id,5,3600000);const b=z.object({email:z.string().trim().email().max(254).transform(s=>s.toLowerCase()),password:z.string().min(1).max(128)}).parse(await body(req));
    const me=await one('SELECT password_hash FROM users WHERE id=?',user.id);must(me&&await checkPassword(b.password,me.password_hash),'Your password is incorrect.',403);must(b.email!==user.email,'This is already your email.');must(!await one('SELECT id FROM users WHERE email=?',b.email),'An account with this email already exists.',409);
    const c=await serviceConfig();
@@ -247,6 +250,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   const profitable=currencies.filter(c=>values[c]!==undefined).flatMap(c=>templates.map(t=>({name:t.name as string,currency:c,credit_cost:t.credit_cost as number,estimated_cost:convertMinor(Number(t.estimated_cost||0),t.currency as string,c,rates),value:Math.round((t.credit_cost as number)*values[c])})).sort((a,b)=>(b.value-b.estimated_cost)-(a.value-a.estimated_cost)).slice(0,5));
   return json({users:users?.count||0,metrics,financials,credits,top,recent,profitable,daily,recentPurchases,demo:config().demo,...await publicAvailability()});
  }
+ if(p[1]==='announcements'){if(method==='GET'&&!p[2])return json(await listAnnouncements());if(method==='POST'&&p[2]==='test')return json(await sendTest(user,await body(req)));if(method==='POST'&&!p[2])return json(await createAnnouncement(user,await body(req)),201);if(method==='POST'&&p[3]==='cancel')return json(await cancelAnnouncement(user,p[2]));}
  if(p[1]==='template-stats'&&method==='GET')return json(await templateStats(new URL(req.url)));
  if(p[1]==='templates'){
   if(method==='GET'&&p[3]==='versions'&&p[2])return json(await listVersions(p[2]));

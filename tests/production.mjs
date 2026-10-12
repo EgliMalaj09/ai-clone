@@ -134,6 +134,20 @@ try{
   await request('/api/auth/email-change',{method:'POST',data:{token:confirmToken}});
   ok('A new email is confirmed by a link sent to it, and the old address is notified',pendingChange.pending==='shqip2@studio.test'&&!!stillOld&&!!(await db.prepare("SELECT id FROM users WHERE email='shqip2@studio.test' AND pending_email IS NULL").first())&&mails.some(m=>m.to==='shqip@studio.test'&&m.subject.includes('u ndryshua')));
   await request('/api/auth/email-change',{method:'POST',data:{token:confirmToken},expected:400});
+  // V36/V29: announcements go only to verified customers who opted in, in their language, with one-click unsubscribe.
+  await request('/api/auth/register',{method:'POST',lang:'en',data:{name:'News Fan',email:'fan@studio.test',password:'News-password-1',acceptTerms:true,confirmAge:true,marketingOptIn:true},expected:201});
+  await request('/api/auth/register',{method:'POST',lang:null,data:{name:'Pa Lajme',email:'nonews@studio.test',password:'News-password-1',acceptTerms:true,confirmAge:true},expected:201});
+  await db.prepare("UPDATE users SET email_verified=1 WHERE email IN ('fan@studio.test','nonews@studio.test')").run();
+  const ann={subjectSq:'Shabllon i ri',bodySq:'Kemi një shabllon të ri.\n\nProvoje sot.',subjectEn:'A new template',bodyEn:'We have a new template.\n\nTry it today.',link:'/explore',linkLabelSq:'Shiko',linkLabelEn:'See it'};
+  await request('/api/admin/announcements',{method:'POST',cookie:admin,data:{...ann,link:'https://evil.test'},expected:400});
+  const sentAnn=(await request('/api/admin/announcements',{method:'POST',cookie:admin,data:ann,expected:201})).body;
+  await request('/api/queue/tick',{method:'POST',cookie:admin,data:{}});
+  const fanMail=mails.find(m=>m.to==='fan@studio.test'&&m.subject==='A new template');
+  ok('An announcement reaches only opted-in customers, in their language, with an unsubscribe header',sentAnn.total>=1&&fanMail&&fanMail.headers['List-Unsubscribe'].includes('/unsubscribe?u=')&&fanMail.html.includes('/explore')&&!mails.some(m=>m.to==='nonews@studio.test'&&m.subject.includes('Shabllon'))&&(await request('/api/admin/announcements',{cookie:admin})).body.announcements[0].status==='sent');
+  const unsubUrl=new URL(fanMail.headers['List-Unsubscribe'].slice(1,-1));
+  await request('/api/unsubscribe?u='+unsubUrl.searchParams.get('u')+'&s=bad',{method:'POST',origin:null,expected:400});
+  await request('/api/unsubscribe'+unsubUrl.search,{method:'POST',origin:null});
+  ok('One-click unsubscribe works without signing in',(await db.prepare("SELECT marketing_opt_in FROM users WHERE email='fan@studio.test'").first()).marketing_opt_in===0);
   const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
   await db.prepare("UPDATE credit_purchases SET provider='mock',status='pending' WHERE id=?").bind(stale.purchaseId).run();
   await request('/api/credits/purchases/'+stale.purchaseId+'/retry',{method:'POST',cookie:admin,data:{},expected:403});ok('A test purchase cannot reopen checkout after a production switch');

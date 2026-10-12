@@ -22,3 +22,13 @@ export function RemovalRequestPage({query}:{query:Record<string,string|undefined
   </form></>}
  </article>;
 }
+
+/** One-click unsubscribe from news emails (V36): the signed link in each email lands here. */
+export function UnsubscribePage({query}:{query:Record<string,string|undefined>}){
+ const {t}=useI18n();const [state,setState]=useState<'idle'|'busy'|'done'>('idle'),[error,setError]=useState('');
+ async function go(){setState('busy');setError('');try{await api('unsubscribe','POST',{u:query.u||'',s:query.s||''});setState('done')}catch(e){setError((e as Error).message);setState('idle')}}
+ return <article className="legal-page help-page"><span className="eyebrow">{t('EMAILS')}</span><h1>{t(state==='done'?'You’re unsubscribed.':'Stop news emails?')}</h1>
+  <p>{t(state==='done'?'You won’t get news and offers from us any more. Emails about your account and your videos still arrive.':'You’ll stop getting news, offers and new-template emails. Emails about your account and your videos still arrive.')}</p>
+  {error&&<ErrorBox message={error}/>}{state!=='done'&&<button className="button primary" disabled={state==='busy'} onClick={go}>{state==='busy'?<Busy/>:t('Unsubscribe')}</button>}{state==='done'&&<a className="button secondary" href="/">{t('Back to studio')}</a>}
+ </article>;
+}

@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 16 | 45 |
+| 3B. Version 1 features | 18 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -258,7 +258,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V26 🟡 "Your video is ready" browser notification.** In addition to the email (C11.2), so customers can leave the page while waiting. ✅ While a video is being made, My creations offers "Notify me"; when it finishes (or fails, credits returned) the browser shows a notification through the service worker, also when the tab is in the background; clicking it opens My creations. Works while the site is open in some tab — push to a closed browser would need Web Push keys (see DECISIONS.md #11).
 - [x] **V27 🟡 Low balance reminder.** When credits drop below the cheapest template, show a reminder with the best pack.
 - [ ] **V28 🟡 Gift credits.** Buy a pack as a gift and send it by email with a redeem code.
-- [ ] **V29 🟡 New template emails.** Announce new and seasonal templates to customers who opted in (C20.3), with an unsubscribe link.
+- [x] **V29 🟡 New template emails.** Announce new and seasonal templates to customers who opted in (C20.3), with an unsubscribe link.
 - [x] **V30 🟡 Removal request form.** A public form for someone who finds themselves in a video they didn't agree to, going to the admin report queue (C21) with a fast takedown. ✅ Public /removal-request form (footer "Report a video", and a link on every share page): a request naming a shared video hides it at once. Admin → Reports → Removal requests: watch the video, Remove it (deleted, owner emailed) or Keep it (requester emailed, optional note). Support can handle these too. See DECISIONS.md #12.
 
 **Found by walking through your admin work**
@@ -269,7 +269,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V33 🟡 Prompt history.** Every saved change to a template's prompt and workflow is kept, so you can compare and roll back. ✅ Template editor → History: every save keeps a version (prompt, workflow, price, format, media; newest 50; identical saves skipped), shows who changed what, compares any version with the current one side by side, and restores it (URL and publish state unchanged). History starts with the first save after this update.
 - [x] **V34 🟡 Template statistics.** Per template: views, creations, success rate, average generation time and credits earned. ✅ Admin → Templates → Columns: Statistics, per period (7/30/90 days, all time): views, creations, views→creations, success rate (refusals counted), average generation time and credits earned (free redos excluded).
 - [ ] **V35 🟡 Backup AI model.** If the main model fails or is down, a template can retry automatically with a second model.
-- [ ] **V36 🟡 Announcements to customers.** Send an email to all opted-in customers from the admin (new templates, offers), using C20.3 consent.
+- [x] **V36 🟡 Announcements to customers.** Send an email to all opted-in customers from the admin (new templates, offers), using C20.3 consent.
 
 **Found by comparing with Genematic (similar product)**
 - [ ] **V37 🟡 Quality levels per template.** Let a template offer "Standard" and "Premium" (e.g. a cheaper and a better AI model), each with its own credit cost, shown before generating.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V36, V29 | Done | Admin → Announcements: write the email in Albanian and English (or pick a template to announce it with a ready message), send yourself a test, then send to verified customers who opted in; the dispatcher sends 40 per minute, can be stopped, each customer gets their language once. One-click unsubscribe (signed link + List-Unsubscribe header) and a news toggle in Account. Migration 0018. 2 production + 1 integration check |
 | 2026-10-12 | V34 | Done | lib/server/template-stats.ts + /api/admin/template-stats; Statistics column set in the template list with period picker. 1 integration check |
 | 2026-10-12 | V33 | Done | template_versions (migration 0017), recordVersion on every editor save, list/restore API, History tab with compare and restore. 2 integration checks |
 | 2026-10-12 | V30 | Done | Removal requests (removal_requests, migration 0016): public form + API with IP rate limit, instant share-page takedown, admin/support queue with remove/keep and emails to requester and owner in their language, error-log entry for each new request. 3 integration checks |

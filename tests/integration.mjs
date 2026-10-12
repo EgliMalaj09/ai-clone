@@ -396,6 +396,11 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const st=(await request('/api/admin/template-stats?days=all',{cookie:adminCookie})).body.stats[formula.id];
  await request('/api/admin/template-stats?days=5',{cookie:adminCookie,expected:400});await request('/api/admin/template-stats',{cookie:userCookie,expected:403});
  ok('Template statistics count views, creations, success, time and credits',st.views>=1&&st.creations>=1&&st.completed>=1&&st.successRate>0&&st.successRate<=1&&st.avgSeconds!==null&&st.credits>0);
+ // V36: customers switch news emails on and off in Account; sending needs email to be configured.
+ await request('/api/account',{method:'PATCH',cookie:userCookie,data:{marketingOptIn:true}});const onAt=(await db.prepare("SELECT marketing_opt_in,marketing_opt_in_at FROM users WHERE email='qa@studio.test'").first());
+ await request('/api/account',{method:'PATCH',cookie:userCookie,data:{marketingOptIn:false}});
+ ok('Customers turn news emails on and off, with the consent time recorded',onAt.marketing_opt_in===1&&onAt.marketing_opt_in_at>0&&(await db.prepare("SELECT marketing_opt_in FROM users WHERE email='qa@studio.test'").first()).marketing_opt_in===0);
+ await request('/api/admin/announcements',{method:'POST',cookie:adminCookie,data:{subjectSq:'Lajm',bodySq:'Një lajm i ri për ju.',subjectEn:'News',bodyEn:'Some news for you.'},expected:503});
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

@@ -127,6 +127,13 @@
       "when": 1791764803743,
       "tag": "0017_orange_butterfly",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1791774187984,
+      "tag": "0018_careless_johnny_blaze",
+      "breakpoints": true
     }
   ]
 }

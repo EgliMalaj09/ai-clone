@@ -144,3 +144,20 @@ export function authMailContent(type:AuthMailType,{brand,url,supportEmail,lang='
 </html>`;
  return {subject,html,text};
 }
+
+/** Announcement email (V36/V29): the admin's message in paragraphs, an optional button, and an unsubscribe link. */
+export function announcementMailContent({lang,brand,subject,body,link,linkLabel,unsubscribeUrl}:{lang:Lang;brand:string;subject:string;body:string;link?:string|null;linkLabel?:string|null;unsubscribeUrl:string}):MailContent&{headers:Record<string,string>}{
+ const tr=(s:string)=>translate(lang,s),paras=body.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean),label=linkLabel||tr('Open');
+ const text=[...paras.flatMap(p=>[p,'']),...(link?[`${label}: ${link}`,'']:[]),`— ${brand}`,'',tr('You get this email because you asked for news and offers. Unsubscribe:')+' '+unsubscribeUrl].join('\n');
+ const font="font-family:'Segoe UI',Arial,sans-serif;";
+ const html=`<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>${escape(subject)}</title></head>
+<body style="margin:0;padding:0;background:#0f1115;"><div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escape(paras[0]||'')}</div>
+ <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0f1115;padding:32px 16px;"><tr><td align="center">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#171a21;border-radius:16px;border:1px solid #262b36;">
+   <tr><td style="padding:32px 32px 8px;"><span style="${font}font-size:18px;font-weight:700;color:#fff;">${escape(brand)}</span></td></tr>
+   <tr><td style="padding:8px 32px 0;"><h1 style="margin:0 0 12px;${font}font-size:22px;line-height:1.3;color:#fff;">${escape(subject)}</h1>${paras.map(p=>`<p style="margin:0 0 14px;${font}font-size:15px;line-height:1.6;color:#aeb6c4;">${escape(p).replace(/\n/g,'<br>')}</p>`).join('')}</td></tr>
+   ${link?`<tr><td style="padding:6px 32px 8px;"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="border-radius:10px;background:#6366f1;"><a href="${escape(link)}" style="display:inline-block;padding:12px 26px;${font}font-size:15px;font-weight:600;color:#fff;text-decoration:none;border-radius:10px;">${escape(label)}</a></td></tr></table></td></tr>`:''}
+   <tr><td style="padding:20px 32px 32px;"><hr style="border:none;border-top:1px solid #262b36;margin:0 0 16px;"><p style="margin:0 0 6px;${font}font-size:12px;line-height:1.6;color:#6b7482;">${escape(tr('You get this email because you asked for news and offers.'))} <a href="${escape(unsubscribeUrl)}" style="color:#8b8ff5;">${escape(tr('Unsubscribe'))}</a></p><p style="margin:0;${font}font-size:12px;color:#6b7482;">${escape(brand)} · ${escape(BUSINESS_NAME)}</p></td></tr>
+  </table></td></tr></table></body></html>`;
+ return {subject,html,text,headers:{'List-Unsubscribe':`<${unsubscribeUrl}>`,'List-Unsubscribe-Post':'List-Unsubscribe=One-Click'}};
+}
