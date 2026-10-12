@@ -178,7 +178,7 @@ These come first, because the code and infrastructure work depends on them.
 - [ ] **I1 🔴 Hosting account.** Cloudflare account (or the Sites project) with Workers, D1 and R2 enabled, on a paid plan if you expect real traffic.
 - [ ] **I2 🔴 Production database (D1).**
   - [ ] I2.1 Create the production D1 database and bind it as `DB`.
-  - [ ] I2.2 Apply all migrations in `drizzle/` (0000 onwards, currently up to 0009) through the hosting workflow.
+  - [ ] I2.2 Apply all migrations in `drizzle/` (0000 onwards, currently up to 0028) through the hosting workflow.
   - [ ] I2.3 Check the tables exist and the starter templates are seeded.
 - [ ] **I3 🔴 File storage (R2).**
   - [ ] I3.1 Create the production bucket and bind it as `BUCKET`. Keep it private; the app serves signed links.
@@ -229,7 +229,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 
 **Customer side**
 - [ ] **V1 🟡 Google and Apple sign-in.** The `accounts` table is ready for it; keep email sign-up as well.
-- [ ] **V2 🟡 Watermarked preview.** A low-resolution, watermarked preview before credits are charged, to build trust.
+- [ ] **V2 🟡 Watermarked preview.** A low-resolution, watermarked preview before credits are charged, to build trust. **Blocked (owner + service):** every preview is a real AI run that costs money even when the customer doesn't buy, and Workers can't watermark or downscale video, so it needs a media-processing service. Needs your decision on who pays for discarded previews (D16/D3). Today the template's example video and the free redo (C21) cover trust. See DECISIONS.md #19.
 - [x] **V3 🟡 Share page.** `/v/<id>` with an Open Graph preview and links the owner can revoke, instead of a raw 23-hour media link.
 - [x] **V4 🟡 Promo codes and referrals.** Codes that grant credits or discount packs, plus "invite a friend, both get credits". ✅ Admin → Promo codes: codes that give credits or a % off a pack (limits, expiry, on/off, one use per customer); customers enter them under Credits → Have a code? (discounted prices shown, POK charged the discounted amount, whole lek for ALL). Invite friends: each customer's link; both get the set credits after the friend's first paid purchase (Credits page box; 0 = off, the default). See DECISIONS.md #16.
 - [x] **V5 🟡 Progress and ETA.** Progress estimate on creations; use fal.ai webhooks instead of polling. ✅ Videos being made show a progress bar and "about N min left", estimated from how long that template's last 20 videos took (2 minutes when there's no history); it never shows 100% before the video is ready. Provider webhooks are not used — see DECISIONS.md #15.
