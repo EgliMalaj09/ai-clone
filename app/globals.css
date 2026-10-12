@@ -406,3 +406,15 @@ tr[draggable=true]{cursor:grab}
 .make-more-item small{color:#68707a}
 .detail-content{min-width:0}
 .make-more{min-width:0;max-width:100%}
+.photo-editor{max-width:360px}
+.photo-editor-canvas{display:block;margin:10px auto;border-radius:14px;touch-action:none;cursor:grab;background:#f6f7f9;max-width:100%}
+.photo-editor-controls{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.photo-editor-controls label{display:flex;align-items:center;gap:6px;flex:1}
+.photo-editor-controls input[type=range]{flex:1}
+.photo-editor .modal-actions{flex-wrap:wrap}
+.photo-editor{max-width:360px}
+.photo-editor-canvas{display:block;margin:10px auto;border-radius:14px;touch-action:none;cursor:grab;background:#f6f7f9;max-width:100%}
+.photo-editor-controls{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.photo-editor-controls label{display:flex;align-items:center;gap:6px;flex:1}
+.photo-editor-controls input[type=range]{flex:1}
+.photo-editor .modal-actions{flex-wrap:wrap}

@@ -436,6 +436,16 @@ export const sq:Record<string,string>={
  '{name}: your credits were returned.':'{name}: kreditet të janë kthyer.',
  'Want a heads-up? We can notify you here when your video is ready, even if you switch tabs.':'Do një njoftim? Mund të të njoftojmë këtu kur videoja të jetë gati, edhe nëse kalon në një skedë tjetër.',
  'Notify me':'Më njofto',
+ 'Adjust your photo':'Rregullo foton',
+ 'Drag to move, zoom and rotate so the face is in the middle of the frame. This is exactly what will be used.':'Tërhiqe, zmadhoje dhe rrotulloje që fytyra të jetë në mes të kornizës. Kjo është saktësisht ajo që do të përdoret.',
+ 'Preview of the photo that will be used':'Pamja e fotos që do të përdoret',
+ 'Zoom':'Zmadhimi',
+ 'Rotate':'Rrotullo',
+ 'Zoomed in too far: the photo would be too small. Zoom out a little.':'E zmadhove shumë: fotoja do të dilte shumë e vogël. Zvogëloje pak.',
+ 'Use the whole photo':'Përdor foton e plotë',
+ 'Use this photo':'Përdor këtë foto',
+ 'This iPhone photo (HEIC) can’t be opened in this browser. Share it as a JPEG, or on your iPhone choose Settings → Camera → Formats → Most Compatible.':'Kjo foto iPhone (HEIC) nuk hapet dot në këtë shfletues. Ndaje si JPEG, ose në iPhone zgjidh Cilësimet → Kamera → Formatet → Më i përputhshmi.',
+ 'This photo could not be read. Try another photo.':'Kjo foto nuk u lexua dot. Provo një foto tjetër.',
  'Make more with the same photo':'Bëj më shumë me të njëjtën foto',
  '{n} videos in total: {amount}.':'{n} video gjithsej: {amount}.',
  'Generate {n} videos':'Krijo {n} video',
@@ -841,6 +851,7 @@ export const sq:Record<string,string>={
 
 /** Server messages with numbers in them. */
 export const sqPatterns:[RegExp,string|((m:RegExpMatchArray)=>string)][]=[
+ [/^This photo is too small \((\d+) × (\d+)\)\. Use a photo at least 512 × 512 pixels\.$/,m=>`Kjo foto është shumë e vogël (${m[1]} × ${m[2]}). Përdor një foto të paktën 512 × 512 piksel.`],
  [/^Upload (\d+) photos — one clear face in each$/,m=>`Ngarko ${m[1]} foto — një fytyrë e qartë në secilën`],
  [/^Upload (\d+) product photos — one product in each$/,m=>`Ngarko ${m[1]} foto produkti — një produkt në secilën`],
  [/^You need (\d+) credits for these videos and have (-?\d+)\.$/,m=>`Këto video kërkojnë ${m[1]} kredite dhe ti ke ${m[2]}.`],
