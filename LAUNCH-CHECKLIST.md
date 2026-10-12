@@ -373,6 +373,8 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | X1.4 | Added | FAQPage JSON-LD on /faq (eligible for FAQ rich results). FAQ Q&A moved to `lib/faq.ts`, shared by the FAQ page and the structured data; markdown links stripped from the JSON-LD answers |
+| 2026-10-12 | C6/C20 | Added | Unverified customers can finish verification from Account → Account security by entering the 6-digit code (not only the resend button) |
 | 2026-10-12 | V45 | Done | Buy one video without a pack: `startVideoPurchase` + `/api/credits/buy-video` create a single-video credit purchase (package_id `single:<templateId>`) for exactly the template's credit cost, priced at the highest per-credit pack rate (DECISIONS.md #23); reuses the pack confirm/receipt/reverse path. Template page shows "Or buy just this video — ≈price". 3 credit checks |
 | 2026-10-12 | V1 | Done | Google & Apple sign-in (OpenID Connect code flow, `lib/server/oauth.ts`): buttons shown when a provider's keys are set in Admin → Connections → Social sign-in; signed state + nonce cookie (login-CSRF safe); verified-email account linking; new social accounts created verified, passwordless, with welcome credits. Apple client secret is an ES256 JWT from the .p8. New config/connection fields (GOOGLE_*/APPLE_*). DECISIONS.md #21. 8 integration checks |
 | 2026-10-12 | C6/C20 | Enhanced | Sign-up email verification by a 6-digit code: the verify email now carries the code alongside the link, and registration shows a code-entry step (resend supported). Code stored hashed, scoped per account, 30-min expiry, 6 attempts/15 min. DECISIONS.md #22. 3 production checks |
