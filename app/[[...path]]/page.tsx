@@ -27,5 +27,15 @@ export default async function Page({params,searchParams}:{params:Promise<{path?:
  const data=await loadPage(path,await headers(),query);
  if(path[0]==='template'&&!data.selectedTemplate)notFound();
  if(path[0]==='v'&&!data.shared)notFound();
- return <Studio route={'/'+path.join('/')} query={query} {...data}/>;
+ const ld=await structuredData(path,data);
+ return <>{ld&&<script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(ld)}}/>}<Studio route={'/'+path.join('/')} query={query} {...data}/></>;
+}
+// Structured data (JSON-LD) for search engines (X1.4): Organization + WebSite on the homepage,
+// VideoObject on a template page, and Product/Offer for the credit packs on pricing.
+async function structuredData(path:string[],data:Awaited<ReturnType<typeof loadPage>>){
+ const origin=config().origin.replace(/\/$/,'');const BRAND='PROJECT STUDIO';
+ if(!path.length||path[0]==='explore')return [{'@context':'https://schema.org','@type':'Organization',name:BRAND,url:origin,logo:origin+'/favicon.svg'},{'@context':'https://schema.org','@type':'WebSite',name:BRAND,url:origin}];
+ if(path[0]==='template'&&data.selectedTemplate){const t=data.selectedTemplate;return {'@context':'https://schema.org','@type':'VideoObject',name:t.name,description:t.description,thumbnailUrl:new URL(t.thumbnail,origin).toString(),uploadDate:new Date(t.createdAt).toISOString(),...(t.previewVideo?{contentUrl:new URL(t.previewVideo,origin).toString()}:{})};}
+ if(path[0]==='pricing'){const {listPackages}=await import('@/lib/server/credit-purchases');const packs=await listPackages().catch(()=>[]);const items=packs.filter(p=>p.prices.EUR).map((p,i)=>({'@type':'ListItem',position:i+1,item:{'@type':'Product',name:`${p.name} credit pack`,description:`${p.totalCredits} credits`,offers:{'@type':'Offer',price:(p.prices.EUR/100).toFixed(2),priceCurrency:'EUR',availability:'https://schema.org/InStock',url:origin+'/pricing'}}}));return items.length?{'@context':'https://schema.org','@type':'ItemList',itemListElement:items}:null;}
+ return null;
 }

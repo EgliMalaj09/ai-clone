@@ -191,6 +191,9 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const robots=await request('/robots.txt');ok('robots.txt blocks admin and points to the sitemap',typeof robots.body==='string'&&robots.body.includes('Disallow: /admin')&&robots.body.includes('Sitemap:'));
  const sitemap=await request('/sitemap.xml');ok('sitemap.xml lists public pages and published templates',typeof sitemap.body==='string'&&sitemap.body.includes('<urlset')&&sitemap.body.includes('/template/formula-driver')&&sitemap.body.includes('/pricing'));
  const pricingHtml=await request('/pricing');ok('Indexable pages declare a canonical URL',typeof pricingHtml.body==='string'&&pricingHtml.body.includes('rel="canonical"'));
+ const homeLd=await request('/');ok('Homepage has Organization/WebSite structured data',typeof homeLd.body==='string'&&homeLd.body.includes('application/ld+json')&&homeLd.body.includes('"Organization"')&&homeLd.body.includes('"WebSite"'));
+ const tplLd=await request('/template/formula-driver');ok('Template pages have VideoObject structured data',typeof tplLd.body==='string'&&tplLd.body.includes('application/ld+json')&&tplLd.body.includes('"VideoObject"'));
+ ok('Pricing page has Product/Offer structured data',pricingHtml.body.includes('"Product"')&&pricingHtml.body.includes('"Offer"'));
 
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
  const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;

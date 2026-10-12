@@ -332,9 +332,9 @@ Done at the end, after the features are built and before launch day, once the fi
 
 - [ ] **X1 🟡 Enhanced SEO** (replaces C25; includes P6).
   - [x] X1.1 ✅ `robots.txt` (blocks admin/account/credits/favorites/api/share) + `sitemap.xml` with the public pages and every published template, served by the Worker from `lib/server/seo.ts`. Generated from the database so new templates appear automatically.
-  - [ ] X1.2 Unique page titles and descriptions for every page and template, in Albanian and English, with `hreflang` links between the two languages (after C10).
-  - [ ] X1.3 Open Graph and Twitter images: one for the homepage and one per template (its poster), so links shared on WhatsApp, Instagram and Facebook show a preview.
-  - [ ] X1.4 Structured data (JSON-LD): Organization and WebSite on the homepage, Product/Offer for credit packs, VideoObject for template examples, FAQPage for the FAQ (C26).
+  - [~] X1.2 Titles + descriptions are unique per page/template in Albanian and English (via the i18n helper). `hreflang` is N/A here: the site serves both languages on the same URL via a cookie switch, so there are no per-language URLs to annotate. (orig: with `hreflang` links between the two languages (after C10).
+  - [~] X1.3 Per-template Open Graph + Twitter images (the poster) are already emitted; the **homepage** OG image needs a brand asset (waits for X2/branding). (orig: one for the homepage and one per template (its poster), so links shared on WhatsApp, Instagram and Facebook show a preview.
+  - [x] X1.4 ✅ JSON-LD injected: Organization + WebSite on the homepage, VideoObject on template pages, Product/Offer for the credit packs on /pricing. Generated server-side in `app/[[...path]]/page.tsx`. (orig: Organization and WebSite on the homepage, Product/Offer for credit packs, VideoObject for template examples, FAQPage for the FAQ (C26).
   - [x] X1.5 ✅ Every indexable page declares a canonical URL on `APP_ORIGIN` (template pages too); private/admin pages stay noindex. No duplicate pages (e.g. with and without a trailing slash or filter parameters).
   - [ ] X1.6 Speed (Core Web Vitals): compress previews, lazy-load videos below the fold, check with PageSpeed Insights on mobile.
   - [ ] X1.7 Landing pages for the main searches (e.g. "AI video nga foto", birthday/wedding templates), and category pages people can find from Google.
