@@ -338,3 +338,9 @@ tr[draggable=true]{cursor:grab}
 @media (max-width:760px){.compare-grid{grid-template-columns:1fr}}
 .news-toggle{margin:18px 0 0}
 .lang-head{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#68707a;margin:16px 0 4px}
+.idea-form{display:grid;gap:4px;margin:18px 0 26px;padding:16px;border:1px solid var(--line);border-radius:14px}
+.idea-list{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.idea-list li{display:flex;gap:14px;align-items:flex-start;padding:14px;border:1px solid var(--line);border-radius:14px}
+.idea-list li p{margin:4px 0 8px;font-size:14px}
+.vote-button{display:flex;flex-direction:column;align-items:center;min-width:48px;padding:6px;border:1px solid var(--line);border-radius:10px;background:white;cursor:pointer;color:var(--ink)}
+.vote-button.voted{border-color:var(--blue);color:var(--blue);background:color-mix(in srgb,var(--blue) 8%,white)}

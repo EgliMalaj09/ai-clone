@@ -150,3 +150,12 @@ export const announcements=sqliteTable('announcements',{
  total:integer('total').notNull().default(0),sent:integer('sent').notNull().default(0),cursor:text('cursor').notNull().default(''),
  createdBy:text('created_by'),createdAt:integer('created_at').notNull(),finishedAt:integer('finished_at'),
 });
+// Template ideas (V43): customers suggest templates and vote; the admin marks them planned, done or declined.
+export const templateRequests=sqliteTable('template_requests',{
+ id:text('id').primaryKey(),userId:text('user_id').references(()=>users.id,{onDelete:'set null'}),title:text('title').notNull(),details:text('details').notNull().default(''),
+ status:text('status').notNull().default('open'),// open | planned | done | declined
+ votes:integer('votes').notNull().default(1),templateId:text('template_id'),createdAt:integer('created_at').notNull(),
+},t=>[index('idx_template_requests').on(t.status,t.votes)]);
+export const templateRequestVotes=sqliteTable('template_request_votes',{
+ requestId:text('request_id').notNull().references(()=>templateRequests.id,{onDelete:'cascade'}),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),createdAt:integer('created_at').notNull(),
+},t=>[uniqueIndex('idx_template_request_vote').on(t.requestId,t.userId)]);

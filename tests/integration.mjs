@@ -401,6 +401,15 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/account',{method:'PATCH',cookie:userCookie,data:{marketingOptIn:false}});
  ok('Customers turn news emails on and off, with the consent time recorded',onAt.marketing_opt_in===1&&onAt.marketing_opt_in_at>0&&(await db.prepare("SELECT marketing_opt_in FROM users WHERE email='qa@studio.test'").first()).marketing_opt_in===0);
  await request('/api/admin/announcements',{method:'POST',cookie:adminCookie,data:{subjectSq:'Lajm',bodySq:'Një lajm i ri për ju.',subjectEn:'News',bodyEn:'Some news for you.'},expected:503});
+ // V43: customers suggest templates and vote; the admin plans or declines them (declined ideas are hidden).
+ await request('/api/ideas',{method:'POST',data:{title:'Space'},expected:401});
+ const idea=(await request('/api/ideas',{method:'POST',cookie:userCookie,data:{title:'Bollywood dance',details:'Colourful wedding dance'},expected:201})).body;
+ await request('/api/ideas/'+idea.id+'/vote',{method:'POST',cookie:relogged.cookie,data:{}});
+ const ideas=(await request('/api/ideas',{cookie:relogged.cookie})).body.ideas;const mineIdea=ideas.find(i=>i.id===idea.id);
+ await request('/api/ideas/'+idea.id+'/vote',{method:'POST',cookie:relogged.cookie,data:{}});
+ ok('Customers suggest template ideas and vote once each',mineIdea.votes===2&&mineIdea.voted&&(await request('/api/ideas')).body.ideas.find(i=>i.id===idea.id).votes===1);
+ await request('/api/admin/ideas/'+idea.id,{method:'PATCH',cookie:adminCookie,data:{status:'declined'}});
+ ok('Declined ideas are hidden from customers',!(await request('/api/ideas')).body.ideas.some(i=>i.id===idea.id)&&(await request('/api/admin/ideas',{cookie:adminCookie})).body.ideas.some(i=>i.id===idea.id&&i.status==='declined')&&(await request('/ideas')).text.includes('What should we make next?'));
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

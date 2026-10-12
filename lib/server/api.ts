@@ -25,6 +25,7 @@ import {shareGeneration,sharedMap,sharedVideoRedirect,stopSharing} from './share
 import {createRemovalRequest,listRemovals,resolveRemoval} from './removals';
 import {listVersions,recordVersion,restoreVersion} from './template-history';
 import {templateStats} from './template-stats';
+import {adminIdeas,listIdeas,suggestIdea,toggleVote,updateIdea} from './template-requests';
 import {cancelAnnouncement,createAnnouncement,listAnnouncements,sendTest,unsubscribe} from './announcements';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
 import {langFromCookie,translate,type Lang} from '../i18n';
@@ -123,6 +124,7 @@ export async function handleAPI(req:Request){try{
  if(p.join('/')==='credit-packages'&&method==='GET')return json({packages:await listPackages()});
  if(p.join('/')==='removal-requests'&&method==='POST'){await rateLimit('removal:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),5,3600000);return json(await createRemovalRequest(await body(req),langFromCookie(req.headers.get('cookie'))),201);}
  if(p[0]==='share'&&p[2]==='video'&&method==='GET')return await sharedVideoRedirect(p[1]);
+ if(p.join('/')==='ideas'&&method==='GET')return json(await listIdeas(await getUser(req.headers)));
  if(p[0]==='me'&&method==='GET')return json({user:await getUser(req.headers),demo:config().demo});
  if(p[0]==='analytics'&&method==='POST'){const viewer=await getUser(req.headers);await rateLimit('analytics:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),180,60000);const b=await body(req);const name=z.enum(['homepage_view','template_view','template_selected','upload_started','checkout_started']).parse(b.name);await event(name,viewer?.id??null,{templateId:typeof b.templateId==='string'?b.templateId.slice(0,150):null});return json({ok:true});}
  if(p[0]==='auth'){
@@ -162,6 +164,7 @@ export async function handleAPI(req:Request){try{
   if(method==='GET')return json({uploads:await all('SELECT id,name,mime,size,created_at FROM user_uploads WHERE user_id=? ORDER BY created_at DESC LIMIT 250',user.id)});
   if(method==='DELETE'){const a=await one('SELECT * FROM user_uploads WHERE id=? AND user_id=?',p[1],user.id);must(a,'Upload not found.',404);const jobs=await all("SELECT input_ids FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL",user.id);must(!jobs.some(g=>parse<string[]>(g.input_ids,[]).includes(a.id)),'This photo is used by a pending generation. Delete or finish that creation first.',409);must(!(await uploadsLockedByReport(user.id)).has(a.id),'This photo is part of a video under review. You can delete it once the report is resolved.',409);await storage.delete(a.storage_key);await run('DELETE FROM user_uploads WHERE id=?',a.id);return json({ok:true});}
  }
+ if(p[0]==='ideas'){if(method==='POST'&&!p[1])return json(await suggestIdea(user,await body(req)),201);if(method==='POST'&&p[2]==='vote')return json(await toggleVote(user,p[1]));}
  if(p[0]==='favorites'){
   if(method==='GET')return json({ids:(await all('SELECT template_id FROM favorites WHERE user_id=?',user.id)).map(f=>f.template_id)});
   if(method==='POST'){const b=await body(req);const id=z.string().parse(b.templateId);must(await one('SELECT id FROM templates WHERE id=? AND active=1',id),'Template unavailable.',404);const existing=await one('SELECT id FROM favorites WHERE user_id=? AND template_id=?',user.id,id);if(existing)await run('DELETE FROM favorites WHERE id=?',existing.id);else await run('INSERT OR IGNORE INTO favorites (id,user_id,template_id,created_at) VALUES (?,?,?,?)',uid(),user.id,id,now());await event('template_favorited',user.id,{templateId:id,saved:!existing});return json({saved:!existing});}
@@ -251,6 +254,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   return json({users:users?.count||0,metrics,financials,credits,top,recent,profitable,daily,recentPurchases,demo:config().demo,...await publicAvailability()});
  }
  if(p[1]==='announcements'){if(method==='GET'&&!p[2])return json(await listAnnouncements());if(method==='POST'&&p[2]==='test')return json(await sendTest(user,await body(req)));if(method==='POST'&&!p[2])return json(await createAnnouncement(user,await body(req)),201);if(method==='POST'&&p[3]==='cancel')return json(await cancelAnnouncement(user,p[2]));}
+ if(p[1]==='ideas'){if(method==='GET'&&!p[2])return json(await adminIdeas());if(method==='PATCH'&&p[2])return json(await updateIdea(user,p[2],await body(req)));}
  if(p[1]==='template-stats'&&method==='GET')return json(await templateStats(new URL(req.url)));
  if(p[1]==='templates'){
   if(method==='GET'&&p[3]==='versions'&&p[2])return json(await listVersions(p[2]));

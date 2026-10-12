@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 18 | 45 |
+| 3B. Version 1 features | 19 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -278,7 +278,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V40 🟡 Public feed.** A public feed of results customers chose to share (opt-in), with likes, that links each video to its template; extends the gallery in V6.
 - [ ] **V41 🟡 Watermark on free results.** Results made with free welcome credits carry a small logo watermark; paid results don't (from D16).
 - [ ] **V42 🟡 Ask for a review.** After a good result (e.g. a high rating in V6), ask the customer to leave a Google or Trustpilot review.
-- [ ] **V43 🟡 Template requests.** Customers suggest templates they want; the admin sees requests and votes.
+- [x] **V43 🟡 Template requests.** Customers suggest templates they want; the admin sees requests and votes.
 - [ ] **V44 🟡 Community templates with royalties.** Genematic lets creators publish scenarios and earn tokens each time they're used. Large feature (creator accounts, review of submitted prompts, royalty payouts in credits); strike it if it's too much for version 1.
 
 **Other purchase options**
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V43 | Done | Template ideas: public /ideas page (footer "Suggest a template", link from empty search) where signed-in customers suggest ideas and vote once each; Admin → Template ideas sorted by votes with status (open / coming soon / available / declined) and a linked template. Migration 0019. 2 integration checks |
 | 2026-10-12 | V36, V29 | Done | Admin → Announcements: write the email in Albanian and English (or pick a template to announce it with a ready message), send yourself a test, then send to verified customers who opted in; the dispatcher sends 40 per minute, can be stopped, each customer gets their language once. One-click unsubscribe (signed link + List-Unsubscribe header) and a news toggle in Account. Migration 0018. 2 production + 1 integration check |
 | 2026-10-12 | V34 | Done | lib/server/template-stats.ts + /api/admin/template-stats; Statistics column set in the template list with period picker. 1 integration check |
 | 2026-10-12 | V33 | Done | template_versions (migration 0017), recordVersion on every editor save, list/restore API, History tab with compare and restore. 2 integration checks |

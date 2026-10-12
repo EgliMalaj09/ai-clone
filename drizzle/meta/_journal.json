@@ -134,6 +134,13 @@
       "when": 1791774187984,
       "tag": "0018_careless_johnny_blaze",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1791774534670,
+      "tag": "0019_sparkling_whirlwind",
+      "breakpoints": true
     }
   ]
 }
