@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 6 | 45 |
+| 3B. Version 1 features | 7 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -249,7 +249,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 **Found by walking through the customer journey**
 - [ ] **V18 🟡 Change email address.** Today the email is read-only, so a customer who changes email is stuck. Change it with a confirmation link sent to the new address.
 - [ ] **V19 🟡 Photo editing before upload.** Crop, rotate and zoom so the face is centred, and see a preview of what will be sent.
-- [ ] **V20 🟡 "Make it again".** One button on a finished video to run the same template with the same photo again (a new result, charged again).
+- [x] **V20 🟡 "Make it again".** One button on a finished video to run the same template with the same photo again (a new result, charged again). ✅ "Make it again" on a finished video (while its template is live and the photo is kept): confirms the current credit cost, then starts a new creation with the same photo.
 - [ ] **V21 🟡 One photo, several templates.** Pick several templates and create them all from one photo in one step, with the total credit cost shown.
 - [ ] **V22 🟡 Template options.** Templates can offer choices the customer picks (e.g. outfit colour, background, day/night) that change the hidden prompt.
 - [ ] **V23 🟡 Format choice.** Choose 9:16 (Stories/TikTok), 1:1 or 16:9 where the template supports it.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V20 | Done | POST /api/generations/:id/again (owner only, completed, current cost must match, idempotent key) reusing startGeneration; creations list returns repeatCost; Make it again button with confirm, translated. 1 integration check |
 | 2026-10-12 | V10 | Done | Roles user/support/admin: requireUser lets staff into the admin, adminAPI allow-list for support, role change via PATCH users (admin password, not self, keep one admin, sessions cleared), filtered sidebar, role panel. 3 security checks |
 | 2026-10-12 | V13, V14 | Done | Templates: drag-and-drop (and arrow) ordering saved as sort_order for Recommended; select + bulk publish/unpublish/archive (publish checks the same rules as saving); scheduled publishing (publish_at, validated, published by the dispatcher every minute, logged); Delete now archives, with an Archive view to Restore or delete permanently. Migration 0013. 5 integration checks |
 | 2026-10-12 | V12 | Done | lib/server/exports.ts: /api/admin/export/{purchases,ledger,users} CSV (admin only, rate-limited, audited, formula injection neutralised); buttons in the three admin pages. 2 integration checks |

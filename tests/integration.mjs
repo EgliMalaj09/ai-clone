@@ -338,6 +338,14 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('A scheduled template goes live at its time',hiddenBefore&&(await request('/api/templates?limit=100')).body.templates.some(t=>t.id===arch.id));
  await request('/api/admin/templates/bulk',{method:'POST',cookie:adminCookie,data:{ids:[arch.id],action:'archive'}});await request('/api/admin/templates/'+arch.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
  ok('A template is deleted for good only from the archive',!(await request('/api/admin/templates',{cookie:adminCookie})).body.templates.some(t=>t.id===arch.id));
+ // V20: make a finished video again with the same photo, charged at the template's current cost.
+ await grant(reg.body.user.id,1000);
+ const finished=(await request('/api/generations?status=completed&limit=24',{cookie:userCookie})).body.generations.find(g=>g.repeatCost!==null);
+ await request('/api/generations/'+finished.id+'/again',{method:'POST',cookie:userCookie,data:{idempotencyKey:randomUUID(),expectedCost:finished.repeatCost+1},expected:409});
+ const beforeAgain=await balance(userCookie);const remade=(await request('/api/generations/'+finished.id+'/again',{method:'POST',cookie:userCookie,data:{idempotencyKey:randomUUID(),expectedCost:finished.repeatCost},expected:201})).body;
+ await request('/api/generations/'+finished.id+'/again',{method:'POST',cookie:relogged.cookie,data:{idempotencyKey:randomUUID(),expectedCost:finished.repeatCost},expected:404});
+ ok('Make it again starts a new creation from the same photo and reserves its credits',remade.generationId!==finished.id&&remade.balance.held-beforeAgain.held===finished.repeatCost&&(await db.prepare('SELECT input_ids FROM generations WHERE id=?').bind(remade.generationId).first()).input_ids===(await db.prepare('SELECT input_ids FROM generations WHERE id=?').bind(finished.id).first()).input_ids);
+ await waitDone(userCookie,remade.generationId);
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

@@ -40,12 +40,14 @@ async function generationsFor(userId:string,url:URL,id?:string){
  else if(status!=='all'){must(['completed','failed'].includes(status),'Unknown creation status.');conditions.push('g.status=?');args.push(status);}
  const where=' WHERE '+conditions.join(' AND ');
  const count=await one('SELECT COUNT(*) AS total FROM generations g'+where,...args);
- const rows=await all("SELECT g.*,a.id AS asset_id,h.status AS credit_status FROM generations g LEFT JOIN generated_assets a ON a.generation_id=g.id AND a.kind='output' LEFT JOIN credit_holds h ON h.id=g.hold_id"+where+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);
+ const rows=await all("SELECT g.*,a.id AS asset_id,h.status AS credit_status,tp.credit_cost AS current_cost FROM generations g LEFT JOIN generated_assets a ON a.generation_id=g.id AND a.kind='output' LEFT JOIN credit_holds h ON h.id=g.hold_id LEFT JOIN templates tp ON tp.id=g.template_id AND tp.active=1"+where+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);
  if(id)must(rows.length,'Creation not found.',404);
  // Counted independently of the status filter so the client knows whether to keep polling.
  const active=await one("SELECT COUNT(*) AS total FROM generations WHERE user_id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing')",userId);
  const reportsMap=await reportsForGenerations(rows.map(g=>g.id as string));
- const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);return {...generationPublic(g),report:r?publicReport(r):null};});
+ // V20: a finished video can be made again while its template is live and its photos are still there.
+ const photoIds=[...new Set(rows.flatMap(g=>parse<string[]>(g.input_ids,[])))];const kept=new Set(photoIds.length?(await all(`SELECT id FROM user_uploads WHERE user_id=? AND id IN (${photoIds.map(()=>'?').join(',')})`,userId,...photoIds)).map(r=>r.id as string):[]);
+ const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);const inputs=parse<string[]>(g.input_ids,[]);return {...generationPublic(g),report:r?publicReport(r):null,repeatCost:g.status==='completed'&&g.current_cost&&inputs.length&&inputs.every(id=>kept.has(id))?Number(g.current_cost):null};});
  return {generations,activeCount:active?.total||0,pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
 }
 async function deleteAccount(user:StudioUser){must(!isStaff(user.role),'A staff account cannot be deleted here. Ask an administrator to change its role first.',409);must(!await userHasOpenReport(user.id),'A video is under review. Please wait until the report is resolved before deleting the account.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);
@@ -154,6 +156,7 @@ export async function handleAPI(req:Request){try{
   if(method==='POST'&&!p[1]){await rateLimit('generate:'+user.id,30,3600000);return json(await startGeneration(user,await body(req)),201);}
   if(method==='GET')return json(await generationsFor(user.id,url,p[1]));
   if(method==='POST'&&p[2]==='report'){return json(await createReport(user,p[1],await body(req)),201);}
+  if(method==='POST'&&p[2]==='again'){await rateLimit('generate:'+user.id,30,3600000);const b=z.object({idempotencyKey:z.string().uuid(),expectedCost:z.number().int()}).parse(await body(req));const g=await one("SELECT template_id,input_ids FROM generations WHERE id=? AND user_id=? AND status='completed' AND deleted_at IS NULL",p[1],user.id);must(g,'Completed creation not found.',404);return json(await startGeneration(user,{templateId:g.template_id,uploadIds:parse<string[]>(g.input_ids,[]),idempotencyKey:b.idempotencyKey,expectedCost:b.expectedCost,consent:true}),201);}
   if(method==='DELETE'){must(!await hasOpenReport(p[1]),'This creation is under review. You can delete it once the report is resolved.',409);await removeGeneration(p[1],user.id);return json({ok:true});}
   if(method==='POST'&&p[2]==='share'){const a=await one("SELECT a.id FROM generated_assets a JOIN generations g ON g.id=a.generation_id WHERE g.id=? AND g.user_id=? AND g.deleted_at IS NULL AND g.status='completed' AND a.kind='output'",p[1],user.id);must(a,'Completed creation not found.',404);return json({url:await mediaUrl(a.id,now()+23*3600000)});}
  }
