@@ -14,6 +14,8 @@ export type WorkflowStep = {
   model: string; prompt: string; negativePrompt: string; inputs: Record<string,string>;
   output: string; settings: Record<string,unknown>; duration: number; resolution: string;
   aspectRatio: string; cost: number;
+  /** Backup model (V35): used once, automatically, if this step fails on its main model. */
+  fallback?: {provider:string;model:string}|null;
 };
 export type AdminTemplate = PublicTemplate & {
   estimatedCost: number; currency: string; provider: string; model: string; generationType: string;

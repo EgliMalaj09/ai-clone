@@ -50,6 +50,17 @@ export async function refuseGeneration(g:Row,reason:string){
  if(strikes&&Number(strikes.content_strikes)===STRIKE_LIMIT)await run('INSERT INTO audit_logs (id,user_id,action,target_id,created_at) VALUES (?,NULL,?,?,?)',uid(),'user.blocked',g.user_id,now());
 }
 
+/** V35: when a step fails on its main model and has a backup, switch that step to the backup once and run it again. */
+async function tryFallback(g:Row,token:string,reason:string){
+ const snapshot=parse<Row>(g.workflow_snapshot,{});const steps=(snapshot.steps||[]) as WorkflowStep[];const i=Number(g.current_step||0);const step=steps[i];
+ if(!step?.fallback||!step.fallback.model)return false;
+ const next={...snapshot,steps:steps.map((s,n)=>n===i?{...s,provider:step.fallback!.provider,model:step.fallback!.model,fallback:null,fallbackFrom:`${s.provider}/${s.model}`}:s)};
+ const r=await batch([stmt('DELETE FROM generation_steps WHERE id=?',g.id+'_'+i),stmt("UPDATE generations SET workflow_snapshot=?,status='preparing',attempts=0,next_run_at=?,internal_error=? WHERE id=? AND lease_token=? AND deleted_at IS NULL",JSON.stringify(next),now(),('Switched to the backup model after: '+reason).slice(0,2000),g.id,token)]);
+ if(!r[1].meta.changes)return false;
+ await event('generation_fallback',g.user_id,{generationId:g.id,step:i,from:step.provider+'/'+step.model,to:step.fallback.provider+'/'+step.fallback.model});
+ await reportError('provider','Main model failed; switched to the backup model',{level:'warning',error:reason,context:{generationId:g.id as string,step:i,from:step.model,to:step.fallback.model}});
+ return true;
+}
 export async function tickGeneration(id:string){
  const token=uid();const g=await one("UPDATE generations SET lease_token=?,lease_until=? WHERE id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND lease_until<? AND next_run_at<=? AND (generations.test_run=1 OR EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=generations.hold_id AND h.status='pending')) RETURNING *",token,now()+45000,id,now(),now());if(!g)return;
  try{
@@ -87,7 +98,7 @@ export async function tickGeneration(id:string){
   }
   const result=await p.getStatus(record.provider_job_id);if(result.status==='processing'){await run('UPDATE generations SET next_run_at=? WHERE id=? AND lease_token=?',now()+1500,id,token);return;}
   if(result.status==='refused'){await refuseGeneration(g,result.error||'Refused by the provider content rules.');return;}
-  if(result.status==='failed'){await failGeneration(g,result.error||'Provider failed.');return;}
+  if(result.status==='failed'){if(await tryFallback(g,token,result.error||'Provider failed.'))return;await failGeneration(g,result.error||'Provider failed.');return;}
   must(result.url,'The provider returned no output.');const assetId='asset_'+stepId;let mime=result.mime||(['image','transform'].includes(step.type)?'image/png':'video/mp4');const key=`generated/${g.user_id}/${id}/${i}.${extensions[mime]||(mime.startsWith('video')?'mp4':'png')}`;let size=0;
   if(step.provider==='mock'){
     // Demo output is a bundled concept clip, never a claimed transformation of an upload.
@@ -98,7 +109,7 @@ export async function tickGeneration(id:string){
   const fresh=await one('SELECT deleted_at,status,lease_token FROM generations WHERE id=?',id);if(!fresh||fresh.deleted_at||!active.includes(fresh.status)||fresh.lease_token!==token){await storage.delete(key);return;}
   const context={...parse(g.context,{}),previous_output:assetId,[step.output||'previous_output']:assetId};
   const saved=await batch([stmt('INSERT OR IGNORE INTO generated_assets (id,generation_id,user_id,storage_key,mime,kind,size,created_at) SELECT ?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM generations WHERE id=? AND lease_token=?)',assetId,id,g.user_id,key,mime,i===steps.length-1?'output':'intermediate',size,now(),id,token),stmt("UPDATE generation_steps SET status='completed',result=?,completed_at=? WHERE id=? AND EXISTS (SELECT 1 FROM generations WHERE id=? AND lease_token=?)",assetId,now(),stepId,id,token),stmt('UPDATE generations SET context=?,current_step=?,status=?,next_run_at=?,attempts=0 WHERE id=? AND lease_token=?',JSON.stringify(context),i+1,i+1>=steps.length?'finalizing':'preparing',now()+1000,id,token)]);if(!saved[0].meta.changes&&!await one('SELECT id FROM generated_assets WHERE id=?',assetId))await storage.delete(key);
- }catch(e){const message=e instanceof Error?e.message:'Generation failed';if(e instanceof ProviderRefusal){await refuseGeneration(g,message);return;}const submitting=await one("SELECT id FROM generation_steps WHERE generation_id=? AND status='submitting' AND provider_job_id IS NULL",id);if(submitting||g.attempts>=2){await failGeneration(g,message)}else await run('UPDATE generations SET attempts=attempts+1,next_run_at=?,internal_error=? WHERE id=? AND lease_token=?',now()+Math.pow(2,g.attempts)*2000,message.slice(0,2000),id,token);
+ }catch(e){const message=e instanceof Error?e.message:'Generation failed';if(e instanceof ProviderRefusal){await refuseGeneration(g,message);return;}const submitting=await one("SELECT id FROM generation_steps WHERE generation_id=? AND status='submitting' AND provider_job_id IS NULL",id);if(submitting||g.attempts>=2){if(!await tryFallback(g,token,message))await failGeneration(g,message)}else await run('UPDATE generations SET attempts=attempts+1,next_run_at=?,internal_error=? WHERE id=? AND lease_token=?',now()+Math.pow(2,g.attempts)*2000,message.slice(0,2000),id,token);
  }finally{await run('UPDATE generations SET lease_until=0,lease_token=NULL WHERE id=? AND lease_token=?',id,token);}
 }
 export async function tickQueue(userId?:string){

@@ -94,6 +94,12 @@ try{
  ok('A community Replicate model is run by its version ID',community.status==='completed'&&call.path==='/v1/predictions'&&call.version===version);
  const saved=await db.prepare("SELECT mime,storage_key FROM generated_assets WHERE generation_id=? AND kind='output'").bind(community.id).first();
  ok('A named Replicate output with a poster and a video stores the video',saved.mime==='video/mp4'&&saved.storage_key.endsWith('.mp4'));
+ // V35: a failed main model switches the step to its backup model once and the video still completes.
+ higgsfield.outcome('kling-video/v3.0-turbo/image-to-video','failed');
+ await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:template.workflow.map((st,n)=>n===template.workflow.length-1?{...st,fallback:{provider:'replicate',model:'studio/backup-model'}}:st)}});
+ const callsBefore=replicateCalls.length;const fb=await finish(cookie,(await start()).body.generationId);
+ ok('A failed main model falls back to the backup model and completes',fb.status==='completed'&&replicateCalls.length===callsBefore+1&&replicateCalls.at(-1).path==='/v1/models/studio/backup-model/predictions');
+ higgsfield.outcome('kling-video/v3.0-turbo/image-to-video','completed');
  await request('/api/admin/templates/'+template.id,{method:'PATCH',cookie,data:{...template,workflow:[{...second,id:'unsafe_video',inputs:{image:'{{user_image_1}}'},settings:{unsafe:true}}]}});const before=(await balance()).available;const unsafe=(await start()).body;ok('Unsafe provider output fails without fetching the private host',(await finish(cookie,unsafe.generationId)).status==='failed'&&!requests.some(r=>r.host==='127.0.0.1'));ok('The failed provider job returns its credits',(await balance()).available===before);
  await mkdir('test-results',{recursive:true});await writeFile('test-results/providers.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,network:'All Fal, Replicate and media HTTP responses are local fixtures; no paid inference performed',checks},null,2));console.log('\n'+checks.length+' provider contract checks passed.');
 }catch(e){console.error('FAIL',e);await mkdir('test-results',{recursive:true});await writeFile('test-results/providers.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,error:String(e),checks},null,2));process.exitCode=1}finally{await mf.dispose()}
