@@ -312,3 +312,5 @@ tr[draggable=true]{cursor:grab}
 .low-balance{display:flex;flex-wrap:wrap;align-items:center;gap:10px;max-width:1440px;margin:12px auto 0;padding:10px 16px;border-radius:12px;background:#fff8ea;border:1px solid #f5c26b;color:#5c3b00;font-size:14px}
 .low-balance span{flex:1;min-width:220px}
 @media (max-width:760px){.low-balance{margin:10px 16px 0}}
+.notify-note{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.notify-note span{flex:1;min-width:200px}

@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 11 | 45 |
+| 3B. Version 1 features | 12 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -255,7 +255,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V23 🟡 Format choice.** Choose 9:16 (Stories/TikTok), 1:1 or 16:9 where the template supports it.
 - [ ] **V24 🟡 Music on videos.** Optional background music track chosen from a licensed library, added to the downloaded video.
 - [x] **V25 🟡 Share straight to apps.** On phones, the native share sheet (WhatsApp, Instagram, TikTok) with the video file, not only a link.
-- [ ] **V26 🟡 "Your video is ready" browser notification.** In addition to the email (C11.2), so customers can leave the page while waiting.
+- [x] **V26 🟡 "Your video is ready" browser notification.** In addition to the email (C11.2), so customers can leave the page while waiting. ✅ While a video is being made, My creations offers "Notify me"; when it finishes (or fails, credits returned) the browser shows a notification through the service worker, also when the tab is in the background; clicking it opens My creations. Works while the site is open in some tab — push to a closed browser would need Web Push keys (see DECISIONS.md #11).
 - [x] **V27 🟡 Low balance reminder.** When credits drop below the cheapest template, show a reminder with the best pack.
 - [ ] **V28 🟡 Gift credits.** Buy a pack as a gift and send it by email with a redeem code.
 - [ ] **V29 🟡 New template emails.** Announce new and seasonal templates to customers who opted in (C20.3), with an unsubscribe link.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V26 | Done | Browser notifications for finished/failed creations via the service worker (permission asked from a Notify me prompt while a video is in progress), translated |
 | 2026-10-12 | V7 | Done | PWA: public/manifest.webmanifest, public/icons (192/512/maskable/apple, rendered from favicon.svg), public/sw.js (network-first, offline page, notification clicks), public/offline.html (SQ+EN), layout manifest/theme/apple metadata, SW registration. 1 integration check |
 | 2026-10-12 | V27 | Done | Low balance reminder on Explore, My creations, Favorites and Account when credits can't pay for the cheapest video, naming the best-value pack that covers it, with a Buy credits button (translated). 1 integration check |
 | 2026-10-12 | V3, V25 | Done | Share page /v/<id> (share_links, migration 0014): stable link per video, Open Graph image + video card, view count, Make your own CTA, owner can Stop sharing, deleting the video revokes it; video served via short signed links. My creations: Shared state, Stop sharing, and on phones Send video → native share sheet with the MP4 file. Privacy text updated (EN+SQ). 3 integration checks |
