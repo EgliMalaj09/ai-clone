@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 13 | 45 |
+| 3B. Version 1 features | 14 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -259,7 +259,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V27 🟡 Low balance reminder.** When credits drop below the cheapest template, show a reminder with the best pack.
 - [ ] **V28 🟡 Gift credits.** Buy a pack as a gift and send it by email with a redeem code.
 - [ ] **V29 🟡 New template emails.** Announce new and seasonal templates to customers who opted in (C20.3), with an unsubscribe link.
-- [ ] **V30 🟡 Removal request form.** A public form for someone who finds themselves in a video they didn't agree to, going to the admin report queue (C21) with a fast takedown.
+- [x] **V30 🟡 Removal request form.** A public form for someone who finds themselves in a video they didn't agree to, going to the admin report queue (C21) with a fast takedown. ✅ Public /removal-request form (footer "Report a video", and a link on every share page): a request naming a shared video hides it at once. Admin → Reports → Removal requests: watch the video, Remove it (deleted, owner emailed) or Keep it (requester emailed, optional note). Support can handle these too. See DECISIONS.md #12.
 
 **Found by walking through your admin work**
 - [x] **V31 🟡 Customer detail page.** One page per customer with their purchases, credit history, creations, reports and actions (adjust credits, reset link, suspend), for fast support.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V30 | Done | Removal requests (removal_requests, migration 0016): public form + API with IP rate limit, instant share-page takedown, admin/support queue with remove/keep and emails to requester and owner in their language, error-log entry for each new request. 3 integration checks |
 | 2026-10-12 | V18 | Done | Email change: users.pending_email (migration 0015), POST/DELETE /api/account/email, /confirm-email page + /api/auth/email-change, confirmation email and old-address notice in the customer's language. 1 integration + 1 production check |
 | 2026-10-12 | V26 | Done | Browser notifications for finished/failed creations via the service worker (permission asked from a Notify me prompt while a video is in progress), translated |
 | 2026-10-12 | V7 | Done | PWA: public/manifest.webmanifest, public/icons (192/512/maskable/apple, rendered from favicon.svg), public/sw.js (network-first, offline page, notification clicks), public/offline.html (SQ+EN), layout manifest/theme/apple metadata, SW registration. 1 integration check |

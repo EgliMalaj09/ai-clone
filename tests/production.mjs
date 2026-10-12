@@ -126,7 +126,7 @@ try{
   const sentLink=(await request('/api/admin/users/'+shqip.id+'/reset-link',{method:'POST',cookie:admin,data:{}})).body;
   ok('An admin reset link is emailed in the customer’s language',sentLink.sent===true&&!sentLink.url&&mails.some(m=>m.to==='shqip@studio.test'&&m.subject.startsWith('Rivendos fjalëkalimin')));
   // V18: with email configured, the new address must confirm a link; the old address is told about the change.
-  const shqipLogin=await db.prepare("UPDATE users SET email_verified=1 WHERE email='shqip@studio.test'").run();
+  await db.prepare("UPDATE users SET email_verified=1 WHERE email='shqip@studio.test'").run();
   const sq=(await request('/api/auth/login',{method:'POST',data:{email:'shqip@studio.test',password:'Fjalekalim-123'}})).cookie;
   const pendingChange=(await request('/api/account/email',{method:'POST',cookie:sq,data:{email:'shqip2@studio.test',password:'Fjalekalim-123'}})).body;
   const confirmMail=mails.find(m=>m.to==='shqip2@studio.test');const confirmToken=new URL(confirmMail.text.match(/https?:\/\/\S+confirm-email\S+/)[0]).searchParams.get('token');

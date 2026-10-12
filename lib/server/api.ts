@@ -22,12 +22,13 @@ import {dispatcherStatus,recordDispatch} from './dispatcher';
 import {reportError} from './errors';
 import {adminExport} from './exports';
 import {shareGeneration,sharedMap,sharedVideoRedirect,stopSharing} from './share';
+import {createRemovalRequest,listRemovals,resolveRemoval} from './removals';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
 import {langFromCookie,translate,type Lang} from '../i18n';
 /** Friendly, translated messages for the form fields customers fill in; other validation messages stay technical. */
 const fieldMessages:Record<string,string>={email:'Enter a valid email address.',password:'Use a password with 10 to 128 characters.',newPassword:'Use a password with 10 to 128 characters.',name:'Enter a name with 2 to 80 characters.',acceptTerms:'Accept the Terms and Privacy Policy to continue.',confirmAge:'Confirm your age to continue.'};
 const zodDefault=/^(String must|Invalid|Required|Expected|Number must)/;
-const fieldMessage=(lang:Lang,path:string,message:string)=>fieldMessages[path]?translate(lang,zodDefault.test(message)?fieldMessages[path]:message):`${path}: ${message}`;
+const fieldMessage=(lang:Lang,path:string,message:string)=>fieldMessages[path]?translate(lang,zodDefault.test(message)?fieldMessages[path]:message):zodDefault.test(message)?`${path}: ${message}`:translate(lang,message);
 import {TERMS_VERSION,cleanGuidelineList,isStaff,type AdminTemplate,type StudioUser} from '../contracts';
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});
@@ -115,6 +116,7 @@ export async function handleAPI(req:Request){try{
  if(p.join('/')==='health'&&method==='GET')return json({status:'ok',demo:config().demo});
  if(p[0]==='templates'&&method==='GET'&&p.length<=2)return json(await queryCatalog(url,p[1]));
  if(p.join('/')==='credit-packages'&&method==='GET')return json({packages:await listPackages()});
+ if(p.join('/')==='removal-requests'&&method==='POST'){await rateLimit('removal:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),5,3600000);return json(await createRemovalRequest(await body(req),langFromCookie(req.headers.get('cookie'))),201);}
  if(p[0]==='share'&&p[2]==='video'&&method==='GET')return await sharedVideoRedirect(p[1]);
  if(p[0]==='me'&&method==='GET')return json({user:await getUser(req.headers),demo:config().demo});
  if(p[0]==='analytics'&&method==='POST'){const viewer=await getUser(req.headers);await rateLimit('analytics:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),180,60000);const b=await body(req);const name=z.enum(['homepage_view','template_view','template_selected','upload_started','checkout_started']).parse(b.name);await event(name,viewer?.id??null,{templateId:typeof b.templateId==='string'?b.templateId.slice(0,150):null});return json({ok:true});}
@@ -203,7 +205,7 @@ const socialLink=z.union([z.literal(''),z.string().trim().max(200).url().refine(
 function supportMay(method:string,p:string[],url:URL){
  if(p[1]==='users'){if(method==='GET')return true;if(method==='POST'&&p[3]==='reset-link')return true;return false;}
  if(p[1]==='generations')return method==='GET'||method==='POST'&&p[3]==='retry';
- if(p[1]==='reports')return true;
+ if(p[1]==='reports'||p[1]==='removals')return true;
  if(p[1]==='operations')return method==='GET'||p[2]==='dispatch';
  return p[1]==='me'&&url.pathname.length>0;
 }
@@ -264,6 +266,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
    if(new URL(req.url).searchParams.get('permanent')!=='1'){await run('UPDATE templates SET archived_at=?,active=0,publish_at=NULL,updated_at=? WHERE id=?',now(),now(),p[2]);await audit(user.id,'template.archive',p[2]);return json({ok:true,archived:true});}
    must(existing.archivedAt,'Archive the template before deleting it permanently.',409);await run('DELETE FROM templates WHERE id=?',p[2]);await audit(user.id,'template.delete',p[2]);await releaseTemplateMedia(templateMediaUrls(existing));return json({ok:true});}
  }
+ if(p[1]==='removals'){if(method==='GET'&&!p[2])return json(await listRemovals(new URL(req.url)));if(method==='POST'&&p[3]==='resolve')return json(await resolveRemoval(user,p[2],await body(req)));}
  if(p[1]==='reports'){
   if(method==='GET'&&!p[2])return json(await listReports(new URL(req.url)));
   if(method==='GET'&&p[2]&&!p[3])return json(await reportDetail(p[2]));

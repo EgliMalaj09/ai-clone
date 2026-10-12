@@ -130,3 +130,10 @@ export const shareLinks=sqliteTable('share_links',{
  id:text('id').primaryKey(),generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),
  createdAt:integer('created_at').notNull(),revokedAt:integer('revoked_at'),views:integer('views').notNull().default(0),
 },t=>[index('idx_share_generation').on(t.generationId)]);
+// Removal requests (V30): someone shown in a video without agreeing asks for it to be taken down.
+export const removalRequests=sqliteTable('removal_requests',{
+ id:text('id').primaryKey(),generationId:text('generation_id').references(()=>generations.id,{onDelete:'set null'}),shareId:text('share_id'),videoReference:text('video_reference').notNull(),
+ name:text('name').notNull(),email:text('email').notNull(),relation:text('relation').notNull(),details:text('details').notNull(),locale:text('locale').notNull().default('sq'),
+ status:text('status').notNull().default('open'),// open | removed | kept
+ adminNote:text('admin_note'),createdAt:integer('created_at').notNull(),resolvedAt:integer('resolved_at'),resolvedBy:text('resolved_by'),
+},t=>[index('idx_removals_status').on(t.status,t.createdAt)]);

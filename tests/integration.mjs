@@ -367,6 +367,21 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/account/email',{method:'POST',cookie:relogged.cookie,data:{email:'moved@studio.test',password:'wrong-password-9'},expected:403});
  const moved=(await request('/api/account/email',{method:'POST',cookie:relogged.cookie,data:{email:'Moved@Studio.test',password:'Brand-new-password-2'}})).body;
  ok('A customer changes their email with their password',moved.changed===true&&!!(await request('/api/auth/login',{method:'POST',data:{email:'moved@studio.test',password:'Brand-new-password-2'}})).cookie);
+ // V30: a removal request for a shared video hides it at once; staff then remove it (the owner's video is deleted) or keep it.
+ const rrGen=(await request('/api/generations?status=completed&limit=24',{cookie:userCookie})).body.generations.find(g=>g.assetId);
+ const rrShare=(await request('/api/generations/'+rrGen.id+'/share',{method:'POST',cookie:userCookie,data:{}})).body;
+ await request('/api/removal-requests',{method:'POST',data:{video:rrShare.url,name:'X',email:'nope',relation:'self',details:'short',confirm:false},expected:400});
+ const rr=(await request('/api/removal-requests',{method:'POST',data:{video:rrShare.url,name:'Ana Person',email:'ana@example.test',relation:'self',details:'This is me and I never agreed to this video.',confirm:true},expected:201})).body;
+ ok('A removal request hides the shared video immediately',rr.hidden===true&&(await request(new URL(rrShare.url).pathname,{expected:404})));
+ const rrQueue=(await request('/api/admin/removals',{cookie:adminCookie})).body;const rrItem=rrQueue.requests.find(x=>x.video?.generationId===rrGen.id);
+ await request('/api/admin/removals',{cookie:userCookie,expected:403});
+ await request('/api/admin/removals/'+rrItem.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'remove'}});
+ ok('Staff remove the video from the removal queue',rrItem.status==='open'&&(await request('/api/generations/'+rrGen.id,{cookie:userCookie,expected:404}))&&(await request('/api/admin/removals?status=removed',{cookie:adminCookie})).body.requests.some(x=>x.id===rrItem.id));
+ await request('/api/admin/removals/'+rrItem.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'keep'},expected:409});
+ const described=(await request('/api/removal-requests',{method:'POST',data:{video:'A video of me on Instagram',name:'Ben Person',email:'ben@example.test',relation:'other',details:'Someone posted a video of my friend.',confirm:true},expected:201})).body;
+ const benItem=(await request('/api/admin/removals',{cookie:adminCookie})).body.requests.find(x=>x.email==='ben@example.test');
+ await request('/api/admin/removals/'+benItem.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'keep',note:'We could not find this video.'}});
+ ok('A request without a link is reviewed by hand and can be closed',described.hidden===false&&(await request('/api/admin/removals?status=kept',{cookie:adminCookie})).body.requests.some(x=>x.id===benItem.id&&x.adminNote));
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});
