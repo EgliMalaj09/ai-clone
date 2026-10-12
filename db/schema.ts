@@ -72,6 +72,8 @@ export const generations=sqliteTable('generations',{
  reportId:text('report_id'),
  // Ratings and the public gallery/feed (V6/V40): the customer's 1–5 rating and, only if they choose, when the video was made public.
  rating:integer('rating'),ratedAt:integer('rated_at'),publicAt:integer('public_at'),likes:integer('likes').notNull().default(0),
+ // Free admin test run (V32): real AI, no credits reserved or charged, no content strike.
+ testRun:integer('test_run').notNull().default(0),
 },t=>[index('idx_generations_user_date').on(t.userId,t.createdAt),index('idx_generation_queue').on(t.status,t.nextRunAt,t.leaseUntil),index('idx_generations_thumbnail').on(t.thumbnail)]);
 // Customer reports on finished videos and the admin's decision (C21). One open report per video; a good photo earns one free redo.
 export const generationReports=sqliteTable('generation_reports',{

@@ -17,6 +17,7 @@ const extensions:Record<string,string>={'video/mp4':'mp4','video/webm':'webm','i
 const active=['queued','preparing','generating','finalizing'];
 /** Best-effort email when a creation finishes (C11.2); a mail problem never affects the creation or its credits. */
 async function notifyFinished(g:Row,kind:GenerationMailKind){
+ if(g.test_run)return;
  try{
   const u=g.user_id?await one('SELECT email,locale FROM users WHERE id=?',g.user_id):null;if(!u?.email)return;
   const c=await serviceConfig();
@@ -43,13 +44,14 @@ export async function refuseGeneration(g:Row,reason:string){
  if(g.hold_id)await settleHold(g.hold_id,'release').catch(e=>reportError('credits','Credit release needs review; the hold sweep will retry',{error:e,context:{generationId:g.id as string}}));
  await event('generation_refused',g.user_id,{generationId:g.id});
  await notifyFinished(g,'refused');
- if(!g.user_id)return;
+ // A test run (V32) is the admin checking a template, so a refusal is not held against the account.
+ if(!g.user_id||g.test_run)return;
  const strikes=await one('UPDATE users SET content_strikes=content_strikes+1,blocked_at=CASE WHEN blocked_at IS NULL AND content_strikes+1>=? THEN ? ELSE blocked_at END WHERE id=? RETURNING content_strikes,blocked_at',STRIKE_LIMIT,now(),g.user_id);
  if(strikes&&Number(strikes.content_strikes)===STRIKE_LIMIT)await run('INSERT INTO audit_logs (id,user_id,action,target_id,created_at) VALUES (?,NULL,?,?,?)',uid(),'user.blocked',g.user_id,now());
 }
 
 export async function tickGeneration(id:string){
- const token=uid();const g=await one("UPDATE generations SET lease_token=?,lease_until=? WHERE id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND lease_until<? AND next_run_at<=? AND EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=generations.hold_id AND h.status='pending') RETURNING *",token,now()+45000,id,now(),now());if(!g)return;
+ const token=uid();const g=await one("UPDATE generations SET lease_token=?,lease_until=? WHERE id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND lease_until<? AND next_run_at<=? AND (generations.test_run=1 OR EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=generations.hold_id AND h.status='pending')) RETURNING *",token,now()+45000,id,now(),now());if(!g)return;
  try{
   const elapsed=now()-(g.started_at||now());if(elapsed>30*60*1000){await failGeneration(g,'Generation exceeded the 30 minute deadline.');return;}
   const snapshot=parse<Row>(g.workflow_snapshot,{});const steps=snapshot.steps as WorkflowStep[];const i=g.current_step;
@@ -57,9 +59,9 @@ export async function tickGeneration(id:string){
   if(g.status==='queued'){await run("UPDATE generations SET status='preparing',started_at=COALESCE(started_at,?),next_run_at=? WHERE id=? AND lease_token=?",now(),now()+500,id,token);await event('generation_started',g.user_id,{generationId:id});return;}
   if(g.status==='finalizing'){
    const asset=await one("SELECT id FROM generated_assets WHERE generation_id=? ORDER BY created_at DESC LIMIT 1",id);must(asset,'No output asset was saved.');
-   const completed=await run("UPDATE generations SET status='completed',completed_at=?,error=NULL WHERE id=? AND lease_token=? AND status='finalizing' AND deleted_at IS NULL AND EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=? AND h.status='pending')",now(),id,token,g.hold_id);
+   const completed=await run("UPDATE generations SET status='completed',completed_at=?,error=NULL WHERE id=? AND lease_token=? AND status='finalizing' AND deleted_at IS NULL AND (test_run=1 OR EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=? AND h.status='pending'))",now(),id,token,g.hold_id);
    // Delivered: charge the reserved credits. If this is interrupted, the hold sweep captures it.
-   if(completed.meta.changes){await settleHold(g.hold_id,'capture').catch(e=>reportError('credits','Credit capture needs review; the hold sweep will retry',{error:e,context:{generationId:id}}));await event('generation_completed',g.user_id,{generationId:id});await notifyFinished(g,'ready');}return;
+   if(completed.meta.changes){if(g.hold_id)await settleHold(g.hold_id,'capture').catch(e=>reportError('credits','Credit capture needs review; the hold sweep will retry',{error:e,context:{generationId:id}}));await event('generation_completed',g.user_id,{generationId:id});await notifyFinished(g,'ready');}return;
   }
   const step=steps[i];must(step,'Workflow has no executable step.');const p=providerFor(step.provider);const stepId=id+'_'+i;const record=await one('SELECT * FROM generation_steps WHERE id=?',stepId);
   if(record?.status==='completed'){await run("UPDATE generations SET current_step=current_step+1,status=?,next_run_at=? WHERE id=? AND lease_token=?",i+1>=steps.length?'finalizing':'preparing',now()+500,id,token);return;}

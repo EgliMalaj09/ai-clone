@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 24 | 45 |
+| 3B. Version 1 features | 25 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -265,7 +265,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V31 🟡 Customer detail page.** One page per customer with their purchases, credit history, creations, reports and actions (adjust credits, reset link, suspend), for fast support.
   - [x] V31.1 Customer page built: profile (rename), credits with adjust and history, purchases with Reverse, creations, activity; suspend/reactivate, mark email verified, delete. Adjust credits only here.
   - [x] V31.2 Still to add when those features exist: reports (C21), refusals and block status (C2), send reset link (V11).
-- [ ] **V32 🟡 Free test runs for admins.** Run a template with real AI from the editor without spending credits, to check quality before publishing.
+- [x] **V32 🟡 Free test runs for admins.** Run a template with real AI from the editor without spending credits, to check quality before publishing. ✅ Template editor → Test run: upload your photo(s) and run the saved template (drafts too) with the real AI; no credits are reserved or charged, a refusal is not a strike, no customer email is sent; the result plays in the editor and is listed in your My creations as "test run". The AI provider still bills the run.
 - [x] **V33 🟡 Prompt history.** Every saved change to a template's prompt and workflow is kept, so you can compare and roll back. ✅ Template editor → History: every save keeps a version (prompt, workflow, price, format, media; newest 50; identical saves skipped), shows who changed what, compares any version with the current one side by side, and restores it (URL and publish state unchanged). History starts with the first save after this update.
 - [x] **V34 🟡 Template statistics.** Per template: views, creations, success rate, average generation time and credits earned. ✅ Admin → Templates → Columns: Statistics, per period (7/30/90 days, all time): views, creations, views→creations, success rate (refusals counted), average generation time and credits earned (free redos excluded).
 - [ ] **V35 🟡 Backup AI model.** If the main model fails or is down, a template can retry automatically with a second model.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V32 | Done | Admin test runs: generations.test_run (migration 0022), POST /api/admin/templates/:id/test-run, queue runs test runs without a credit hold, no strike/email, staff may upload without credits, Test run tab with live status and video. 1 integration check |
 | 2026-10-12 | V5 | Done | Progress estimate: typicalSeconds per running creation (average of the template's last 20 completed), animated progress bar with time left in My creations (translated). 1 integration check |
 | 2026-10-12 | V17 | Done | Saved photos: unticked 'Save this photo for future videos' after upload; 'Use a saved photo' picker per slot and the default photo pre-filled; Account → My photos with names, a default, delete, and Save for recent uploads; saved photos skip the 24-hour cleanup (max 20) and are never deleted by replacing/removing them on a template page; deleting keeps past videos; privacy text, FAQ (EN+SQ) updated. Photos were cleaned at upload (C2) and stay private. Migration 0021. 3 integration checks |
 | 2026-10-12 | V6, V40, V42 | Done | Ratings (1–5 stars) on finished videos; opt-in Share to the community (consent dialog) puts a video on the new /feed Community page (newest / most liked, likes for signed-in customers) and in a 'See what others made' gallery on its template page; stop sharing, deletion, removal requests and staff Hide take it out. Customers who rate 4–5 stars are invited to review (review link set in Admin → Settings → Support). Header nav fits at tablet widths. Privacy text and FAQ updated (EN+SQ). Migration 0020. 6 integration checks |

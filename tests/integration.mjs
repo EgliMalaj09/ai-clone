@@ -443,6 +443,14 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const etaUp=await upload(userCookie);const etaGen=await generate(userCookie,formula,[etaUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost});
  const etaRow=(await request('/api/generations/'+etaGen.body.generationId,{cookie:userCookie})).body.generations[0];
  ok('Running creations include a typical duration for the progress estimate',typeof etaRow.typicalSeconds==='number'&&etaRow.typicalSeconds>0);await waitDone(userCookie,etaGen.body.generationId);
+ // V32: admins run a free test of a template (even a draft) with real AI; no credits move and it is marked as a test run.
+ const adminBefore=await balance(adminCookie);const adminPhoto=await upload(adminCookie);
+ const draftTpl=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Test Run',slug:'qa-test-run',active:false},expected:201})).body.template;
+ await request('/api/admin/templates/'+draftTpl.id+'/test-run',{method:'POST',cookie:userCookie,data:{uploadIds:[adminPhoto.body.id]},expected:403});
+ const testRun=(await request('/api/admin/templates/'+draftTpl.id+'/test-run',{method:'POST',cookie:adminCookie,data:{uploadIds:[adminPhoto.body.id]},expected:201})).body;
+ const doneRun=await waitDone(adminCookie,testRun.generationId);const adminAfter=await balance(adminCookie);const runRow=await db.prepare('SELECT test_run,credit_cost,hold_id FROM generations WHERE id=?').bind(testRun.generationId).first();
+ ok('A free admin test run completes without reserving or charging credits',doneRun.g.status==='completed'&&runRow.test_run===1&&runRow.credit_cost===0&&!runRow.hold_id&&adminAfter.available===adminBefore.available&&adminAfter.held===adminBefore.held);
+ await request('/api/admin/templates/'+draftTpl.id,{method:'DELETE',cookie:adminCookie});
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});
