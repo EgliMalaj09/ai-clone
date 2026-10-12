@@ -3,7 +3,7 @@ import {assertGeneratable,connectionStatus,maintenanceStatus,providerConfigured,
 import {ZodError,z} from 'zod';
 import {jsonBody,pageQuery,readUploadedFile} from './http';
 import {cleanImage} from './image-clean';
-import {creditValues,deletePackage,ensurePackCheckout,listPackages,listPurchases,payTestPurchase,publicPurchase,purchaseFor,reversePackPayment,savePackage,startPackCheckout,verifyPackCheckout} from './credit-purchases';
+import {creditValues,deletePackage,ensurePackCheckout,listPackages,listPurchases,payTestPurchase,publicPurchase,purchaseFor,reversePackPayment,savePackage,startPackCheckout,startVideoPurchase,verifyPackCheckout} from './credit-purchases';
 import {adjust,balanceOf,creditHistory,creditLedger,grantWelcomeCredits,onlyIfApplied,placeHold,reconcileCredits} from './credits';
 import {deleteTemplateMedia,listTemplateMedia,releaseTemplateMedia,templateMediaUrls,uploadTemplateMedia} from './template-media';
 import {queryCatalog} from './catalog-query';
@@ -228,6 +228,8 @@ export async function handleAPI(req:Request){try{
   if(method==='GET'&&!p[1])return json(await balanceOf(user.id));
   if(method==='GET'&&p[1]==='history')return json(await creditHistory(user.id,url));
   if(method==='POST'&&p[1]==='checkout'){assertNotBlocked(user);await rateLimit('credit-checkout:'+user.id,20,3600000);return json(await startPackCheckout(user,await body(req)),201);}
+  // V45: buy exactly one video (no pack) — grants that template's credit cost through POK.
+  if(method==='POST'&&p[1]==='buy-video'){assertNotBlocked(user);await rateLimit('credit-checkout:'+user.id,20,3600000);return json(await startVideoPurchase(user,await body(req)),201);}
   if(p[1]==='purchases'){
    if(method==='GET'&&!p[2])return json(await listPurchases(user.id,url));
    const purchase=await purchaseFor(user.id,p[2]);

@@ -124,6 +124,15 @@ async function liveChecks(){
   await call('/api/admin/credits/purchases/'+giftBuy.purchaseId+'/reverse',{method:'POST',cookie:admin,data:{reason:'Payment refunded',currentPassword:adminPassword}});
   const giftRec=(await call('/api/admin/credits/reconciliation',{cookie:admin})).body;
   ok('Reversing a redeemed gift takes the credits back from the recipient and the ledger stays balanced',(await call('/api/credits',{cookie:lucky})).body.available===0&&giftRec.ok);
+  // V45: buy exactly one video (no pack) through POK; it grants that template's credit cost.
+  const vt=(await call('/api/templates')).body.templates.find(t=>t.creditCost>0);
+  await call('/api/credits/buy-video',{method:'POST',cookie:lucky,data:{templateId:vt.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true,expectedCost:vt.creditCost+1},expected:409});
+  ok('A stale single-video price is rejected',true);
+  const vid=(await call('/api/credits/buy-video',{method:'POST',cookie:lucky,data:{templateId:vt.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true,expectedCost:vt.creditCost},expected:201})).body;
+  const vidP=(await call('/api/credits/purchases/'+vid.purchaseId,{cookie:lucky})).body.purchase;
+  ok('Buy-one-video creates a pending purchase for exactly the template credit cost',vidP.credits===vt.creditCost&&vidP.status==='pending'&&vidP.currency==='EUR'&&vidP.packageName.includes(vt.name)&&vidP.amount>0);
+  pok.pay(pok.last().id);await call('/api/credits/purchases/'+vid.purchaseId+'/verify',{method:'POST',cookie:lucky,data:{}});
+  ok('Paying a single-video purchase grants exactly that template credit cost, once',(await call('/api/credits',{cookie:lucky})).body.available===vt.creditCost&&(await call('/api/credits/purchases/'+vid.purchaseId,{cookie:lucky})).body.purchase.status==='paid');
  }finally{await live.dispose()}
 }
 try{

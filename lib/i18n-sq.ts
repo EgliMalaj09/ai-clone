@@ -29,6 +29,8 @@ export const sq:Record<string,string>={
  'Forgot your password?':'E harrove fjalëkalimin?',
  'A fresh start.':'Një fillim i ri.',
  'Welcome back.':'Mirë se u ktheve.',
+ 'Or buy just this video — {price}':'Ose bli vetëm këtë video — {price}',
+ 'Starting checkout...':'Duke hapur arkën...',
  'CHECK YOUR EMAIL':'KONTROLLO EMAIL-IN',
  'One code away':'Vetëm një kod larg',
  'from creating.':'nga krijimi.',

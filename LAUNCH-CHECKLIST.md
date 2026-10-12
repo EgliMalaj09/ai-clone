@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 21 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 40 | 45 |
+| 3B. Version 1 features | 41 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -282,7 +282,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V44 🟡 Community templates with royalties.** Genematic lets creators publish scenarios and earn tokens each time they're used. Large feature (creator accounts, review of submitted prompts, royalty payouts in credits); strike it if it's too much for version 1.
 
 **Other purchase options**
-- [ ] **V45 🟡 Buy one video without a pack.** On a template page, "Buy this video" pays the price of that one video through POK (no credit pack needed), for customers who want to try once. Notes for later: price per template in ALL/EUR (higher per video than packs, so packs stay the better deal); the purchase grants exactly that template's credit cost and starts the creation, so the credits ledger stays the single system; no refunds (D4) and the same report/free redo rule (D12) apply.
+- [x] **V45 🟡 Buy one video without a pack.** ✅ On a template page, "Or buy just this video — ≈price" pays that video's price through POK with no credit pack, and grants exactly its credit cost (base + picked options) so the credits ledger stays the single system. Priced at the highest per-credit rate among active packs, so packs stay the better deal (DECISIONS.md #23). Same purchase/confirm/receipt/reverse path as packs; no refunds (D4) and the report/free-redo rule (D12) apply to the video. After paying, the customer lands on the credits page with the credits added, then makes the video (full auto-start needs a pre-captured photo, which uploads-need-credits prevents). `startVideoPurchase` in `lib/server/credit-purchases.ts`; `/api/credits/buy-video`. 3 credit checks.
 
 **Admin side**
 - [x] **V10 🟡 Roles.** Promote other admins and add a support role with limited access. ✅ Roles: Customer, Support, Administrator. An admin changes a role on the customer page (with their password; not their own; the studio always keeps an admin; the account is signed out). Support sees Users, Generations, Reports and Operations and can send reset links, mark emails verified, unblock, retry and resolve reports, but nothing with money, keys, settings, templates, exports or roles. See DECISIONS.md #9.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V45 | Done | Buy one video without a pack: `startVideoPurchase` + `/api/credits/buy-video` create a single-video credit purchase (package_id `single:<templateId>`) for exactly the template's credit cost, priced at the highest per-credit pack rate (DECISIONS.md #23); reuses the pack confirm/receipt/reverse path. Template page shows "Or buy just this video — ≈price". 3 credit checks |
 | 2026-10-12 | V1 | Done | Google & Apple sign-in (OpenID Connect code flow, `lib/server/oauth.ts`): buttons shown when a provider's keys are set in Admin → Connections → Social sign-in; signed state + nonce cookie (login-CSRF safe); verified-email account linking; new social accounts created verified, passwordless, with welcome credits. Apple client secret is an ES256 JWT from the .p8. New config/connection fields (GOOGLE_*/APPLE_*). DECISIONS.md #21. 8 integration checks |
 | 2026-10-12 | C6/C20 | Enhanced | Sign-up email verification by a 6-digit code: the verify email now carries the code alongside the link, and registration shows a code-entry step (resend supported). Code stored hashed, scoped per account, 30-min expiry, 6 attempts/15 min. DECISIONS.md #22. 3 production checks |
 | 2026-10-12 | V38 | Done | Creator & campaign tracking links: per-link share URL, sign-up attribution and admin stats (sign-ups, buyers, purchases, credits). Payouts left to owner (D17). Migration 0029. 5 integration checks |

@@ -1,12 +1,13 @@
 // Credit packs and their purchases. Payment confirmation grants the pack's credits in the same atomic credit
 // transaction that marks the purchase paid, so a retried or concurrent webhook can never grant twice.
 import {z} from 'zod';
-import {all,audit,config,event,HttpError,must,now,one,parse,run,stmt,uid,type Row} from './data';
+import {all,audit,config,event,getAdminTemplate,HttpError,must,now,one,parse,run,stmt,uid,type Row} from './data';
 import {purchaseReadiness,maintenanceStatus,DEFAULT_MAINTENANCE_MESSAGE} from './connections';
 import {pageQuery} from './http';
 import {createPokOrder,getPokOrder,pokCurrencies,pokOrderState} from './payments';
 import {available,onlyIfApplied,post,SYSTEM} from './credits';
-import type {StudioUser} from '../contracts';
+import {optionsCost,type StudioUser} from '../contracts';
+import {applyExperiment,runningExperiments} from './experiments';
 import {reportError} from './errors';
 import {checkoutDiscount,recordDiscountUse,rewardReferral} from './promos';
 
@@ -31,6 +32,14 @@ export async function creditValues(){
  for(const p of await listPackages())for(const [currency,price] of Object.entries(p.prices)){const v=price/p.totalCredits;if(values[currency]===undefined||v<values[currency])values[currency]=v;}
  return values;
 }
+/** Highest price of one credit per currency across active packs — the single-video rate (V45), so packs stay the better deal. */
+export async function singleCreditValues(){
+ const values:Record<string,number>={};
+ for(const p of await listPackages())for(const [currency,price] of Object.entries(p.prices)){const v=price/p.totalCredits;if(values[currency]===undefined||v>values[currency])values[currency]=v;}
+ return values;
+}
+/** Real-money charge for `credits` worth of a single video, rounded up to a chargeable amount (whole lek for ALL, min 0.50). */
+function videoAmount(credits:number,currency:string,perCredit:number){const step=currency==='ALL'?100:1;return Math.max(50,Math.ceil(credits*perCredit/step)*step);}
 export async function savePackage(id:string|null,input:unknown,user:StudioUser){
  const b=packageSchema.parse(input);
  if(id)must(await one('SELECT id FROM credit_packages WHERE id=?',id),'Credit pack not found.',404);
@@ -63,6 +72,34 @@ export async function startPackCheckout(user:StudioUser,input:unknown){
   if(b.gift)await run('UPDATE credit_purchases SET gift_email=?,gift_name=?,gift_message=? WHERE id=?',b.gift.email,b.gift.name,b.gift.message,id);}
  catch(e){const duplicate=await one('SELECT * FROM credit_purchases WHERE user_id=? AND idempotency_key=?',user.id,b.idempotencyKey);if(duplicate)return {purchaseId:duplicate.id,...await ensurePackCheckout(duplicate,user.email)};throw e}
  await event('credits_checkout_started',user.id,{purchaseId:id});
+ return {purchaseId:id,...await ensurePackCheckout((await one('SELECT * FROM credit_purchases WHERE id=?',id))!,user.email)};
+}
+
+// V45: "Buy this video" pays the real-money price of one template's credit cost through POK, with no credit pack.
+// It grants exactly that many credits (so the customer can make the video) and runs through the same purchase,
+// confirmation and receipt path as a pack — the credits ledger stays the single system. No refunds (D4) apply, and
+// the normal report/free-redo rule (D12) covers the resulting video. The package_id is a "single:<templateId>"
+// sentinel so past purchases never change if a template is edited; the credits granted are a snapshot on the row.
+export async function startVideoPurchase(user:StudioUser,input:unknown){
+ const b=z.object({templateId:z.string().max(150),currency:z.enum(packCurrencies),idempotencyKey:z.string().uuid(),consent:z.literal(true),expectedCost:z.number().int().min(1),options:z.record(z.string().max(40)).default({})}).parse(input);
+ must(user.emailVerified,'Verify your email before buying a video.',403);
+ const marker='single:';
+ const prior=await one('SELECT * FROM credit_purchases WHERE user_id=? AND idempotency_key=?',user.id,b.idempotencyKey);
+ if(prior){must(prior.currency===b.currency&&prior.package_id===marker+b.templateId,'This checkout key was already used for another purchase.',409);return {purchaseId:prior.id,...await ensurePackCheckout(prior,user.email)};}
+ const t0=await getAdminTemplate(b.templateId);must(t0?.active,'This template is currently unavailable.',404);
+ const t=applyExperiment(t0,await runningExperiments(),user.id);
+ must(t.creditCost>0,'This video is not available for purchase yet.',409);
+ const cost=optionsCost(t.creditCost,t.optionGroups||[],b.options);
+ must(cost===b.expectedCost,'This video’s price changed. Refresh to review it.',409);
+ const perCredit=(await singleCreditValues())[b.currency];must(perCredit>0,'This video is not sold in that currency.',400);
+ const amount=videoAmount(cost,b.currency,perCredit);
+ const maint=await maintenanceStatus();must(!maint.purchasesPaused,maint.message||DEFAULT_MAINTENANCE_MESSAGE,503);
+ if(!config().demo)must((await purchaseReadiness()).ready,'Buying is not open yet. Please check back soon.',503);
+ const id=uid('cp_');
+ try{await run('INSERT INTO credit_purchases (id,user_id,package_id,package_name,credits,amount,currency,status,provider,idempotency_key,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+  id,user.id,marker+t.id,`${t.name} · 1 ${t.generationType==='image'?'photo':'video'}`,cost,amount,b.currency,'pending',config().demo?'mock':'pok',b.idempotencyKey,now());}
+ catch(e){const dup=await one('SELECT * FROM credit_purchases WHERE user_id=? AND idempotency_key=?',user.id,b.idempotencyKey);if(dup)return {purchaseId:dup.id,...await ensurePackCheckout(dup,user.email)};throw e}
+ await event('credits_checkout_started',user.id,{purchaseId:id,single:true});
  return {purchaseId:id,...await ensurePackCheckout((await one('SELECT * FROM credit_purchases WHERE id=?',id))!,user.email)};
 }
 
