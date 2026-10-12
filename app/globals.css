@@ -384,3 +384,7 @@ tr[draggable=true]{cursor:grab}
 .progress-bar span{display:block;height:100%;background:#fff;border-radius:999px;transition:width 1s linear}
 .progress-wrap small{font-size:12px;opacity:.9}
 .test-run-video{width:240px;border-radius:14px;margin-top:12px;background:#0f1115}
+.code-form{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.code-form input{flex:1;min-width:180px}
+.referral-panel small{color:#68707a}
+.pack-card s{color:#68707a;font-weight:400}

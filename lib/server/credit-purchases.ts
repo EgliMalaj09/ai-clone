@@ -8,6 +8,7 @@ import {createPokOrder,getPokOrder,pokCurrencies,pokOrderState} from './payments
 import {available,onlyIfApplied,post,SYSTEM} from './credits';
 import type {StudioUser} from '../contracts';
 import {reportError} from './errors';
+import {checkoutDiscount,recordDiscountUse,rewardReferral} from './promos';
 
 export const packCurrencies=pokCurrencies;
 export const packageSchema=z.object({
@@ -46,17 +47,19 @@ export async function deletePackage(id:string,user:StudioUser){
 }
 
 export async function startPackCheckout(user:StudioUser,input:unknown){
- const b=z.object({packageId:z.string().max(100),currency:z.enum(packCurrencies),idempotencyKey:z.string().uuid(),consent:z.literal(true)}).parse(input);
+ const b=z.object({packageId:z.string().max(100),currency:z.enum(packCurrencies),idempotencyKey:z.string().uuid(),consent:z.literal(true),promoCode:z.string().max(40).optional()}).parse(input);
  must(user.emailVerified,'Verify your email before buying credits.',403);
  const prior=await one('SELECT * FROM credit_purchases WHERE user_id=? AND idempotency_key=?',user.id,b.idempotencyKey);
  if(prior){must(prior.package_id===b.packageId&&prior.currency===b.currency,'This checkout key was already used for another purchase.',409);return {purchaseId:prior.id,...await ensurePackCheckout(prior,user.email)};}
  const pack=await one('SELECT * FROM credit_packages WHERE id=? AND active=1',b.packageId);must(pack,'This credit pack is not available.',404);
- const amount=supportedPrices(parse<Record<string,number>>(pack.prices,{}))[b.currency];must(Number.isSafeInteger(amount)&&amount>0,'This pack is not sold in that currency.',400);
+ const fullAmount=supportedPrices(parse<Record<string,number>>(pack.prices,{}))[b.currency];must(Number.isSafeInteger(fullAmount)&&fullAmount>0,'This pack is not sold in that currency.',400);
+ // V4: a discount code lowers the price of this purchase; it counts as used when the payment is confirmed.
+ const promo=await checkoutDiscount(user,b.promoCode,fullAmount,b.currency);const amount=promo?.amount??fullAmount;
  const maint=await maintenanceStatus();must(!maint.purchasesPaused,maint.message||DEFAULT_MAINTENANCE_MESSAGE,503);
  if(!config().demo)must((await purchaseReadiness()).ready,'Buying credits is not open yet. Please check back soon.',503);
  const id=uid('cp_');
- try{await run('INSERT INTO credit_purchases (id,user_id,package_id,package_name,credits,amount,currency,status,provider,idempotency_key,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-  id,user.id,pack.id,pack.name,Number(pack.credits)+Number(pack.bonus_credits),amount,b.currency,'pending',config().demo?'mock':'pok',b.idempotencyKey,now());}
+ try{await run('INSERT INTO credit_purchases (id,user_id,package_id,package_name,credits,amount,currency,status,provider,idempotency_key,created_at,promo_code,full_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+  id,user.id,pack.id,pack.name,Number(pack.credits)+Number(pack.bonus_credits),amount,b.currency,'pending',config().demo?'mock':'pok',b.idempotencyKey,now(),promo?.code??null,promo?fullAmount:null);}
  catch(e){const duplicate=await one('SELECT * FROM credit_purchases WHERE user_id=? AND idempotency_key=?',user.id,b.idempotencyKey);if(duplicate)return {purchaseId:duplicate.id,...await ensurePackCheckout(duplicate,user.email)};throw e}
  await event('credits_checkout_started',user.id,{purchaseId:id});
  return {purchaseId:id,...await ensurePackCheckout((await one('SELECT * FROM credit_purchases WHERE id=?',id))!,user.email)};
@@ -102,7 +105,7 @@ export async function confirmPackPayment(purchaseId:string,sessionId:string,tran
   moves:[{account:SYSTEM.issued,amount:-p.credits},{account:available(p.user_id),amount:p.credits}],
   extra:tx=>{const g=onlyIfApplied(tx);return [stmt(`UPDATE credit_purchases SET status='paid',provider_transaction_id=?,paid_at=? WHERE id=? AND status IN ('pending','failed') AND ${g.sql}`,transactionId,now(),p.id,...g.args)];}})
   .catch(e=>{if(e instanceof HttpError&&e.status===409)return null;throw e;});
- if(result?.applied)await event('credits_purchased',p.user_id,{purchaseId:p.id,credits:p.credits});
+ if(result?.applied){await event('credits_purchased',p.user_id,{purchaseId:p.id,credits:p.credits});await recordDiscountUse({id:p.id as string,user_id:p.user_id as string,promo_code:(p.promo_code as string|null)??null});await rewardReferral(p.user_id as string);}
  return !!result?.applied;
 }
 export async function failPackPayment(purchaseId:string,sessionId?:string){

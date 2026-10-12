@@ -91,6 +91,26 @@ async function liveChecks(){
   ok('A paid order whose webhook was lost is confirmed by the background check',(await call('/api/credits/purchases/'+second.purchaseId,{cookie:buyer})).body.purchase.status==='paid'&&await balance()===300);
   await call(`/api/credits/purchases/${second.purchaseId}/pay`,{method:'POST',cookie:buyer,data:{result:'success'},expected:403});
   ok('The test payment endpoint is disabled in production',await balance()===300);
+  // V4: credit codes, discount codes at checkout (POK charges the discounted price), and invite rewards after the first purchase.
+  await call('/api/admin/promos',{method:'POST',cookie:admin,data:{code:'gift50',kind:'credits',credits:50,maxUses:1}, expected:201});
+  await call('/api/promo/redeem',{method:'POST',cookie:buyer,data:{code:'GIFT50'}});
+  await call('/api/promo/redeem',{method:'POST',cookie:buyer,data:{code:'GIFT50'},expected:409});
+  ok('A credits code adds its credits once per customer',await balance()===350);
+  await call('/api/admin/promos',{method:'POST',cookie:admin,data:{code:'HALF',kind:'discount',percent:50},expected:201});
+  const half=(await call('/api/promo/redeem',{method:'POST',cookie:buyer,data:{code:'half'}})).body;
+  const discountedBuy=(await call('/api/credits/checkout',{method:'POST',cookie:buyer,data:{packageId:pack.id,currency:'ALL',idempotencyKey:randomUUID(),consent:true,promoCode:'HALF'},expected:201})).body;
+  ok('A discount code lowers the POK price (whole lek for ALL)',half.kind==='discount'&&half.percent===50&&pok.created.at(-1).amount==='250');
+  pok.pay(pok.last().id);await call(`/api/credits/purchases/${discountedBuy.purchaseId}/verify`,{method:'POST',cookie:buyer,data:{}});
+  await call('/api/credits/checkout',{method:'POST',cookie:buyer,data:{packageId:pack.id,currency:'ALL',idempotencyKey:randomUUID(),consent:true,promoCode:'HALF'},expected:409});
+  ok('The discounted pack grants all its credits and the code is then used up for that customer',await balance()===850);
+  await call('/api/admin/promos/referral',{method:'PATCH',cookie:admin,data:{credits:40}});
+  const invite=(await call('/api/referral',{cookie:buyer})).body;
+  const friend=await call('/api/auth/register',{method:'POST',data:{name:'Invited Friend',email:'friend@credits.test',password:'Test-password-123',acceptTerms:true,confirmAge:true,ref:invite.code},expected:201});
+  await db.prepare("UPDATE users SET email_verified=1 WHERE email='friend@credits.test'").run();const fc=(await call('/api/auth/login',{method:'POST',data:{email:'friend@credits.test',password:'Test-password-123'}})).cookie;
+  const fb=(await call('/api/credits/checkout',{method:'POST',cookie:fc,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
+  pok.pay(pok.last().id);await call(`/api/credits/purchases/${fb.purchaseId}/verify`,{method:'POST',cookie:fc,data:{}});
+  const friendBalance=(await call('/api/credits',{cookie:fc})).body.available;
+  ok('An invite rewards both customers after the friend’s first purchase',invite.reward===40&&friendBalance===540&&await balance()===890&&(await call('/api/referral',{cookie:buyer})).body.invited===1&&!!friend);
  }finally{await live.dispose()}
 }
 try{

@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 26 | 45 |
+| 3B. Version 1 features | 27 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -231,7 +231,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V1 🟡 Google and Apple sign-in.** The `accounts` table is ready for it; keep email sign-up as well.
 - [ ] **V2 🟡 Watermarked preview.** A low-resolution, watermarked preview before credits are charged, to build trust.
 - [x] **V3 🟡 Share page.** `/v/<id>` with an Open Graph preview and links the owner can revoke, instead of a raw 23-hour media link.
-- [ ] **V4 🟡 Promo codes and referrals.** Codes that grant credits or discount packs, plus "invite a friend, both get credits".
+- [x] **V4 🟡 Promo codes and referrals.** Codes that grant credits or discount packs, plus "invite a friend, both get credits". ✅ Admin → Promo codes: codes that give credits or a % off a pack (limits, expiry, on/off, one use per customer); customers enter them under Credits → Have a code? (discounted prices shown, POK charged the discounted amount, whole lek for ALL). Invite friends: each customer's link; both get the set credits after the friend's first paid purchase (Credits page box; 0 = off, the default). See DECISIONS.md #16.
 - [x] **V5 🟡 Progress and ETA.** Progress estimate on creations; use fal.ai webhooks instead of polling. ✅ Videos being made show a progress bar and "about N min left", estimated from how long that template's last 20 videos took (2 minutes when there's no history); it never shows 100% before the video is ready. Provider webhooks are not used — see DECISIONS.md #15.
 - [x] **V6 🟡 Ratings and gallery.** Customers rate results; an opt-in "made with this template" gallery.
 - [x] **V7 🟡 Installable app (PWA).** Add to home screen on phones, with an app icon and offline page. ✅ Web app manifest (standalone, theme colour, shortcuts), icons incl. maskable and Apple home-screen icon, a network-first service worker with a bilingual offline page. Icons are made from today's logo; replace them with the final brand (X2.2).
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V4 | Done | Promo codes (promo_codes, promo_redemptions), discount applied in startPackCheckout and counted when paid, credit codes granted from system:promo (new ledger kinds promo/referral), referral codes + referred_by, reward after the first paid purchase, admin page and settings, customer code box and invite panel (translated). Migration 0023. 4 credits checks |
 | 2026-10-12 | V35 | Done | Backup model per workflow step (validated), queue tryFallback on provider failure or failed submissions, logged as a warning with the generation ID, editor fields. 1 provider check |
 | 2026-10-12 | V32 | Done | Admin test runs: generations.test_run (migration 0022), POST /api/admin/templates/:id/test-run, queue runs test runs without a credit hold, no strike/email, staff may upload without credits, Test run tab with live status and video. 1 integration check |
 | 2026-10-12 | V5 | Done | Progress estimate: typicalSeconds per running creation (average of the template's last 20 completed), animated progress bar with time left in My creations (translated). 1 integration check |

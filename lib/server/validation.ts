@@ -30,6 +30,7 @@ export const registerSchema=z.object({
  acceptTerms:z.literal(true,{errorMap:()=>({message:'Please accept the Terms and Privacy Policy to continue.'})}),
  confirmAge:z.literal(true,{errorMap:()=>({message:'Please confirm you meet the minimum age to continue.'})}),
  marketingOptIn:z.boolean().optional().default(false),
+ ref:z.string().max(20).optional(),
 });
 export const generationSchema=z.object({templateId:z.string().max(150),uploadIds:z.array(z.string().max(100)).min(1).max(4),idempotencyKey:z.string().uuid(),expectedCost:z.number().int(),consent:z.literal(true)});
 

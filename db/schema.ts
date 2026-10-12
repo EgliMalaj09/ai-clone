@@ -14,6 +14,8 @@ export const users=sqliteTable('users',{
  // (no code works twice) and hashes of the one-time recovery codes.
  // Language for emails (C10): the one the customer last used on the site.
  locale:text('locale').notNull().default('sq'),
+ // Referrals (V4): this customer's invite code, and who invited them.
+ referralCode:text('referral_code').unique(),referredBy:text('referred_by'),
  // Email change waiting for confirmation from the new address (V18).
  pendingEmail:text('pending_email'),
  totpSecret:text('totp_secret'),totpPending:text('totp_pending'),totpEnabledAt:integer('totp_enabled_at'),totpLastStep:integer('totp_last_step').notNull().default(0),totpRecovery:text('totp_recovery').notNull().default('[]'),
@@ -125,6 +127,8 @@ export const creditPurchases=sqliteTable('credit_purchases',{
  id:text('id').primaryKey(),userId:text('user_id').references(()=>users.id,{onDelete:'set null'}),packageId:text('package_id').notNull(),packageName:text('package_name').notNull(),credits:integer('credits').notNull(),amount:integer('amount').notNull(),currency:text('currency').notNull(),
  status:text('status').notNull().default('pending'),provider:text('provider').notNull(),providerSessionId:text('provider_session_id').unique(),providerTransactionId:text('provider_transaction_id'),checkoutUrl:text('checkout_url'),checkoutAttempt:integer('checkout_attempt').notNull().default(0),
  idempotencyKey:text('idempotency_key').notNull(),createdAt:integer('created_at').notNull(),paidAt:integer('paid_at'),
+ // Promo code applied at checkout (V4): the code and the price before the discount.
+ promoCode:text('promo_code'),fullAmount:integer('full_amount'),
 },t=>[uniqueIndex('idx_credit_purchase_idempotency').on(t.userId,t.idempotencyKey),index('idx_credit_purchases_user').on(t.userId,t.createdAt)]);
 // Server errors and provider/webhook failures (C7), shown in Admin → Operations and kept 30 days; also forwarded to Sentry when SENTRY_DSN is set.
 export const errorEvents=sqliteTable('error_events',{
@@ -169,3 +173,12 @@ export const templateRequestVotes=sqliteTable('template_request_votes',{
 export const feedLikes=sqliteTable('feed_likes',{
  generationId:text('generation_id').notNull().references(()=>generations.id,{onDelete:'cascade'}),userId:text('user_id').notNull().references(()=>users.id,{onDelete:'cascade'}),createdAt:integer('created_at').notNull(),
 },t=>[uniqueIndex('idx_feed_like').on(t.generationId,t.userId)]);
+// Promo codes (V4): a code gives credits when redeemed, or a percentage off a credit pack at checkout.
+export const promoCodes=sqliteTable('promo_codes',{
+ id:text('id').primaryKey(),code:text('code').notNull().unique(),kind:text('kind').notNull(),// credits | discount
+ credits:integer('credits').notNull().default(0),percent:integer('percent').notNull().default(0),maxUses:integer('max_uses'),uses:integer('uses').notNull().default(0),
+ expiresAt:integer('expires_at'),active:integer('active').notNull().default(1),note:text('note').notNull().default(''),createdBy:text('created_by'),createdAt:integer('created_at').notNull(),
+});
+export const promoRedemptions=sqliteTable('promo_redemptions',{
+ id:text('id').primaryKey(),codeId:text('code_id').notNull().references(()=>promoCodes.id,{onDelete:'cascade'}),userId:text('user_id').references(()=>users.id,{onDelete:'set null'}),purchaseId:text('purchase_id'),createdAt:integer('created_at').notNull(),
+},t=>[uniqueIndex('idx_promo_redemption_user').on(t.codeId,t.userId)]);
