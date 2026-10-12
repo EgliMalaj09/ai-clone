@@ -314,3 +314,6 @@ tr[draggable=true]{cursor:grab}
 @media (max-width:760px){.low-balance{margin:10px 16px 0}}
 .notify-note{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 .notify-note span{flex:1;min-width:200px}
+.change-email{margin-top:14px}
+.change-email form{margin-top:6px}
+.change-email h3{font-size:15px;margin:0 0 8px}

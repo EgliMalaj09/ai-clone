@@ -3,7 +3,7 @@
 // The brand name is a config value so swapping to the final brand (D5/C6.4) stays a one-line change.
 
 import {translate,type Lang} from '../i18n';
-export type AuthMailType='verify'|'reset';
+export type AuthMailType='verify'|'reset'|'email';
 
 type MailContent={subject:string;html:string;text:string};
 
@@ -16,6 +16,13 @@ const COPY:Record<AuthMailType,{subject:string;heading:string;lead:string;button
   lead:'Thanks for creating an account. Confirm your email address to start making videos.',
   button:'Verify my email',
   ignore:'If you did not create this account, you can safely ignore this email.',
+ },
+ email:{
+  subject:'Confirm your new {brand} email',
+  heading:'Confirm your new email',
+  lead:'You asked to use this address for your account. Confirm it to finish the change.',
+  button:'Confirm new email',
+  ignore:'If you did not ask for this, you can ignore this email — your account keeps its current address.',
  },
  reset:{
   subject:'Reset your {brand} password',
@@ -48,6 +55,12 @@ function noticeMail(copy:Notice,{brand,link,linkLabel,supportEmail,lang='en'}:{b
  </td></tr></table>
 </body></html>`;
  return {subject:copy.subject,html,text};
+}
+
+/** A short notice in the customer's language; `{brand}` and other `{vars}` are filled in after translating. */
+export function noticeMailContent({lang,brand,subject,heading,lead,vars={},link,linkLabel,supportEmail}:{lang:Lang;brand:string;subject:string;heading:string;lead:string;vars?:Record<string,string>;link?:string;linkLabel?:string;supportEmail?:string}):MailContent{
+ const v={brand,...vars},tr=(s:string)=>translate(lang,s,v);
+ return noticeMail({subject:tr(subject),heading:tr(heading),lead:tr(lead)},{brand,link,linkLabel:linkLabel&&tr(linkLabel),supportEmail,lang});
 }
 
 export type ReportMailKind='approved'|'rejected_photo'|'rejected_other';

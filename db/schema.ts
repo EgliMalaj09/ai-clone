@@ -14,6 +14,8 @@ export const users=sqliteTable('users',{
  // (no code works twice) and hashes of the one-time recovery codes.
  // Language for emails (C10): the one the customer last used on the site.
  locale:text('locale').notNull().default('sq'),
+ // Email change waiting for confirmation from the new address (V18).
+ pendingEmail:text('pending_email'),
  totpSecret:text('totp_secret'),totpPending:text('totp_pending'),totpEnabledAt:integer('totp_enabled_at'),totpLastStep:integer('totp_last_step').notNull().default(0),totpRecovery:text('totp_recovery').notNull().default('[]'),
 });
 export const accounts=sqliteTable('accounts',{

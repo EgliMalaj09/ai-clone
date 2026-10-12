@@ -362,6 +362,11 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  // V7: installable app: manifest, theme colour and home-screen icon on every page; the manifest, worker and offline page exist.
  const appHome=(await request('/')).text;const {readFile:rf}=await import('node:fs/promises');const manifest=JSON.parse(await rf('public/manifest.webmanifest','utf8'));
  ok('Pages link the app manifest and home-screen icon',appHome.includes('rel="manifest"')&&appHome.includes('apple-touch-icon')&&appHome.includes('theme-color')&&manifest.display==='standalone'&&manifest.icons.some(i=>i.purpose==='maskable')&&(await rf('public/sw.js','utf8')).includes('offline.html'));
+ // V18: change the email address (demo studio without email: changes at once; password required; addresses stay unique).
+ await request('/api/account/email',{method:'POST',cookie:relogged.cookie,data:{email:'qa@studio.test',password:'Brand-new-password-2'},expected:409});
+ await request('/api/account/email',{method:'POST',cookie:relogged.cookie,data:{email:'moved@studio.test',password:'wrong-password-9'},expected:403});
+ const moved=(await request('/api/account/email',{method:'POST',cookie:relogged.cookie,data:{email:'Moved@Studio.test',password:'Brand-new-password-2'}})).body;
+ ok('A customer changes their email with their password',moved.changed===true&&!!(await request('/api/auth/login',{method:'POST',data:{email:'moved@studio.test',password:'Brand-new-password-2'}})).cookie);
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

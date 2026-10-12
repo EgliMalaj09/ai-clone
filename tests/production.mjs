@@ -125,6 +125,15 @@ try{
   const shqip=await db.prepare("SELECT id FROM users WHERE email='shqip@studio.test'").first();
   const sentLink=(await request('/api/admin/users/'+shqip.id+'/reset-link',{method:'POST',cookie:admin,data:{}})).body;
   ok('An admin reset link is emailed in the customer’s language',sentLink.sent===true&&!sentLink.url&&mails.some(m=>m.to==='shqip@studio.test'&&m.subject.startsWith('Rivendos fjalëkalimin')));
+  // V18: with email configured, the new address must confirm a link; the old address is told about the change.
+  const shqipLogin=await db.prepare("UPDATE users SET email_verified=1 WHERE email='shqip@studio.test'").run();
+  const sq=(await request('/api/auth/login',{method:'POST',data:{email:'shqip@studio.test',password:'Fjalekalim-123'}})).cookie;
+  const pendingChange=(await request('/api/account/email',{method:'POST',cookie:sq,data:{email:'shqip2@studio.test',password:'Fjalekalim-123'}})).body;
+  const confirmMail=mails.find(m=>m.to==='shqip2@studio.test');const confirmToken=new URL(confirmMail.text.match(/https?:\/\/\S+confirm-email\S+/)[0]).searchParams.get('token');
+  const stillOld=(await db.prepare("SELECT email FROM users WHERE email='shqip@studio.test'").first());
+  await request('/api/auth/email-change',{method:'POST',data:{token:confirmToken}});
+  ok('A new email is confirmed by a link sent to it, and the old address is notified',pendingChange.pending==='shqip2@studio.test'&&!!stillOld&&!!(await db.prepare("SELECT id FROM users WHERE email='shqip2@studio.test' AND pending_email IS NULL").first())&&mails.some(m=>m.to==='shqip@studio.test'&&m.subject.includes('u ndryshua')));
+  await request('/api/auth/email-change',{method:'POST',data:{token:confirmToken},expected:400});
   const stale=(await request('/api/credits/checkout',{method:'POST',cookie:admin,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
   await db.prepare("UPDATE credit_purchases SET provider='mock',status='pending' WHERE id=?").bind(stale.purchaseId).run();
   await request('/api/credits/purchases/'+stale.purchaseId+'/retry',{method:'POST',cookie:admin,data:{},expected:403});ok('A test purchase cannot reopen checkout after a production switch');

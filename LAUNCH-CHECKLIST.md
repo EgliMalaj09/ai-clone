@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 12 | 45 |
+| 3B. Version 1 features | 13 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -247,7 +247,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
   - [ ] V17.7 Saved photos still pass the photo checks (C2) when used, and are never shown to anyone else.
 
 **Found by walking through the customer journey**
-- [ ] **V18 🟡 Change email address.** Today the email is read-only, so a customer who changes email is stuck. Change it with a confirmation link sent to the new address.
+- [x] **V18 🟡 Change email address.** Today the email is read-only, so a customer who changes email is stuck. Change it with a confirmation link sent to the new address. ✅ Account → Change email address (with password): a confirmation link goes to the new address (30 minutes); the change happens when it's opened, and the old address gets a notice. Pending changes can be cancelled. Demo studio without email changes it at once.
 - [ ] **V19 🟡 Photo editing before upload.** Crop, rotate and zoom so the face is centred, and see a preview of what will be sent.
 - [x] **V20 🟡 "Make it again".** One button on a finished video to run the same template with the same photo again (a new result, charged again). ✅ "Make it again" on a finished video (while its template is live and the photo is kept): confirms the current credit cost, then starts a new creation with the same photo.
 - [ ] **V21 🟡 One photo, several templates.** Pick several templates and create them all from one photo in one step, with the total credit cost shown.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V18 | Done | Email change: users.pending_email (migration 0015), POST/DELETE /api/account/email, /confirm-email page + /api/auth/email-change, confirmation email and old-address notice in the customer's language. 1 integration + 1 production check |
 | 2026-10-12 | V26 | Done | Browser notifications for finished/failed creations via the service worker (permission asked from a Notify me prompt while a video is in progress), translated |
 | 2026-10-12 | V7 | Done | PWA: public/manifest.webmanifest, public/icons (192/512/maskable/apple, rendered from favicon.svg), public/sw.js (network-first, offline page, notification clicks), public/offline.html (SQ+EN), layout manifest/theme/apple metadata, SW registration. 1 integration check |
 | 2026-10-12 | V27 | Done | Low balance reminder on Explore, My creations, Favorites and Account when credits can't pay for the cheapest video, naming the best-value pack that covers it, with a Buy credits button (translated). 1 integration check |
