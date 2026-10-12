@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 10 | 45 |
+| 3B. Version 1 features | 11 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -234,7 +234,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V4 🟡 Promo codes and referrals.** Codes that grant credits or discount packs, plus "invite a friend, both get credits".
 - [ ] **V5 🟡 Progress and ETA.** Progress estimate on creations; use fal.ai webhooks instead of polling.
 - [ ] **V6 🟡 Ratings and gallery.** Customers rate results; an opt-in "made with this template" gallery.
-- [ ] **V7 🟡 Installable app (PWA).** Add to home screen on phones, with an app icon and offline page.
+- [x] **V7 🟡 Installable app (PWA).** Add to home screen on phones, with an app icon and offline page. ✅ Web app manifest (standalone, theme colour, shortcuts), icons incl. maskable and Apple home-screen icon, a network-first service worker with a bilingual offline page. Icons are made from today's logo; replace them with the final brand (X2.2).
 - [ ] **V8 🟡 Image-only templates.** Photo results (portraits, photoshoots) as a cheaper product; allow publishing workflows that end in an image.
 - [ ] **V9 🟡 Upscale / post-processing step.** A built-in step type using a real upscaling model.
 - [ ] **V17 🟡 Saved photos ("My photos").** Customers save a photo once and reuse it for any template.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V7 | Done | PWA: public/manifest.webmanifest, public/icons (192/512/maskable/apple, rendered from favicon.svg), public/sw.js (network-first, offline page, notification clicks), public/offline.html (SQ+EN), layout manifest/theme/apple metadata, SW registration. 1 integration check |
 | 2026-10-12 | V27 | Done | Low balance reminder on Explore, My creations, Favorites and Account when credits can't pay for the cheapest video, naming the best-value pack that covers it, with a Buy credits button (translated). 1 integration check |
 | 2026-10-12 | V3, V25 | Done | Share page /v/<id> (share_links, migration 0014): stable link per video, Open Graph image + video card, view count, Make your own CTA, owner can Stop sharing, deleting the video revokes it; video served via short signed links. My creations: Shared state, Stop sharing, and on phones Send video → native share sheet with the MP4 file. Privacy text updated (EN+SQ). 3 integration checks |
 | 2026-10-12 | V20 | Done | POST /api/generations/:id/again (owner only, completed, current cost must match, idempotent key) reusing startGeneration; creations list returns repeatCost; Make it again button with confirm, translated. 1 integration check |

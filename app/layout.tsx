@@ -9,8 +9,13 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
+    apple: "/icons/apple-touch-icon.png",
   },
+  // Installable app (V7).
+  manifest: "/manifest.webmanifest",
+  appleWebApp: { capable: true, title: "Studio", statusBarStyle: "default" },
 };
+export const viewport = { themeColor: "#3154f5" };
 
 export default async function RootLayout({
   children,

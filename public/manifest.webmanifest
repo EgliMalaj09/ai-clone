@@ -1,0 +1,20 @@
+{
+  "name": "PROJECT STUDIO",
+  "short_name": "Studio",
+  "description": "Make your own AI video from one photo.",
+  "lang": "sq",
+  "start_url": "/?source=app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#3154f5",
+  "icons": [
+    {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {"name": "My creations", "url": "/creations", "icons": [{"src": "/icons/icon-192.png", "sizes": "192x192"}]},
+    {"name": "Explore", "url": "/explore", "icons": [{"src": "/icons/icon-192.png", "sizes": "192x192"}]}
+  ]
+}
