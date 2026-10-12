@@ -24,6 +24,7 @@ import {adminExport} from './exports';
 import {shareGeneration,sharedMap,sharedVideoRedirect,stopSharing} from './share';
 import {createRemovalRequest,listRemovals,resolveRemoval} from './removals';
 import {listVersions,recordVersion,restoreVersion} from './template-history';
+import {templateStats} from './template-stats';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
 import {langFromCookie,translate,type Lang} from '../i18n';
 /** Friendly, translated messages for the form fields customers fill in; other validation messages stay technical. */
@@ -246,6 +247,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   const profitable=currencies.filter(c=>values[c]!==undefined).flatMap(c=>templates.map(t=>({name:t.name as string,currency:c,credit_cost:t.credit_cost as number,estimated_cost:convertMinor(Number(t.estimated_cost||0),t.currency as string,c,rates),value:Math.round((t.credit_cost as number)*values[c])})).sort((a,b)=>(b.value-b.estimated_cost)-(a.value-a.estimated_cost)).slice(0,5));
   return json({users:users?.count||0,metrics,financials,credits,top,recent,profitable,daily,recentPurchases,demo:config().demo,...await publicAvailability()});
  }
+ if(p[1]==='template-stats'&&method==='GET')return json(await templateStats(new URL(req.url)));
  if(p[1]==='templates'){
   if(method==='GET'&&p[3]==='versions'&&p[2])return json(await listVersions(p[2]));
   if(method==='GET'){if(p[2]){const t=await getAdminTemplate(p[2]);must(t,'Template not found.',404);return json({template:t});}const [t,values,rates]=await Promise.all([all('SELECT * FROM templates ORDER BY sort_order ASC,created_at DESC'),creditValues(),exchangeRates()]);const acct=values['EUR']!==undefined?'EUR':(Object.keys(values)[0]||'EUR');return json({templates:t.map(t=>({...publicTemplate(t),estimatedCost:convertMinor(Number(t.estimated_cost||0),t.currency as string,acct,rates),provider:t.provider,model:t.model,costCurrency:acct,creditValue:values[acct]!==undefined?Math.round((t.credit_cost as number)*values[acct]):null,publishAt:t.publish_at??null,archivedAt:t.archived_at??null}))});}

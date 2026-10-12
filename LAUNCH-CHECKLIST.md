@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 15 | 45 |
+| 3B. Version 1 features | 16 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -267,7 +267,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
   - [x] V31.2 Still to add when those features exist: reports (C21), refusals and block status (C2), send reset link (V11).
 - [ ] **V32 🟡 Free test runs for admins.** Run a template with real AI from the editor without spending credits, to check quality before publishing.
 - [x] **V33 🟡 Prompt history.** Every saved change to a template's prompt and workflow is kept, so you can compare and roll back. ✅ Template editor → History: every save keeps a version (prompt, workflow, price, format, media; newest 50; identical saves skipped), shows who changed what, compares any version with the current one side by side, and restores it (URL and publish state unchanged). History starts with the first save after this update.
-- [ ] **V34 🟡 Template statistics.** Per template: views, creations, success rate, average generation time and credits earned.
+- [x] **V34 🟡 Template statistics.** Per template: views, creations, success rate, average generation time and credits earned. ✅ Admin → Templates → Columns: Statistics, per period (7/30/90 days, all time): views, creations, views→creations, success rate (refusals counted), average generation time and credits earned (free redos excluded).
 - [ ] **V35 🟡 Backup AI model.** If the main model fails or is down, a template can retry automatically with a second model.
 - [ ] **V36 🟡 Announcements to customers.** Send an email to all opted-in customers from the admin (new templates, offers), using C20.3 consent.
 
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V34 | Done | lib/server/template-stats.ts + /api/admin/template-stats; Statistics column set in the template list with period picker. 1 integration check |
 | 2026-10-12 | V33 | Done | template_versions (migration 0017), recordVersion on every editor save, list/restore API, History tab with compare and restore. 2 integration checks |
 | 2026-10-12 | V30 | Done | Removal requests (removal_requests, migration 0016): public form + API with IP rate limit, instant share-page takedown, admin/support queue with remove/keep and emails to requester and owner in their language, error-log entry for each new request. 3 integration checks |
 | 2026-10-12 | V18 | Done | Email change: users.pending_email (migration 0015), POST/DELETE /api/account/email, /confirm-email page + /api/auth/email-change, confirmation email and old-address notice in the customer's language. 1 integration + 1 production check |

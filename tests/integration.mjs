@@ -391,6 +391,11 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const restored=(await request('/api/admin/templates/'+hist.id+'/versions/'+versions[1].id+'/restore',{method:'POST',cookie:adminCookie,data:{}})).body.template;
  ok('Restoring a version brings back its prompt and adds to the history',restored.hiddenPrompt==='First prompt'&&(await request('/api/admin/templates/'+hist.id,{cookie:adminCookie})).body.template.hiddenPrompt==='First prompt'&&(await request('/api/admin/templates/'+hist.id+'/versions',{cookie:adminCookie})).body.versions.length===3);
  await request('/api/admin/templates/'+hist.id,{method:'DELETE',cookie:adminCookie});await request('/api/admin/templates/'+hist.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
+ // V34: per-template statistics.
+ await request('/api/analytics',{method:'POST',data:{name:'template_view',templateId:formula.id}});
+ const st=(await request('/api/admin/template-stats?days=all',{cookie:adminCookie})).body.stats[formula.id];
+ await request('/api/admin/template-stats?days=5',{cookie:adminCookie,expected:400});await request('/api/admin/template-stats',{cookie:userCookie,expected:403});
+ ok('Template statistics count views, creations, success, time and credits',st.views>=1&&st.creations>=1&&st.completed>=1&&st.successRate>0&&st.successRate<=1&&st.avgSeconds!==null&&st.credits>0);
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});
