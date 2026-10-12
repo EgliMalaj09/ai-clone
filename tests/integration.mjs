@@ -481,6 +481,16 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const totalBatch=items.reduce((n,i)=>n+i.expectedCost,0);
  ok('One photo starts several templates at once, and repeating the request starts nothing new',batch1.generationIds.length===3&&JSON.stringify(batch1.generationIds)===JSON.stringify(batch2.generationIds)&&beforeBatch.available-batch2.balance.available===totalBatch);
  for(const id of batch1.generationIds)await waitDone(userCookie,id);
+ // V8/V9: photo templates can be published and deliver an image; an upscale step after an image step stays an image.
+ const imgStep={id:'img1',type:'image',provider:'mock',model:'studio-demo',prompt:'',negativePrompt:'',inputs:{image:'{{user_image_1}}'},output:'prepared',settings:{},duration:5,resolution:'1080p',aspectRatio:'4:5',cost:3};
+ const upStep={...imgStep,id:'up1',type:'upscale',inputs:{image:'{{previous_output}}'},output:'upscaled'};
+ await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Bad Photo',slug:'qa-bad-photo',generationType:'image',active:true,creditCost:50,workflow:[imgStep,{...imgStep,id:'v',type:'video'}]},expected:400});
+ const photoTpl=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Portrait',slug:'qa-portrait',generationType:'image',active:true,creditCost:50,workflow:[imgStep,upStep]},expected:201})).body.template;
+ const photoCard=(await request('/api/templates/qa-portrait')).body.template;const portraitUp=await upload(userCookie);
+ const portraitGen=(await request('/api/generations',{method:'POST',cookie:userCookie,data:{templateId:photoTpl.id,uploadIds:[portraitUp.body.id],idempotencyKey:randomUUID(),expectedCost:50,consent:true},expected:201})).body;
+ const portraitDone=(await waitDone(userCookie,portraitGen.generationId)).g;
+ ok('A photo template delivers an image, through an image upscale step',photoCard.kind==='image'&&portraitDone.status==='completed'&&portraitDone.assetMime.startsWith('image/')&&(await db.prepare("SELECT COUNT(*) AS n FROM generated_assets WHERE generation_id=? AND mime LIKE 'image/%'").bind(portraitGen.generationId).first()).n===2);
+ await request('/api/admin/templates/'+photoTpl.id,{method:'DELETE',cookie:adminCookie});
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

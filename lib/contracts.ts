@@ -12,6 +12,8 @@ export type PublicTemplate = {
   options?: PublicOptionGroup[];
   /** 'product' templates (V39) ask for a product photo instead of a face. */
   subject?: 'person'|'product';
+  /** What the customer receives (V8): a video or a photo. */
+  kind?: 'video'|'image';
 };
 /** Template options (V22 style, V23 format, V37 quality). The first choice of each group is the default. */
 export type OptionChoice={id:string;label:string;labelSq?:string;credits?:number;aspectRatio?:string;prompt?:string;model?:string};

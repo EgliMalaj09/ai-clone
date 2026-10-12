@@ -22,9 +22,9 @@ export async function setPublic(user:StudioUser,id:string,show:boolean){
 const visible="g.public_at IS NOT NULL AND g.deleted_at IS NULL AND g.status='completed' AND EXISTS (SELECT 1 FROM share_links s WHERE s.generation_id=g.id AND s.revoked_at IS NULL)";
 async function items(rows:Record<string,unknown>[],viewer:StudioUser|null){
  const liked=new Set(viewer&&rows.length?(await all(`SELECT generation_id FROM feed_likes WHERE user_id=? AND generation_id IN (${rows.map(()=>'?').join(',')})`,viewer.id,...rows.map(r=>r.id))).map(r=>r.generation_id as string):[]);
- return Promise.all(rows.map(async r=>({id:r.id as string,templateName:r.template_name as string,templateSlug:r.template_slug as string,thumbnail:r.thumbnail as string,video:await mediaUrl(r.asset_id as string,now()+2*3600000),shareUrl:'/v/'+r.share_id,likes:Number(r.likes||0),liked:liked.has(r.id as string),publicAt:r.public_at as number})));
+ return Promise.all(rows.map(async r=>({id:r.id as string,templateName:r.template_name as string,templateSlug:r.template_slug as string,thumbnail:r.thumbnail as string,video:await mediaUrl(r.asset_id as string,now()+2*3600000),mime:r.mime as string,shareUrl:'/v/'+r.share_id,likes:Number(r.likes||0),liked:liked.has(r.id as string),publicAt:r.public_at as number})));
 }
-const select=`SELECT g.id,g.template_name,g.template_slug,g.thumbnail,g.likes,g.public_at,a.id AS asset_id,(SELECT s.id FROM share_links s WHERE s.generation_id=g.id AND s.revoked_at IS NULL LIMIT 1) AS share_id FROM generations g JOIN generated_assets a ON a.generation_id=g.id AND a.kind='output' WHERE ${visible}`;
+const select=`SELECT g.id,g.template_name,g.template_slug,g.thumbnail,g.likes,g.public_at,a.id AS asset_id,a.mime,(SELECT s.id FROM share_links s WHERE s.generation_id=g.id AND s.revoked_at IS NULL LIMIT 1) AS share_id FROM generations g JOIN generated_assets a ON a.generation_id=g.id AND a.kind='output' WHERE ${visible}`;
 export async function feed(url:URL,viewer:StudioUser|null){
  const {page,limit,offset}=pageQuery(url,24);const sort=url.searchParams.get('sort')==='popular'?'g.likes DESC,g.public_at DESC':'g.public_at DESC';
  const [count,rows]=await Promise.all([one(`SELECT COUNT(*) AS total FROM generations g WHERE ${visible}`),all(`${select} ORDER BY ${sort},g.id LIMIT ? OFFSET ?`,limit,offset)]);

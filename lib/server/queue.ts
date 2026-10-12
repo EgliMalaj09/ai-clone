@@ -74,7 +74,10 @@ export async function tickGeneration(id:string){
    // Delivered: charge the reserved credits. If this is interrupted, the hold sweep captures it.
    if(completed.meta.changes){if(g.hold_id)await settleHold(g.hold_id,'capture').catch(e=>reportError('credits','Credit capture needs review; the hold sweep will retry',{error:e,context:{generationId:id}}));await event('generation_completed',g.user_id,{generationId:id});await notifyFinished(g,'ready');}return;
   }
-  const step=steps[i];must(step,'Workflow has no executable step.');const p=providerFor(step.provider);const stepId=id+'_'+i;const record=await one('SELECT * FROM generation_steps WHERE id=?',stepId);
+  const step=steps[i];must(step,'Workflow has no executable step.');
+  // V9: an upscale step works on whatever the previous step made (or the customer's photo): images go through the image API.
+  const prevAsset=parse<Record<string,string>>(g.context,{}).previous_output;const prevMime=prevAsset?(await one('SELECT mime FROM generated_assets WHERE id=?',prevAsset))?.mime as string|undefined:'image/jpeg';
+  const imageStep=['image','transform'].includes(step.type)||step.type==='upscale'&&!String(prevMime||'').startsWith('video');const p=providerFor(step.provider);const stepId=id+'_'+i;const record=await one('SELECT * FROM generation_steps WHERE id=?',stepId);
   if(record?.status==='completed'){await run("UPDATE generations SET current_step=current_step+1,status=?,next_run_at=? WHERE id=? AND lease_token=?",i+1>=steps.length?'finalizing':'preparing',now()+500,id,token);return;}
   if(record?.status==='submitting'&&!record.provider_job_id){
    // Do not submit again after an ambiguous network failure: the provider may have billed it.
@@ -92,18 +95,18 @@ export async function tickGeneration(id:string){
    const input=buildInput(step,vars);
    await run('INSERT INTO generation_steps (id,generation_id,step_order,type,provider,model,status,started_at) VALUES (?,?,?,?,?,?,?,?)',stepId,id,i,step.type,step.provider,step.model,'submitting',now());
    const request={step,input,idempotencyKey:stepId,templateSlug:snapshot.slug};
-   const jobId=await (['image','transform'].includes(step.type)?p.generateImage(request):p.generateVideo(request));
+   const jobId=await (imageStep?p.generateImage({...request,step:{...step,type:step.type==='upscale'?'image':step.type}}):p.generateVideo(request));
    const owned=await one("SELECT id FROM generations WHERE id=? AND lease_token=? AND status IN ('preparing','generating')",id,token);if(!owned){await run("UPDATE generation_steps SET provider_job_id=?,status='cancelled' WHERE id=?",jobId,stepId);try{await p.cancelJob(jobId)}catch(e){await reportError('provider','Provider cancellation needs review',{error:e,context:{generationId:id,jobId}})}return;}
    await batch([stmt("UPDATE generation_steps SET provider_job_id=?,status='generating' WHERE id=?",jobId,stepId),stmt("UPDATE generations SET status='generating',attempts=0,next_run_at=? WHERE id=? AND lease_token=?",now()+1500,id,token)]);return;
   }
   const result=await p.getStatus(record.provider_job_id);if(result.status==='processing'){await run('UPDATE generations SET next_run_at=? WHERE id=? AND lease_token=?',now()+1500,id,token);return;}
   if(result.status==='refused'){await refuseGeneration(g,result.error||'Refused by the provider content rules.');return;}
   if(result.status==='failed'){if(await tryFallback(g,token,result.error||'Provider failed.'))return;await failGeneration(g,result.error||'Provider failed.');return;}
-  must(result.url,'The provider returned no output.');const assetId='asset_'+stepId;let mime=result.mime||(['image','transform'].includes(step.type)?'image/png':'video/mp4');const key=`generated/${g.user_id}/${id}/${i}.${extensions[mime]||(mime.startsWith('video')?'mp4':'png')}`;let size=0;
+  must(result.url,'The provider returned no output.');const assetId='asset_'+stepId;let mime=result.mime||(imageStep?'image/png':'video/mp4');const key=`generated/${g.user_id}/${id}/${i}.${extensions[mime]||(mime.startsWith('video')?'mp4':'png')}`;let size=0;
   if(step.provider==='mock'){
     // Demo output is a bundled concept clip, never a claimed transformation of an upload.
     const b64=demoVideos[snapshot.slug]||demoVideos['formula-driver'];const bytes=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));size=bytes.length;
-    if(['image','transform'].includes(step.type)){const input=await one('SELECT storage_key,mime,size FROM user_uploads WHERE id=?',parse<string[]>(g.input_ids,[])[0]);must(input,'Demo input missing.');const object=await storage.get(input.storage_key);must(object,'Demo input unavailable.');await storage.put(key,object.body,input.mime);size=input.size;mime=input.mime;}
+    if(imageStep){const input=await one('SELECT storage_key,mime,size FROM user_uploads WHERE id=?',parse<string[]>(g.input_ids,[])[0]);must(input,'Demo input missing.');const object=await storage.get(input.storage_key);must(object,'Demo input unavailable.');await storage.put(key,object.body,input.mime);size=input.size;mime=input.mime;}
     else await storage.put(key,bytes,'video/mp4');
   }else {const saved=await ingestRemote(result.url,key);size=saved.size;mime=saved.mime;}
   const fresh=await one('SELECT deleted_at,status,lease_token FROM generations WHERE id=?',id);if(!fresh||fresh.deleted_at||!active.includes(fresh.status)||fresh.lease_token!==token){await storage.delete(key);return;}

@@ -39,7 +39,7 @@ import {TERMS_VERSION,cleanGuidelineList,isStaff,optionsCost,pickedChoices,type 
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});
 const body=jsonBody;
-const generationPublic=(g:Row)=>({id:g.id,templateName:g.template_name,templateSlug:g.template_slug,thumbnail:g.thumbnail,status:g.status,creditCost:g.credit_cost,creditStatus:g.credit_status??null,createdAt:g.created_at,startedAt:g.started_at,completedAt:g.completed_at,error:g.error,assetId:g.asset_id,isRedo:!!g.report_id});
+const generationPublic=(g:Row)=>({id:g.id,templateName:g.template_name,templateSlug:g.template_slug,thumbnail:g.thumbnail,status:g.status,creditCost:g.credit_cost,creditStatus:g.credit_status??null,createdAt:g.created_at,startedAt:g.started_at,completedAt:g.completed_at,error:g.error,assetId:g.asset_id,assetMime:g.asset_mime??null,isRedo:!!g.report_id});
 async function generationsFor(userId:string,url:URL,id?:string){
  const {page,limit,offset}=pageQuery(url,24),status=url.searchParams.get('status')||'all';
  const conditions=['g.user_id=?','g.deleted_at IS NULL'],args:unknown[]=[userId];
@@ -48,7 +48,7 @@ async function generationsFor(userId:string,url:URL,id?:string){
  else if(status!=='all'){must(['completed','failed'].includes(status),'Unknown creation status.');conditions.push('g.status=?');args.push(status);}
  const where=' WHERE '+conditions.join(' AND ');
  const count=await one('SELECT COUNT(*) AS total FROM generations g'+where,...args);
- const rows=await all("SELECT g.*,a.id AS asset_id,h.status AS credit_status,tp.credit_cost AS current_cost,tp.options AS current_options FROM generations g LEFT JOIN generated_assets a ON a.generation_id=g.id AND a.kind='output' LEFT JOIN credit_holds h ON h.id=g.hold_id LEFT JOIN templates tp ON tp.id=g.template_id AND tp.active=1"+where+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);
+ const rows=await all("SELECT g.*,a.id AS asset_id,a.mime AS asset_mime,h.status AS credit_status,tp.credit_cost AS current_cost,tp.options AS current_options FROM generations g LEFT JOIN generated_assets a ON a.generation_id=g.id AND a.kind='output' LEFT JOIN credit_holds h ON h.id=g.hold_id LEFT JOIN templates tp ON tp.id=g.template_id AND tp.active=1"+where+' ORDER BY g.created_at DESC,g.id LIMIT ? OFFSET ?',...args,limit,offset);
  if(id)must(rows.length,'Creation not found.',404);
  // Counted independently of the status filter so the client knows whether to keep polling.
  const active=await one("SELECT COUNT(*) AS total FROM generations WHERE user_id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing')",userId);

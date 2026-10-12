@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 20 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 34 | 45 |
+| 3B. Version 1 features | 36 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -235,8 +235,8 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V5 🟡 Progress and ETA.** Progress estimate on creations; use fal.ai webhooks instead of polling. ✅ Videos being made show a progress bar and "about N min left", estimated from how long that template's last 20 videos took (2 minutes when there's no history); it never shows 100% before the video is ready. Provider webhooks are not used — see DECISIONS.md #15.
 - [x] **V6 🟡 Ratings and gallery.** Customers rate results; an opt-in "made with this template" gallery.
 - [x] **V7 🟡 Installable app (PWA).** Add to home screen on phones, with an app icon and offline page. ✅ Web app manifest (standalone, theme colour, shortcuts), icons incl. maskable and Apple home-screen icon, a network-first service worker with a bilingual offline page. Icons are made from today's logo; replace them with the final brand (X2.2).
-- [ ] **V8 🟡 Image-only templates.** Photo results (portraits, photoshoots) as a cheaper product; allow publishing workflows that end in an image.
-- [ ] **V9 🟡 Upscale / post-processing step.** A built-in step type using a real upscaling model.
+- [x] **V8 🟡 Image-only templates.** Photo results (portraits, photoshoots) as a cheaper product; allow publishing workflows that end in an image.
+- [x] **V9 🟡 Upscale / post-processing step.** A built-in step type using a real upscaling model.
 - [x] **V17 🟡 Saved photos ("My photos").** Customers save a photo once and reuse it for any template.
   - [x] V17.1 After uploading on a template page, a "Save this photo for future videos" option, off by default and unticked, so saving is the customer's explicit choice.
   - [x] V17.2 On every template page, "Use a saved photo" shows the customer's saved photos to pick from, next to the normal upload. For 2-photo templates, pick one for each slot.
@@ -373,6 +373,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-10-12 | V8, V9 | Done | Photo templates: generationType image can be published (no video step allowed); customers see 'Photo' on cards, a photo 'What you receive', and the image in My creations, share pages and the community. Upscale step: works on the previous result (or the photo) and goes through the image or video API to match; editor button 'Add upscale step' (fal clarity-upscaler / video-upscaler, to confirm on first real runs with C32.8). 1 integration check |
 | 2026-10-12 | V19 | Done | Photo editor before upload: after choosing or dropping a photo, a 4:5 frame lets the customer drag, zoom (slider, arrow keys) and rotate, previewing exactly what is sent; 'Use the whole photo' skips cropping; crops stay at least 512 px (mild enlargement allowed, otherwise a warning). Verified in the browser (512×640 crop uploaded). Translated; HEIC/too-small photo messages now in Albanian too |
 | 2026-10-12 | V21 | Done | One photo, several templates: after adding the photo(s), 'Make more with the same photo' lets the customer add up to 2 other templates (same photo count), shows the total, and starts them together via /api/generations/batch (total and running-video limits checked first, repeat-safe keys). 1 integration check |
 | 2026-10-12 | V39 | Done | Product templates: template editor → What's in the photo (person / product); product templates show product photo rules and texts (EN+SQ) instead of face rules; new Products category. Also fixed the Albanian count line for multi-photo templates. Migration 0026. 2 integration checks |
