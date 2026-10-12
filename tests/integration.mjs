@@ -497,6 +497,24 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const withInvoice=(await request('/api/admin/ai-costs?month='+month,{cookie:adminCookie})).body.providers.find(p=>p.provider==='higgsfield');
  await request('/api/admin/ai-costs',{cookie:userCookie,expected:403});
  ok('Finished steps record their AI cost, compared per template and with the provider invoice',costs.providers.some(p=>p.provider==='mock'&&p.recorded>0)&&costs.templates.some(t=>t.recorded>0)&&withInvoice.invoice===1250&&withInvoice.difference===1250);
+ // V16: a price A/B test splits signed-in customers by account; guests see A; results are counted per version.
+ const abFnv=t=>{let h=0x811c9dc5;for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,0x01000193);}return h>>>0;};
+ const abBase=(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template.creditCost;
+ const abExp=(await request('/api/admin/templates/'+formula.id+'/experiments',{method:'POST',cookie:adminCookie,data:{kind:'price',creditCostB:abBase-50},expected:201})).body;
+ await request('/api/admin/templates/'+formula.id+'/experiments',{method:'POST',cookie:adminCookie,data:{kind:'price',creditCostB:abBase-10},expected:409});
+ const abPeople=[{cookie:userCookie,id:reg.body.user.id},{cookie:relogged.cookie,id:resetUser.body.user.id}].map(u=>({...u,v:abFnv(u.id+':'+abExp.id)%2===1?'B':'A'}));
+ const abSeen=await Promise.all(abPeople.map(async u=>(await request('/api/templates/formula-driver',{cookie:u.cookie})).body.template.creditCost));
+ const abGuest=(await request('/api/templates/formula-driver')).body.template.creditCost;
+ ok('Each customer sees the price of their version; guests see version A',abPeople.every((u,i)=>abSeen[i]===(u.v==='B'?abBase-50:abBase))&&abGuest===abBase);
+ const abBuyer=abPeople.find(u=>u.v==='B')||people[0];const buyerCost=abBuyer.v==='B'?abBase-50:abBase;
+ await grant(abBuyer.id,2000);const abPhoto=await upload(abBuyer.cookie);
+ await request('/api/analytics',{method:'POST',cookie:abBuyer.cookie,data:{name:'template_view',templateId:formula.id}});
+ await request('/api/generations',{method:'POST',cookie:abBuyer.cookie,data:{templateId:formula.id,uploadIds:[abPhoto.body.id],idempotencyKey:randomUUID(),expectedCost:abBuyer.v==='B'?abBase:abBase-50,consent:true},expected:409});
+ const abGen=(await request('/api/generations',{method:'POST',cookie:abBuyer.cookie,data:{templateId:formula.id,uploadIds:[abPhoto.body.id],idempotencyKey:randomUUID(),expectedCost:buyerCost,consent:true},expected:201})).body;await waitDone(abBuyer.cookie,abGen.generationId);
+ const abRes=(await request('/api/admin/templates/'+formula.id+'/experiments',{cookie:adminCookie})).body.experiments[0];
+ ok('A/B results count views, creations and credits per version',abRes[abBuyer.v].views>=1&&abRes[abBuyer.v].creations===1&&abRes[abBuyer.v].credits===buyerCost);
+ await request('/api/admin/experiments/'+abExp.id+'/stop',{method:'POST',cookie:adminCookie,data:{}});
+ ok('Stopping the test shows everyone version A again',(await request('/api/templates/formula-driver',{cookie:abBuyer.cookie})).body.template.creditCost===abBase);
  // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});

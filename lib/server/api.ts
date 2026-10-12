@@ -26,6 +26,7 @@ import {createRemovalRequest,listRemovals,resolveRemoval} from './removals';
 import {listVersions,recordVersion,restoreVersion} from './template-history';
 import {templateStats} from './template-stats';
 import {aiCosts,saveInvoice} from './ai-costs';
+import {applyExperiment,experimentResults,experimentTag,runningExperiments,startExperiment,stopExperiment} from './experiments';
 import {feed,hideFromFeed,rateCreation,setPublic,toggleLike} from './feed';
 import {attachReferral,createCode,listCodes,redeemCode,referralInfo,setCodeActive,setReferralCredits} from './promos';
 import {adminIdeas,listIdeas,suggestIdea,toggleVote,updateIdea} from './template-requests';
@@ -59,7 +60,8 @@ async function generationsFor(userId:string,url:URL,id?:string){
  const typical=new Map<string,number>();for(const tid of running){const r=await one("SELECT AVG(d) AS avg FROM (SELECT completed_at-started_at AS d FROM generations WHERE template_id=? AND status='completed' AND started_at IS NOT NULL AND completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 20)",tid);typical.set(tid,Math.round(Number(r?.avg||120000)/1000));}
  // V20: a finished video can be made again while its template is live and its photos are still there.
  const photoIds=[...new Set(rows.flatMap(g=>parse<string[]>(g.input_ids,[])))];const kept=new Set(photoIds.length?(await all(`SELECT id FROM user_uploads WHERE user_id=? AND id IN (${photoIds.map(()=>'?').join(',')})`,userId,...photoIds)).map(r=>r.id as string):[]);
- const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);if(g.test_run)g.template_name=g.template_name+' · test run';const inputs=parse<string[]>(g.input_ids,[]);return {...generationPublic(g),typicalSeconds:typical.get(g.template_id as string)??null,rating:g.rating??null,isPublic:!!g.public_at,report:r?publicReport(r):null,shareUrl:shares.get(g.id as string)??null,repeatCost:!g.test_run&&g.status==='completed'&&g.current_cost&&inputs.length&&inputs.every(id=>kept.has(id))?optionsCost(Number(g.current_cost),parse(g.current_options,[]),parse(g.options,{})):null,options:parse<Record<string,string>>(g.options,{})};});
+ const exps=await runningExperiments();
+ const generations=rows.map(g=>{const r=reportsMap.get(g.id as string);if(g.current_cost)g.current_cost=applyExperiment({id:g.template_id as string,thumbnail:'',previewVideo:'',creditCost:Number(g.current_cost)},exps,userId).creditCost;if(g.test_run)g.template_name=g.template_name+' · test run';const inputs=parse<string[]>(g.input_ids,[]);return {...generationPublic(g),typicalSeconds:typical.get(g.template_id as string)??null,rating:g.rating??null,isPublic:!!g.public_at,report:r?publicReport(r):null,shareUrl:shares.get(g.id as string)??null,repeatCost:!g.test_run&&g.status==='completed'&&g.current_cost&&inputs.length&&inputs.every(id=>kept.has(id))?optionsCost(Number(g.current_cost),parse(g.current_options,[]),parse(g.options,{})):null,options:parse<Record<string,string>>(g.options,{})};});
  return {generations,activeCount:active?.total||0,pagination:{page,limit,total:count?.total||0,pages:Math.max(1,Math.ceil((count?.total||0)/limit))}};
 }
 async function deleteAccount(user:StudioUser){must(!isStaff(user.role),'A staff account cannot be deleted here. Ask an administrator to change its role first.',409);must(!await userHasOpenReport(user.id),'A video is under review. Please wait until the report is resolved before deleting the account.',409);must(!await one("SELECT id FROM generations WHERE user_id=? AND status IN ('queued','preparing','generating','finalizing') LIMIT 1",user.id),'Wait for active generations to finish before deleting your account.',409);const objects=await all('SELECT storage_key FROM user_uploads WHERE user_id=? UNION ALL SELECT storage_key FROM generated_assets WHERE user_id=?',user.id,user.id);await batch([stmt("UPDATE generations SET deleted_at=?,input_ids='[]',context='{}' WHERE user_id=?",now(),user.id),stmt('DELETE FROM analytics_events WHERE user_id=?',user.id),stmt('DELETE FROM users WHERE id=?',user.id)]);
@@ -76,7 +78,9 @@ async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(u
  const repeat=async()=>{const prior=await one('SELECT reference_id FROM credit_transactions WHERE idempotency_key=?',key);if(!prior)return null;const g=await one('SELECT id,template_id,input_ids FROM generations WHERE id=?',prior.reference_id);
   must(g&&g.template_id===b.templateId&&JSON.stringify(parse(g.input_ids,[]))===JSON.stringify(b.uploadIds),'This request key was already used for another creation.',409);return {generationId:g.id as string,balance:await balanceOf(user.id)};};
  const prior=await repeat();if(prior)return prior;
- const t=await getAdminTemplate(b.templateId);must(t?.active,'This template is currently unavailable.',404);
+ const t0=await getAdminTemplate(b.templateId);must(t0?.active,'This template is currently unavailable.',404);
+ // V16: customers in group B of a price test pay version B's credit cost.
+ const t=applyExperiment(t0,await runningExperiments(),user.id);
  must(t.creditCost>0,'This template is not available yet.',409);
  // V22/V23/V37: the picked options add to the price and change the prompt, format and model of this video only.
  const groups=t.optionGroups||[],chosen=pickedChoices(groups,b.options),cost=optionsCost(t.creditCost,groups,b.options);
@@ -93,7 +97,7 @@ async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(u
  const hold=await placeHold({userId:user.id,amount:cost,generationId,key,extra:(holdId,tx)=>{const g=onlyIfApplied(tx);return [stmt(`INSERT INTO generations (id,user_id,template_id,template_name,template_slug,thumbnail,status,currency,estimated_cost,credit_cost,hold_id,workflow_snapshot,input_ids,next_run_at,created_at,options) SELECT ?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,? WHERE ${g.sql}`,
   generationId,user.id,t.id,t.name,t.slug,t.thumbnail,t.currency,t.estimatedCost,cost,holdId,JSON.stringify(snapshot),JSON.stringify(b.uploadIds),created,created,JSON.stringify(picks),...g.args)];}});
  if(!hold.applied){const again=await repeat();must(again,'This creation could not be started. Please try again.',409);return again;}
- await event('generation_requested',user.id,{generationId,credits:cost});
+ await event('generation_requested',user.id,{generationId,credits:cost,...await experimentTag(t.id,user.id)});
  return {generationId,balance:{available:hold.available,held:hold.held}};
 }
 
@@ -130,14 +134,14 @@ export async function handleAPI(req:Request){try{
  if(p.join('/')==='queue/dispatch'&&method==='POST'){must(config().cronSecret&&constantEqual(req.headers.get('authorization')||'','Bearer '+config().cronSecret),'Unauthorized queue worker.',401);const processed=await tickQueue();await recordDispatch('external');return json({processed});}
  const ip=req.headers.get('cf-connecting-ip')||'local';
  if(p.join('/')==='health'&&method==='GET')return json({status:'ok',demo:config().demo});
- if(p[0]==='templates'&&method==='GET'&&p.length<=2)return json(await queryCatalog(url,p[1]));
+ if(p[0]==='templates'&&method==='GET'&&p.length<=2)return json(await queryCatalog(url,p[1],(await getUser(req.headers))?.id));
  if(p.join('/')==='credit-packages'&&method==='GET')return json({packages:await listPackages()});
  if(p.join('/')==='removal-requests'&&method==='POST'){await rateLimit('removal:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),5,3600000);return json(await createRemovalRequest(await body(req),langFromCookie(req.headers.get('cookie'))),201);}
  if(p[0]==='share'&&p[2]==='video'&&method==='GET')return await sharedVideoRedirect(p[1]);
  if(p.join('/')==='feed'&&method==='GET')return json(await feed(url,await getUser(req.headers)));
  if(p.join('/')==='ideas'&&method==='GET')return json(await listIdeas(await getUser(req.headers)));
  if(p[0]==='me'&&method==='GET')return json({user:await getUser(req.headers),demo:config().demo});
- if(p[0]==='analytics'&&method==='POST'){const viewer=await getUser(req.headers);await rateLimit('analytics:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),180,60000);const b=await body(req);const name=z.enum(['homepage_view','template_view','template_selected','upload_started','checkout_started']).parse(b.name);await event(name,viewer?.id??null,{templateId:typeof b.templateId==='string'?b.templateId.slice(0,150):null});return json({ok:true});}
+ if(p[0]==='analytics'&&method==='POST'){const viewer=await getUser(req.headers);await rateLimit('analytics:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),180,60000);const b=await body(req);const name=z.enum(['homepage_view','template_view','template_selected','upload_started','checkout_started']).parse(b.name);const templateId=typeof b.templateId==='string'?b.templateId.slice(0,150):null;await event(name,viewer?.id??null,{templateId,...await experimentTag(templateId,viewer?.id)});return json({ok:true});}
  if(p[0]==='auth'){
   await rateLimit('auth:'+ip,30,600000);const b=await body(req);
   if(p[1]==='register'&&method==='POST'){const c=await serviceConfig();const d=registerSchema.parse(b);must(!await one('SELECT id FROM users WHERE email=?',d.email),'An account with this email already exists.',409);must(c.demo||(c.mailKey&&c.mailFrom),'New registrations are not open yet. Please check back soon.',503);const id=uid('usr_'),at=now();const lang=langFromCookie(req.headers.get('cookie'));await run('INSERT INTO users (id,email,name,password_hash,role,status,email_verified,created_at,terms_version,terms_accepted_at,age_confirmed_at,marketing_opt_in,marketing_opt_in_at,locale) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',id,d.email,d.name,await passwordHash(d.password),'user','active',config().demo?1:0,at,TERMS_VERSION,at,at,d.marketingOptIn?1:0,d.marketingOptIn?at:null,lang);await attachReferral(id,d.ref);if(!config().demo)try{await sendAuthMail(d.email,await makeAuthToken(id,'verify'),'verify',lang)}catch(e){await reportError('email','Verification email could not be sent',{error:e,context:{userId:id}});}if(config().demo)await grantWelcomeCredits(id).catch(e=>reportError('credits','Welcome credits need review',{error:e}));const cookie=await sessionCookie(id,req);return json({user:safeUser((await one('SELECT * FROM users WHERE id=?',id))!),verificationRequired:!config().demo},201,{'Set-Cookie':cookie});}
@@ -289,6 +293,8 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
  if(p[1]==='announcements'){if(method==='GET'&&!p[2])return json(await listAnnouncements());if(method==='POST'&&p[2]==='test')return json(await sendTest(user,await body(req)));if(method==='POST'&&!p[2])return json(await createAnnouncement(user,await body(req)),201);if(method==='POST'&&p[3]==='cancel')return json(await cancelAnnouncement(user,p[2]));}
  if(p[1]==='promos'){if(method==='GET'&&!p[2])return json(await listCodes());if(method==='POST'&&!p[2])return json(await createCode(user,await body(req)),201);if(method==='PATCH'&&p[2]==='referral')return json(await setReferralCredits(user,Number((await body(req)).credits)));if(method==='PATCH'&&p[2])return json(await setCodeActive(user,p[2],(await body(req)).active===true));}
  if(p[1]==='ideas'){if(method==='GET'&&!p[2])return json(await adminIdeas());if(method==='PATCH'&&p[2])return json(await updateIdea(user,p[2],await body(req)));}
+ if(p[1]==='experiments'&&p[3]==='stop'&&method==='POST')return json(await stopExperiment(user,p[2]));
+ if(p[1]==='templates'&&p[2]&&p[3]==='experiments'){if(method==='GET')return json(await experimentResults(p[2]));if(method==='POST')return json(await startExperiment(user,p[2],await body(req)),201);}
  if(p[1]==='ai-costs'){if(method==='GET'&&!p[2])return json(await aiCosts(new URL(req.url)));if(method==='POST'&&p[2]==='invoices')return json(await saveInvoice(user,await body(req)));}
  if(p[1]==='template-stats'&&method==='GET')return json(await templateStats(new URL(req.url)));
  if(p[1]==='templates'){

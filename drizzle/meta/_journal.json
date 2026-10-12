@@ -197,6 +197,13 @@
       "when": 1791779297420,
       "tag": "0027_sudden_maginty",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1791779708950,
+      "tag": "0028_pale_butterfly",
+      "breakpoints": true
     }
   ]
 }

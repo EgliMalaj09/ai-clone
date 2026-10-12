@@ -196,3 +196,9 @@ export const promoRedemptions=sqliteTable('promo_redemptions',{
 export const providerInvoices=sqliteTable('provider_invoices',{
  id:text('id').primaryKey(),provider:text('provider').notNull(),month:text('month').notNull(),amount:integer('amount').notNull(),note:text('note').notNull().default(''),createdAt:integer('created_at').notNull(),
 },t=>[uniqueIndex('idx_provider_invoice_month').on(t.provider,t.month)]);
+// A/B tests (V16): a second preview or credit cost for one template, shown to half of the signed-in customers.
+export const templateExperiments=sqliteTable('template_experiments',{
+ id:text('id').primaryKey(),templateId:text('template_id').notNull().references(()=>templates.id,{onDelete:'cascade'}),kind:text('kind').notNull(),// preview | price
+ thumbnailB:text('thumbnail_b'),previewVideoB:text('preview_video_b'),creditCostB:integer('credit_cost_b'),
+ status:text('status').notNull().default('running'),startedAt:integer('started_at').notNull(),endedAt:integer('ended_at'),createdBy:text('created_by'),
+},t=>[index('idx_experiments_template').on(t.templateId,t.status)]);
