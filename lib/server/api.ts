@@ -265,6 +265,8 @@ function supportMay(method:string,p:string[],url:URL){
  return p[1]==='me'&&url.pathname.length>0;
 }
 async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req.method;
+ // Admin MFA (L5): staff must protect the studio with two-step sign-in before any admin action (demo mode is exempt so the sample studio stays open). Setup lives under /api/account/mfa, which never reaches here.
+ must(config().demo||user.twoFactor,'Two-step sign-in is required for the studio admin. Turn it on in Account → Security, then come back.',403);
  if(user.role==='support'){const u=new URL(req.url);let ok=supportMay(method,p,u);
   // Support may also mark an email verified or unblock refusals, but not suspend, rename, change roles or delete.
   if(!ok&&p[1]==='users'&&method==='PATCH'&&p[2]&&!p[3]){const b=((await req.clone().json().catch(()=>null))||{}) as Record<string,unknown>;ok=Object.keys(b).length>0&&Object.keys(b).every(k=>k==='emailVerified'||k==='unblock');}

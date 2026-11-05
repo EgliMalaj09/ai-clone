@@ -1,6 +1,6 @@
 'use client';
 import {preparePhoto} from '@/lib/prepare-photo';
-import {useEffect,useRef,useState} from 'react';
+import {useRef,useState} from 'react';
 import {ArrowLeft,ArrowRight,ArrowUpRight,Upload,ImagePlus,X,Check,Heart,Clock,Smartphone,ShieldCheck,RefreshCw,Sparkles,Play,Film,Download,Mail} from 'lucide-react';
 import {toast} from 'sonner';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -32,7 +32,6 @@ export default function TemplateDetail({template:t,related=[],gallery=[],user,de
  if(!prefilled&&library.data){setPrefilled(true);const d=saved.find(u=>u.isDefault);if(d&&!uploads[0])setUploads(prev=>prev.map((u,i)=>i===0?{id:d.id,url:d.url,name:d.label||d.name}:u));}
  const discard=async(u:Uploaded|null)=>{if(u&&!savedIds.has(u.id)&&!keep[u.id])await api('uploads/'+u.id,'DELETE')};
  async function toggleKeep(u:Uploaded){const on=!keep[u.id];try{await api('uploads/'+u.id,'PATCH',{saved:on});setKeep(k=>({...k,[u.id]:on}));toast.success(tr(on?'Saved to My photos':'Not saved'));void library.refresh()}catch(e){toast.error(tr((e as Error).message))}}const [editing,setEditing]=useState<{file:File;index:number}|null>(null);const [uploading,setUploading]=useState<number|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[consent,setConsent]=useState(false),[followsGuidelines,setFollowsGuidelines]=useState(false),[drag,setDrag]=useState<number|null>(null);const key=useRef('');const [playing,setPlaying]=useState(false);const video=useRef<HTMLVideoElement>(null);
- useEffect(()=>{if(user)void api('analytics','POST',{name:'template_view',templateId:t.id}).catch(()=>{})},[t.id,user]);
  async function upload(file:File|undefined,index:number){if(!file||!generationAvailable||available<=0||user?.blocked)return;if(!user){window.location.assign('/login?next='+encodeURIComponent('/template/'+t.slug));return}setError('');setUploading(index);try{const prepared=await preparePhoto(file);if('error' in prepared){setError(prepared.error);return}
   // V19: adjust the photo before it is uploaded.
   setEditing({file:prepared.file,index});}catch(e){setError((e as Error).message)}finally{setUploading(null)}}
