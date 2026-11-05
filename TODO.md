@@ -56,12 +56,12 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 - [x] **F6 — Discovery sorting/filters.** ✅ *Fixed: Recommended = featured → trending → newest; both price sorts, within each currency; filters kept in the link; home hero shows featured templates; search also matches the category. Shared rules in `lib/discovery.ts`.* In `components/discovery.tsx:16`, "Recommended" sorts only by `trending` and ignores `featured`. "Price: high to low" is missing even though the API supports it. Filter, search and sort are not kept in the URL, so filtered views can't be shared or bookmarked.
 - [x] **F7** — ✅ Done (C9): the storefront renders one page of 24 and loads more from `/api/templates`.
 - [x] **F8** — ✅ Done (C12): version IDs for community models, output picked from any shape, validated model references.
-- [ ] **F9 — Anonymous analytics are missing.** `homepage_view` and `template_view` are recorded only for signed-in users (`components/studio.tsx:18`, `components/template-detail.tsx:12`), so funnel numbers in the dashboard are incomplete. Allow anonymous, rate-limited events.
+- [x] **F9 — Anonymous analytics.** ✅ *Done. The server records `homepage_view`/`template_view` for signed-out viewers with a null `user_id`, IP-rate-limited to 180/min (`lib/server/api.ts` analytics route, C8); `components/studio.tsx` already fires both events for every visitor. Removed the duplicate `template_view` in `components/template-detail.tsx` that fired only for signed-in users and double-counted their views (and skewed the experiment conversion stats).*
 - [x] **F10 — No cron trigger configured.** ✅ Fixed (C3): `triggers.crons` set in `vite.config.ts`; Operations shows the heartbeat and its source. `worker.ts` has a `scheduled()` handler, but no `triggers.crons` is set, so nothing calls it. Production checkout stays closed until the dispatcher heartbeat is fresh (`lib/server/connections.ts:55`). Add a cron trigger or document the external scheduler clearly (see L2).
-- [ ] **F11 — Remove leftovers.**
-  - The dev middleware `/__qa/responsive` in `vite.config.ts:59` is still there, although `docs/QA.md` says it was removed.
-  - `app/chatgpt-auth.ts` is unused.
-  - The CSP `frame-ancestors` in `worker.ts:13` allows `chatgpt.com`. Remove it unless the app is meant to be embedded in ChatGPT.
+- [x] **F11 — Remove leftovers.** ✅ *Done — all three were already gone in the current tree:*
+  - *The dev middleware `/__qa/responsive` is no longer in `vite.config.ts` (no `__qa`/`responsive` references anywhere).*
+  - *`app/chatgpt-auth.ts` no longer exists.*
+  - *`worker.ts` CSP is now `frame-ancestors 'self'` — `chatgpt.com` is removed. The only remaining `chatgpt` references are the two `/signin|signout-with-chatgpt` paths in the vendored dev-only mock-auth plugin (`build/sites-vite-plugin.ts`, `configureServer` under `mockAuth`), which is legitimate local tooling, not shipped.*
 - [x] **F12** — ✅ Done (C4.4, 12 Oct 2026): image-size 2.0.3+ via override, next 16.3.8; only `braces` (build tooling, no fix released) remains.
 
 ### Low priority
@@ -80,7 +80,7 @@ The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI gener
 - [x] **L2 — Queue dispatcher in production.** ✅ Cron trigger every minute (C3); external scheduler documented as fallback. Alerting is I10.2. Schedule `/api/queue/dispatch` every minute (cron trigger or `pnpm queue:worker`) and add alerting when it stops.
 - [ ] **L3 — Content safety.** Add moderation of uploaded photos and outputs (NSFW, minors, celebrity/impersonation). Add antivirus scanning or image re-encoding. Add a face/quality check before payment.
 - [ ] **L4 — Refunds and partial refunds.** ✅ The admin records a refund or chargeback made in POK with Reverse, which removes the pack's credits. Still open: decide what a partial refund should do (Reverse removes all of the pack's credits).
-- [ ] **L5 — Admin MFA**, or a managed identity provider.
+- [x] **L5 — Admin MFA.** ✅ *Done. TOTP two-step sign-in (authenticator app + 8 recovery codes) was already built (`lib/server/mfa.ts`, C4.1) and available to every account. Now **enforced for staff in production**: `adminAPI` (`lib/server/api.ts`) returns 403 to any admin/support account without two-step sign-in, and the admin UI (`components/admin.tsx`) shows a hard "Turn on two-step sign-in" gate instead of the dashboard until it's enabled. Demo mode is exempt so the sample studio stays open; setup lives under `/api/account/mfa` (Account → Security), which is never gated. See DECISIONS.md.*
 - [ ] **L6 — Edge rate limiting and load tests.** The current limits are per-user/IP rows in D1.
 - [ ] **L7 — Backups.** Set up D1 backups, R2 lifecycle/retention rules, and a separate backup of `APP_SECRET`, which encrypts the saved connections.
 - [ ] **L8 — Legal pages.** Replace the draft Privacy/Terms with your real business identity, contact, refund policy, tax and retention terms.
