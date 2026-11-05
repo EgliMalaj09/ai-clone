@@ -37,6 +37,8 @@ try{
   const db=await mf.getD1Database('DB'),bucket=await mf.getR2Bucket('BUCKET');
   for(const file of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort())for(const sql of (await readFile('drizzle/'+file,'utf8')).split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await db.prepare(sql).run();
   const admin=(await request('/api/auth/login',{method:'POST',data:{email:env.ADMIN_EMAIL,password}})).cookie;
+  // Live mode requires two-step sign-in for admin actions (L5); mark the test admin as protected.
+  await db.prepare('UPDATE users SET totp_enabled_at=? WHERE email=?').bind(Date.now(),env.ADMIN_EMAIL).run();
   ok('Production administrator login works without external services',!!admin);
   await request('/api/admin/connections',{expected:401});ok('Anonymous access to connections is rejected');
   await request('/api/auth/register',{method:'POST',data:{name:'Member',email:'member@studio.test',password:'Member-password-123',acceptTerms:true,confirmAge:true},expected:503});

@@ -113,6 +113,14 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/admin/generations/'+failure.body.generationId+'/retry',{method:'POST',cookie:adminCookie,data:{}});
  ok('An admin retry reserves the credits again',(await balance(userCookie)).available===before-449&&(await request('/api/generations/'+failure.body.generationId,{cookie:userCookie})).body.generations[0].creditStatus==='pending');
  const retried=await waitDone(userCookie,failure.body.generationId);ok('A failed retry returns the credits again',retried.g.status==='failed'&&(await balance(userCookie)).available===before);
+ // V48: a photo that made the AI fail twice can't be used again; only provider-reported failures count.
+ ok('A provider failure warns that the same photo may be blocked next time',fr.g.error.includes('If it fails again with the same photo'));
+ const secondFail=await waitDone(userCookie,(await generate(userCookie,failedTemplate,[another.body.id])).body.generationId);
+ const blockedPhoto=await generate(userCookie,failedTemplate,[another.body.id],{expected:409});
+ ok('After two provider failures the same photo is refused before any credits are reserved',secondFail.g.status==='failed'&&blockedPhoto.body.error.includes('failed twice')&&(await balance(userCookie)).available===before);
+ await db.prepare("UPDATE generations SET failure_kind='system' WHERE user_id=? AND status='failed'").bind(reg.body.user.id).run();
+ const systemOnly=await generate(userCookie,failedTemplate,[another.body.id]);await waitDone(userCookie,systemOnly.body.generationId);
+ ok('Failures that were not the photo’s fault (timeouts, our own errors) never block it',systemOnly.response.status===201);
 
  await request('/api/admin/generations/'+failure.body.generationId+'/retry',{method:'POST',cookie:userCookie,data:{},expected:403});ok('Customers cannot retry through the admin API',true);
  const dashboard=(await request('/api/admin/dashboard',{cookie:adminCookie})).body;ok('Admin metrics reflect real database activity',dashboard.users===3&&dashboard.metrics.total>=4&&dashboard.metrics.failed>=1&&dashboard.credits.consumed>=299+449*2&&dashboard.credits.granted===2100);

@@ -38,6 +38,8 @@ async function liveChecks(){
   for(const f of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort()){for(const st of (await readFile('drizzle/'+f,'utf8')).split('--> statement-breakpoint').map(x=>x.trim()).filter(Boolean))await db.prepare(st).run();}
   await call('/api/health');
   const admin=(await call('/api/auth/login',{method:'POST',data:{email:'admin@studio.test',password:adminPassword}})).cookie;
+  // Live mode requires two-step sign-in for admin actions (L5); mark the test admin as protected.
+  await db.prepare('UPDATE users SET totp_enabled_at=? WHERE email=?').bind(Date.now(),'admin@studio.test').run();
   await call('/api/admin/providers/fal',{method:'PATCH',cookie:admin,data:{enabled:true}});
   await live.dispatchFetch(env.APP_ORIGIN+'/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+env.QUEUE_SECRET}});
   await call('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Dollar pack',credits:10,prices:{USD:499},active:true},expected:400});

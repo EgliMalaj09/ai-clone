@@ -224,6 +224,7 @@ export const sq:Record<string,string>={
  'in MP4, {resolution}':'në MP4, {resolution}',
  'Download and share from My creations, with no watermark':'Shkarkoje dhe ndaje nga Krijimet e mia, pa vulë uji',
  'Usually ready in a few minutes — we email you when it’s done':'Zakonisht gati për pak minuta — të njoftojmë me email kur mbaron',
+ 'Kept in My creations for {n} days, then deleted automatically — download it to keep it':'Ruhet te Krijimet e mia për {n} ditë, pastaj fshihet automatikisht — shkarkoje për ta mbajtur',
  'Credits are only charged when your video is delivered. Your photos stay private.':'Kreditet tarifohen vetëm kur videoja dorëzohet. Fotot e tua mbeten private.',
  'Try it without paying.':'Provoje pa paguar.',
  'This demo uses test credits and returns a sample video. It does not transform your photo yet.':'Ky demo përdor kredite provë dhe kthen një video shembull. Ende nuk e transformon foton tënde.',
@@ -793,6 +794,7 @@ export const sq:Record<string,string>={
  'This template is not available yet.':'Ky shabllon nuk është ende i disponueshëm.',
  'This template’s credit cost changed. Refresh to review it.':'Kostoja në kredite e këtij shablloni ndryshoi. Rifresko faqen për ta parë.',
  'An uploaded photo is unavailable or belongs to another account.':'Një foto e ngarkuar nuk është e disponueshme ose i përket një llogarie tjetër.',
+ 'This photo failed twice, so it can’t be used again. Try a different photo and follow the photo tips.':'Kjo foto dështoi dy herë, ndaj nuk mund të përdoret më. Provo një foto tjetër dhe ndiq këshillat për fotot.',
  'This creation could not be started. Please try again.':'Ky krijim nuk mund të nisej. Provo përsëri.',
  'An account with this email already exists.':'Ekziston tashmë një llogari me këtë email.',
  'New registrations are not open yet. Please check back soon.':'Regjistrimet e reja nuk janë hapur ende. Kthehu së shpejti.',
@@ -874,6 +876,7 @@ export const sq:Record<string,string>={
  'Spent':'Shpenzuar',
  'Returned':'Kthyer',
  'Your video could not be completed. Your credits were returned.':'Videoja jote nuk mund të përfundohej. Kreditet të janë kthyer.',
+ 'Your video could not be completed. Your credits were returned. If it fails again with the same photo, use a different one.':'Videoja jote nuk mund të përfundohej. Kreditet të janë kthyer. Nëse dështon përsëri me të njëjtën foto, përdor një tjetër.',
  'This video was refused under the content rules. Your credits were returned.':'Kjo video u refuzua sipas rregullave të përmbajtjes. Kreditet të janë kthyer.',
 };
 

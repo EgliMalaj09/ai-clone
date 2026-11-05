@@ -24,8 +24,10 @@ async function notifyFinished(g:Row,kind:GenerationMailKind){
   await sendMail(u.email as string,generationMailContent(kind,{brand:c.brandName,templateName:g.template_name as string,credits:Number(g.credit_cost||0),link:c.origin+'/creations',supportEmail:c.mailFrom,lang:u.locale==='en'?'en':'sq'}),`generation-${kind}-${g.id}-${g.hold_id||''}`);
  }catch(e){await reportError('email','Creation email needs review',{error:e,context:{generationId:g.id as string}});}
 }
-export async function failGeneration(g:Row,error:string){
- const result=await run("UPDATE generations SET status='failed',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",'Your video could not be completed. Your credits were returned.',error.slice(0,2000),now(),g.id,g.lease_token);
+/** kind 'provider' means the AI provider itself reported the job as failed; only those count against a photo (V48).
+ * Timeouts, our own errors and provider account problems are 'system' failures and never block a photo. */
+export async function failGeneration(g:Row,error:string,kind:'provider'|'system'='system'){
+ const result=await run("UPDATE generations SET status='failed',error=?,internal_error=?,failure_kind=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",kind==='provider'?'Your video could not be completed. Your credits were returned. If it fails again with the same photo, use a different one.':'Your video could not be completed. Your credits were returned.',error.slice(0,2000),kind,now(),g.id,g.lease_token);
  if(!result.meta.changes)return;
  await run("UPDATE generation_steps SET status='failed',error=? WHERE generation_id=? AND status NOT IN ('completed','cancelled')",error.slice(0,2000),g.id);
  await event('generation_failed',g.user_id,{generationId:g.id});
@@ -101,7 +103,7 @@ export async function tickGeneration(id:string){
   }
   const result=await p.getStatus(record.provider_job_id);if(result.status==='processing'){await run('UPDATE generations SET next_run_at=? WHERE id=? AND lease_token=?',now()+1500,id,token);return;}
   if(result.status==='refused'){await refuseGeneration(g,result.error||'Refused by the provider content rules.');return;}
-  if(result.status==='failed'){if(await tryFallback(g,token,result.error||'Provider failed.'))return;await failGeneration(g,result.error||'Provider failed.');return;}
+  if(result.status==='failed'){if(await tryFallback(g,token,result.error||'Provider failed.'))return;await failGeneration(g,result.error||'Provider failed.','provider');return;}
   must(result.url,'The provider returned no output.');const assetId='asset_'+stepId;let mime=result.mime||(imageStep?'image/png':'video/mp4');const key=`generated/${g.user_id}/${id}/${i}.${extensions[mime]||(mime.startsWith('video')?'mp4':'png')}`;let size=0;
   if(step.provider==='mock'){
     // Demo output is a bundled concept clip, never a claimed transformation of an upload.

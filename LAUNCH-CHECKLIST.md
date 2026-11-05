@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 21 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 41 | 45 |
+| 3B. Version 1 features | 43 | 45 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
@@ -294,9 +294,9 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V16 🟡 A/B tests.** Test two previews or credit costs for a template. ✅ Template editor → A/B test: test a second credit cost or a second preview (thumbnail/video). Signed-in customers are split by account (always the same version), guests see version A; cards, template page, checkout price and Make it again follow the version. Results per version: views, creations, conversion, credits. See DECISIONS.md #17.
 
 **Implementations from the Phase 0 decisions (built later)**
-- [ ] **V46 🔴 30-day retention & auto-delete (D11).** Finished videos and their photos are deleted automatically 30 days after creation (extend the hourly maintenance in `lib/server/queue.ts`; R2 lifecycle rules I3.2 as a backstop). Show the 30-day limit where the customer expects it: Privacy Policy (P3), FAQ, the template "What you receive" box (C27.1) and My creations. Unused uploads still go at 24 h (unchanged). Launch-critical: the Privacy Policy states it, so it must be true.
+- [x] **V46 🔴 30-day retention & auto-delete (D11).** Finished videos and their photos are deleted automatically 30 days after creation (extend the hourly maintenance in `lib/server/queue.ts`; R2 lifecycle rules I3.2 as a backstop). Show the 30-day limit where the customer expects it: Privacy Policy (P3), FAQ, the template "What you receive" box (C27.1) and My creations. Unused uploads still go at 24 h (unchanged). Launch-critical: the Privacy Policy states it, so it must be true. ✅ Done: hourly sweep deletes finished videos and photos after 30 days; stated in Privacy/Terms, FAQ, My creations and the template "What you receive" box.
 - [ ] **V47 🟡 Free trial — one watermarked 480p video (D16).** A new account can make one free video rendered at **480p with a watermark**; full-resolution, watermark-free output needs credits. Reuses the free-results watermark (V41). **Blocked (service):** Workers can't downscale or watermark video, so this needs a media-processing service (same blocker as V2/V41).
-- [ ] **V48 🟡 Stop a reference photo that fails twice (D6).** After a generation fails **twice on the same reference photo(s)**, block further attempts with that reference and show a clear message, so a bad reference doesn't keep costing money. Separate from content refusals (C2 already blocks after 3); this is for technical failures.
+- [x] **V48 🟡 Stop a reference photo that fails twice (D6).** After a generation fails **twice on the same reference photo(s)**, block further attempts with that reference and show a clear message, so a bad reference doesn't keep costing money. Separate from content refusals (C2 already blocks after 3); this is for technical failures. ✅ Done: only failures the AI provider reports count (not timeouts, our errors or an empty Higgsfield account); after the 1st the customer is warned, after the 2nd that photo is refused before credits are reserved. Admin test runs and approved free redos are exempt.
 
 Not planned: PostgreSQL. D1 handles the expected load and no code change is needed for it.
 
@@ -378,6 +378,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-05 | V46, V48 | Done | 30-day line on the template page; a photo is refused after two provider failures. Live-mode tests updated for required admin two-step sign-in |
 | 2026-10-13 | D6, D7, D11, D14, D15, D16, D17 | Decided | Owner decisions on the co-founder call: D6 content moderation = Higgsfield only (app adds just a "stop after 2 fails on the same reference" guard → V48); D11 files kept **30 days then auto-deleted**, shown to the customer → V46; D14 **no watermark** on delivered videos; D16 free trial = **one watermarked 480p video** → V47; D17 **no creator program** now (manual credit grants used). D7 (support) and D15 (marketing channels) **deferred to pre-live**. |
 | 2026-10-13 | V46, V47, V48 | Added | Implementation items from the D-decisions (not built yet): **V46** 30-day auto-delete + visible retention notice (🔴, Privacy Policy must be true); **V47** free-trial watermarked 480p video (needs a media-processing service); **V48** block a reference photo after it fails twice. |
 | 2026-10-12 | D3.1 | Measured | Real AI cost per video from Higgsfield's official pricing (list basis, owner-chosen): all 18 templates are 5 s on **Genjutsu** (motion-transfer, $0.681/s @ 720p) + Marketing Studio Image ($0.013) ≈ **$3.42/video**; set `estimated_cost` = 342 (USD cents) on every template. Genjutsu bills per second of input video and scales with resolution; exact 1080p rate, endpoint and field names to confirm on first real runs (C32.8). Interim recipe stays Seedream→Kling until Genjutsu driving-video templates are built; several old estimates were below cost → revisit D3.3 |

@@ -73,7 +73,7 @@ export const generations=sqliteTable('generations',{
  // New generations always set status explicitly.
  status:text('status').notNull().default('awaiting_payment'),currency:text('currency').notNull(),estimatedCost:integer('estimated_cost').notNull(),
  workflowSnapshot:text('workflow_snapshot').notNull(),inputIds:text('input_ids').notNull(),context:text('context').notNull().default('{}'),currentStep:integer('current_step').notNull().default(0),
- leaseToken:text('lease_token'),leaseUntil:integer('lease_until').notNull().default(0),nextRunAt:integer('next_run_at').notNull().default(0),attempts:integer('attempts').notNull().default(0),error:text('error'),internalError:text('internal_error'),
+ leaseToken:text('lease_token'),leaseUntil:integer('lease_until').notNull().default(0),nextRunAt:integer('next_run_at').notNull().default(0),attempts:integer('attempts').notNull().default(0),error:text('error'),internalError:text('internal_error'),failureKind:text('failure_kind'),
  createdAt:integer('created_at').notNull(),startedAt:integer('started_at'),completedAt:integer('completed_at'),deletedAt:integer('deleted_at'),
  creditCost:integer('credit_cost').notNull().default(0),holdId:text('hold_id'),
  // Set when this generation is a free goodwill redo started from a report (C21), linking it back to the case.

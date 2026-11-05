@@ -73,6 +73,14 @@ async function deleteAccount(user:StudioUser){must(!isStaff(user.role),'A staff 
 /** Starts a creation by reserving its credits; the queue charges them on delivery and returns them on failure. */
 /** Three content refusals block uploads, creations and purchases until an administrator unblocks the account. */
 function assertNotBlocked(user:StudioUser){must(!user.blocked,'Your account can no longer upload photos or create videos because content was refused 3 times. Contact support if you think this is a mistake.',403);}
+/** V48: a photo that made the AI provider fail twice is not tried again, so a bad photo can't keep costing money.
+ * Only provider-reported failures count (failure_kind='provider'); timeouts and our own errors don't. Deleting the failed
+ * videos doesn't reset the count. Admin test runs and approved free redos don't go through this check. */
+const PHOTO_FAILURE_LIMIT=2;
+async function providerFailures(userId:string,uploadId:string){
+ const r=await one("SELECT COUNT(*) AS n FROM generations g, json_each(CASE WHEN json_valid(g.input_ids) THEN g.input_ids ELSE '[]' END) j WHERE g.user_id=? AND g.status='failed' AND g.failure_kind='provider' AND j.value=?",userId,uploadId);
+ return Number(r?.n||0);
+}
 async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(user);
  must(user.emailVerified,'Verify your email before creating a video.',403);
  const b=generationSchema.parse(input);
@@ -89,6 +97,7 @@ async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(u
  must(cost===b.expectedCost,'This template’s credit cost changed. Refresh to review it.',409);
  must(b.uploadIds.length===t.requiredImageCount&&new Set(b.uploadIds).size===b.uploadIds.length,`Upload ${t.requiredImageCount} different photo${t.requiredImageCount>1?'s':''}.`);
  for(const id of b.uploadIds)must(await one('SELECT id FROM user_uploads WHERE id=? AND user_id=?',id,user.id),'An uploaded photo is unavailable or belongs to another account.',403);
+ for(const id of b.uploadIds)must(await providerFailures(user.id,id)<PHOTO_FAILURE_LIMIT,'This photo failed twice, so it can’t be used again. Try a different photo and follow the photo tips.',409);
  await assertGeneratable(t);
  await assertWithinLimits(user.id);
  const balance=await balanceOf(user.id);must(balance.available>=cost,`You need ${cost} credits for this video and have ${balance.available}.`,402);
