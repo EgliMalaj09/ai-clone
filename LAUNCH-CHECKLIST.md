@@ -75,7 +75,7 @@ These come first, because the code and infrastructure work depends on them.
     - [x] C2.2a In the browser, before upload: turn the photo upright, convert iPhone HEIC to JPEG, resize to about 2048 px on the long side and save as JPEG. Smaller files make uploads faster on mobile data.
     - [x] C2.2b On the server, fast byte-level checks with no full re-encode: real image type, at least 512×512, remove metadata (GPS location, phone model, owner name) and drop any data hidden after the end of the image.
     - [x] C2.2c Clear messages for photos that are too small (under 512×512) or in an unsupported format, before any credits are reserved.
-    - [ ] C2.2d (moved to C32) Send the cleaned photo to Higgsfield through its upload endpoint (or a signed link), never the original file.
+    - [x] C2.2d (moved to C32) Send the cleaned photo to Higgsfield through its upload endpoint (or a signed link), never the original file. ✅ Covered by C32.7: Higgsfield fetches the cleaned stored copy through a short-lived signed link.
   - [x] ~~C2.3 Own face and quality check before credits are reserved.~~ Dropped by decision; photo guidelines (C31) remain.
   - [x] ~~C2.4 "Report this video" link and admin view.~~ Covered by C21.
   - [x] C2.5 Record every moderation refusal from the AI platform as its own status ("Refused by content rules"), separate from technical failures, and return the reserved credits.
@@ -380,6 +380,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-05 | C2.2d | Done | Already covered by C32.7 (cleaned photo sent through a short-lived signed link); ticked |
 | 2026-11-05 | X1.6 | Partly done | Admin code split from customer pages; admin preview images shrunk to 1080 px WebP before upload, big preview videos warned; studio previews cached for a year; template poster preloaded; first Explore row eager. PageSpeed check on staging still to do. 1 new + 1 stronger integration check |
 | 2026-11-05 | X3 | Added | Pre-live review of unused screens (keep / hide / remove); no screen removed before it |
 | 2026-11-05 | V49 | Added | Password + Google/Apple on the same account both ways: set a password on a social account, connect/disconnect Google or Apple on an email account; no account action stuck behind a password the account doesn't have |
