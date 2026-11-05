@@ -21,7 +21,7 @@ Update the counts when you tick items.
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 43 | 49 |
 | 4. Live testing on staging | 0 | 10 |
-| 4B. Pre-live finishing | 0 | 2 |
+| 4B. Pre-live finishing | 0 | 3 |
 | 5. Launch day | 0 | 5 |
 | 6. After launch: operating routine (no new code) | 0 | 6 |
 
@@ -351,6 +351,7 @@ Done at the end, after the features are built and before launch day, once the fi
   - [ ] X2.3 Set `BRAND_NAME` (C6.4) and add the logo image to all emails; sender address `MAIL_FROM` on the final domain.
   - [ ] X2.4 Legal pages, FAQ and help pages use the final name and domain.
   - [ ] X2.5 Download file names (today `project-studio-….mp4`) and any watermark (V41) use the final brand.
+- [ ] **X3 🟡 Review unused screens.** Go through every screen (storefront, account, admin) once the templates and content exist, and decide for each one: keep, hide from menus, or remove. Nothing is removed before this review, since screens that look unused now may be needed once content is created. Check that links in menus, footer and emails only point to screens that stay.
 
 ## Phase 5 — Launch day
 
@@ -379,6 +380,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-05 | X3 | Added | Pre-live review of unused screens (keep / hide / remove); no screen removed before it |
 | 2026-11-05 | V49 | Added | Password + Google/Apple on the same account both ways: set a password on a social account, connect/disconnect Google or Apple on an email account; no account action stuck behind a password the account doesn't have |
 | 2026-11-05 | C4.6 | Done | Security review: two-step sign-in now also required after Google/Apple sign-in (1 integration check); constant-time unsubscribe signature check; CSV export keeps negative numbers numeric |
 | 2026-11-05 | V46, V48 | Done | 30-day line on the template page; a photo is refused after two provider failures. Live-mode tests updated for required admin two-step sign-in |
