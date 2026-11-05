@@ -3,8 +3,9 @@ import {all,audit,must,type Row} from './data';
 // CSV exports for the admin (V12): credit purchases, the credit ledger and users. Opens in Excel/Numbers/Sheets.
 
 type Column=[header:string,value:(r:Row)=>unknown];
-/** One CSV cell: quoted when needed, and a leading = + - @ is neutralised so a spreadsheet never runs it as a formula. */
-export function csvCell(v:unknown){let s=v===null||v===undefined?'':String(v);if(/^[=+\-@\t\r]/.test(s))s="'"+s;return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
+/** One CSV cell: quoted when needed, and a leading = + - @ is neutralised so a spreadsheet never runs it as a formula.
+ * Plain numbers such as -200 stay numbers, so totals still add up. */
+export function csvCell(v:unknown){let s=v===null||v===undefined?'':String(v);if(/^[=+\-@\t\r]/.test(s)&&!/^-?\d+(\.\d+)?$/.test(s))s="'"+s;return /[",\n\r]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;}
 export const toCsv=(rows:Row[],columns:Column[])=>[columns.map(c=>csvCell(c[0])).join(','),...rows.map(r=>columns.map(c=>csvCell(c[1](r))).join(','))].join('\r\n')+'\r\n';
 const iso=(ms:unknown)=>ms?new Date(Number(ms)).toISOString():'';
 const major=(minor:unknown)=>(Number(minor||0)/100).toFixed(2);

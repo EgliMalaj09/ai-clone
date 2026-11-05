@@ -600,6 +600,10 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
   googleUser={sub:'google-link',email:'both@studio.test',email_verified:true,name:'Linked'};
   const gLink=await flow('google');const meLink=await (await odispatch('/api/me',{headers:{cookie:gLink.session}})).json();
   ok('A Google identity whose email matches an existing account links to it',meLink.user?.id===emailUser.id&&(await odb.prepare("SELECT COUNT(*) AS n FROM accounts WHERE user_id=? AND provider='google'").bind(emailUser.id).first()).n===1);
+  await odb.prepare('UPDATE users SET totp_enabled_at=? WHERE id=?').bind(Date.now(),emailUser.id).run();
+  const gMfa=await flow('google');
+  ok('Google sign-in into an account with two-step sign-in asks for the code and gives no session',gMfa.cb.status===302&&gMfa.location.includes('/login?mfa=')&&!gMfa.session);
+  await odb.prepare('UPDATE users SET totp_enabled_at=NULL WHERE id=?').bind(emailUser.id).run();
   googleUser={sub:'google-csrf',email:'csrf@studio.test',email_verified:true,name:'CSRF'};
   const csrf=await flow('google',{tamperNonce:true});
   ok('A callback with a mismatched nonce is rejected with no session (CSRF)',csrf.cb.status===302&&csrf.location.includes('/login?error=')&&!csrf.session&&!(await odb.prepare("SELECT id FROM users WHERE email='csrf@studio.test'").first()));

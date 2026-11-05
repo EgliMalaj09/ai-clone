@@ -2,7 +2,7 @@ import {z} from 'zod';
 import {all,audit,must,now,one,run,uid} from './data';
 import {serviceConfig} from './connections';
 import {announcementMailContent} from './email-templates';
-import {sendMail,sign} from './security';
+import {constantEqual,sendMail,sign} from './security';
 import {reportError} from './errors';
 import type {StudioUser} from '../contracts';
 
@@ -19,7 +19,7 @@ export const unsubscribeSignature=async(userId:string)=>(await sign('unsubscribe
 async function unsubscribeUrl(userId:string){return `${(await serviceConfig()).origin}/unsubscribe?u=${encodeURIComponent(userId)}&s=${await unsubscribeSignature(userId)}`;}
 /** One-click unsubscribe from the email link (and the List-Unsubscribe header): no sign-in needed, the link is signed. */
 export async function unsubscribe(userId:string,signature:string){
- must(userId&&signature&&signature===await unsubscribeSignature(userId),'This unsubscribe link is not valid.',400);
+ must(userId&&signature&&constantEqual(signature,await unsubscribeSignature(userId)),'This unsubscribe link is not valid.',400);
  await run('UPDATE users SET marketing_opt_in=0 WHERE id=?',userId);return {ok:true};
 }
 

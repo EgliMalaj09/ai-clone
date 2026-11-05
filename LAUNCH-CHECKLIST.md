@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 21 | 30 |
+| 1. Codebase | 22 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 43 | 48 |
@@ -87,13 +87,13 @@ These come first, because the code and infrastructure work depends on them.
 - [x] **C3 🔴 Production queue trigger (F10, L2).** ✅
   - [x] C3.1 Cron trigger `* * * * *` in `vite.config.ts` → `dist/server/wrangler.json`; the Worker's `scheduled()` runs every minute. External `/api/queue/dispatch` with `QUEUE_SECRET` kept as a fallback.
   - [x] C3.2 Admin → Operations shows the dispatcher heartbeat and its source (cron / external); a cron run reopens sales after a stale heartbeat (tested in `tests/production.mjs`).
-- [ ] **C4 🟡 Security hardening.**
+- [x] **C4 🟡 Security hardening.** ✅
   - [x] C4.1 Admin MFA (L5), e.g. TOTP for the admin account. ✅ Two-step sign-in with an authenticator app (TOTP) in Account, for admins and customers: encrypted secret, each code works once, 8 one-time recovery codes, 5-minute sign-in ticket with attempt limits, turning on signs out other browsers. Admin pages show a reminder until it is on. See DECISIONS.md #5.
   - [x] C4.2 ✅ passwordHash embeds the iteration count and checkPassword reads it from the stored hash, so iterations can be raised later without breaking existing logins (F16).
   - [x] C4.3 ✅ Removed `app/chatgpt-auth.ts` (dead) and `chatgpt.com` from the CSP; `/__qa/responsive` already gone.
   - [x] C4.4 Re-run the dependency audit and update `image-size` (F12). ✅ next/eslint-config-next 16.3.8; overrides lift image-size ≥2.0.3, brace-expansion, fast-uri, sharp, source-map-js. Audit: 0 critical, 1 high (`braces`, build-tooling only, no patched release yet).
   - [x] C4.5 ✅ The "Studio admin" footer and mobile-menu links are gated to role==='admin' (F19).
-  - [ ] C4.6 Run `/security-review` on the final branch.
+  - [x] C4.6 Run `/security-review` on the final branch. ✅ Manual review of the launch changes (the diff was too large for the automated skill). Fixed: Google/Apple sign-in now asks for the two-step code when the account has it on; unsubscribe links compared in constant time; CSV exports keep negative numbers as numbers while still escaping formulas. Checked and found safe: Support permissions, promo/referral/gift codes, share links and removal requests, POK webhooks, single-video purchase, email change, two-step setup. Run it again if sign-in, payments or admin code changes before launch.
 - [x] **C5 🟡 Reliability fixes.** ✅
   - [x] C5.1 ✅ Already correct: deletion removes DB rows (cascading uploads/assets) first, then R2 files in a retry-logged loop (F17).
   - [x] C5.2 ✅ Dashboard user count is a plain COUNT(*) with no phantom status filter (F18).
@@ -378,6 +378,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-05 | C4.6 | Done | Security review: two-step sign-in now also required after Google/Apple sign-in (1 integration check); constant-time unsubscribe signature check; CSV export keeps negative numbers numeric |
 | 2026-11-05 | V46, V48 | Done | 30-day line on the template page; a photo is refused after two provider failures. Live-mode tests updated for required admin two-step sign-in |
 | 2026-10-13 | D6, D7, D11, D14, D15, D16, D17 | Decided | Owner decisions on the co-founder call: D6 content moderation = Higgsfield only (app adds just a "stop after 2 fails on the same reference" guard → V48); D11 files kept **30 days then auto-deleted**, shown to the customer → V46; D14 **no watermark** on delivered videos; D16 free trial = **one watermarked 480p video** → V47; D17 **no creator program** now (manual credit grants used). D7 (support) and D15 (marketing channels) **deferred to pre-live**. |
 | 2026-10-13 | V46, V47, V48 | Added | Implementation items from the D-decisions (not built yet): **V46** 30-day auto-delete + visible retention notice (🔴, Privacy Policy must be true); **V47** free-trial watermarked 480p video (needs a media-processing service); **V48** block a reference photo after it fails twice. |

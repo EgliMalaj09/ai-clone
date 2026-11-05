@@ -10,6 +10,7 @@ import {constantEqual,hash,randomToken,rateLimit,sessionCookie,sign} from './sec
 import {grantWelcomeCredits} from './credits';
 import {attachReferral} from './promos';
 import {reportError} from './errors';
+import {startSecondStep} from './mfa';
 import {TERMS_VERSION} from '../contracts';
 import {langFromCookie} from '../i18n';
 
@@ -152,6 +153,9 @@ export async function oauthCallback(req:Request,provider:string){
     const identity=provider==='google'?await googleIdentity(c,params.code,redirectUri):await appleIdentity(c,params.code,redirectUri,params.user);
     if(!identity.sub)throw new OauthError('failed');
     const userId=await upsertUser(provider,identity,state,req);
+    // Two-step sign-in applies here too: an account that has it on gets the code screen, not a session.
+    if((await one('SELECT totp_enabled_at FROM users WHERE id=?',userId))?.totp_enabled_at)
+      return redirect(c.origin+'/login?'+new URLSearchParams({mfa:await startSecondStep(userId),next:safePath(state.r)}),req,clear);
     return redirect(c.origin+safePath(state.r),req,await sessionCookie(userId,req),clear);
   }catch(e){
     const code=e instanceof OauthError?e.code:'failed';
