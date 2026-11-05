@@ -454,3 +454,6 @@ tr[draggable=true]{cursor:grab}
 .landing-links strong{font-size:13px;margin-right:4px}
 @media(max-width:640px){.landing-intro{padding:24px 0 4px}.landing-intro>p{font-size:15px}}
 .landing-links{padding:30px 0 10px;border-top:1px solid var(--line);margin-top:40px}
+/* V50: sign-up with an email that already has an account */
+.email-taken{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:0 0 14px;font-size:13px}
+.email-taken p{margin:0 0 10px}

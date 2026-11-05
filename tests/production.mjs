@@ -141,6 +141,26 @@ try{
   await request('/api/auth/email-change',{method:'POST',data:{token:confirmToken}});
   ok('A new email is confirmed by a link sent to it, and the old address is notified',pendingChange.pending==='shqip2@studio.test'&&!!stillOld&&!!(await db.prepare("SELECT id FROM users WHERE email='shqip2@studio.test' AND pending_email IS NULL").first())&&mails.some(m=>m.to==='shqip@studio.test'&&m.subject.includes('u ndryshua')));
   await request('/api/auth/email-change',{method:'POST',data:{token:confirmToken},expected:400});
+  // V50: signing up with a taken address, password reset as verification, and removal of never-verified sign-ups.
+  await request('/api/auth/register',{method:'POST',lang:'en',data:{name:'Squatter',email:'owner@studio.test',password:'Squatter-pass-123',acceptTerms:true,confirmAge:true},expected:201});
+  const taken=await request('/api/auth/register',{method:'POST',lang:'en',data:{name:'Real Owner',email:'owner@studio.test',password:'Owner-password-123',acceptTerms:true,confirmAge:true},expected:409});
+  ok('Signing up with an address that already has an account says so (the page then offers sign-in and password reset)',taken.body.error==='An account with this email already exists.');
+  const ownerRow=await db.prepare("SELECT id FROM users WHERE email='owner@studio.test'").first();
+  await db.prepare("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('welcome_credits','40')").run();
+  await request('/api/auth/forgot',{method:'POST',lang:'en',data:{email:'owner@studio.test'}});
+  const resetMail=[...mails].reverse().find(m=>m.to==='owner@studio.test'&&/reset-password/.test(m.text));
+  await request('/api/auth/reset',{method:'POST',data:{token:new URL(resetMail.text.match(/https?:\/\/\S+reset-password\S+/)[0]).searchParams.get('token'),password:'Owner-password-123'}});
+  const ownerLogin=await request('/api/auth/login',{method:'POST',data:{email:'owner@studio.test',password:'Owner-password-123'}});
+  const ownerBalance=(await request('/api/credits',{cookie:ownerLogin.cookie})).body;
+  ok('Setting a password from the reset email verifies the address and grants the welcome credits once',ownerLogin.body.user.emailVerified===true&&ownerBalance.available===40);
+  await db.prepare("DELETE FROM app_settings WHERE key='welcome_credits'").run();
+  const old=Date.now()-8*86400000;
+  for(const [id,email,verified] of [['usr_stale','stale@studio.test',0],['usr_stale_buyer','stale-buyer@studio.test',0],['usr_old_verified','old-verified@studio.test',1],['usr_fresh','fresh@studio.test',0]])
+   await db.prepare("INSERT INTO users (id,email,name,password_hash,role,status,email_verified,created_at,locale) VALUES (?,?,?,NULL,'user','active',?,?,'en')").bind(id,email,'Old',verified,id==='usr_fresh'?Date.now():old).run();
+  await db.prepare("INSERT INTO credit_purchases (id,user_id,package_id,package_name,credits,amount,currency,status,provider,idempotency_key,created_at) VALUES ('pur_stale','usr_stale_buyer','pk','Pack',10,100,'EUR','pending','pok','idem_stale',?)").bind(old).run();
+  await db.prepare("UPDATE app_settings SET value='0' WHERE key='last_maintenance'").run();await request('/api/queue/tick',{method:'POST',cookie:admin,data:{},expected:null});
+  const left=new Set((await db.prepare("SELECT id FROM users WHERE id IN ('usr_stale','usr_stale_buyer','usr_old_verified','usr_fresh')").all()).results.map(r=>r.id));
+  ok('Sign-ups never verified within 7 days are removed; buyers, verified and recent accounts stay',!left.has('usr_stale')&&left.has('usr_stale_buyer')&&left.has('usr_old_verified')&&left.has('usr_fresh')&&!!(await db.prepare("SELECT id FROM audit_logs WHERE action='account.unverified-removed' AND target_id='usr_stale'").first())&&!!ownerRow);
   // V36/V29: announcements go only to verified customers who opted in, in their language, with one-click unsubscribe.
   await request('/api/auth/register',{method:'POST',lang:'en',data:{name:'News Fan',email:'fan@studio.test',password:'News-password-1',acceptTerms:true,confirmAge:true,marketingOptIn:true},expected:201});
   await request('/api/auth/register',{method:'POST',lang:null,data:{name:'Pa Lajme',email:'nonews@studio.test',password:'News-password-1',acceptTerms:true,confirmAge:true},expected:201});

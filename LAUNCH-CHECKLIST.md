@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 22 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 44 | 49 |
+| 3B. Version 1 features | 45 | 50 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 3 |
 | 5. Launch day | 0 | 5 |
@@ -298,6 +298,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [ ] **V47 🟡 Free trial — one watermarked 480p video (D16).** A new account can make one free video rendered at **480p with a watermark**; full-resolution, watermark-free output needs credits. Reuses the free-results watermark (V41). **Blocked (service):** Workers can't downscale or watermark video, so this needs a media-processing service (same blocker as V2/V41).
 - [x] **V48 🟡 Stop a reference photo that fails twice (D6).** After a generation fails **twice on the same reference photo(s)**, block further attempts with that reference and show a clear message, so a bad reference doesn't keep costing money. Separate from content refusals (C2 already blocks after 3); this is for technical failures. ✅ Done: only failures the AI provider reports count (not timeouts, our errors or an empty Higgsfield account); after the 1st the customer is warned, after the 2nd that photo is refused before credits are reserved. Admin test runs and approved free redos are exempt.
 - [x] **V49 🟡 Password and Google/Apple sign-in on the same account, both ways.** Every account can use both email + password and Google/Apple, whichever way it started. (1) **Signed up with Google/Apple → add a password:** Account → Account security shows "Set a password" when the account has none (verified by a fresh social sign-in or an emailed code, not a current password); after that, password sign-in, two-step setup, email change and account deletion work as for any account. Until then, those actions must not be stuck behind "Your password": today a social-only account can't set up two-step sign-in, change its email or delete itself without first using "Forgot password". (2) **Signed up with email → connect Google/Apple:** Account → Account security lists the connected sign-ins with "Connect Google" / "Connect Apple" (linked to the signed-in account, even if the Google email is different) and "Disconnect" (refused when it is the only way left to sign in). Today linking only happens silently when the Google email matches. Two-step sign-in applies to every route (already true since C4.6). ✅ Done: Account → Account security → **Sign-in methods** lists password, Google and Apple. Google/Apple-only accounts set a password after a sign-in in the last 10 minutes ("Sign in again with Google/Apple" otherwise); the same rule replaces the password for two-step setup, email change and account deletion. Email accounts connect Google/Apple (account password required; the Google email may differ) and disconnect them; the last way into an account can't be removed; an identity already used by another account is refused. Two-step sign-in applies to every route. 12 integration checks.
+- [x] **V50 🟡 Sign-up email verification: close the gaps.** (1) Sign-ups never verified within 7 days are removed by the hourly maintenance (only customer accounts with no purchases, creations, credit history or linked Google/Apple; logged as `account.unverified-removed`), so nobody can hold someone else's address; stated in the Privacy Policy and on the code screen. (2) Setting a password from the reset email verifies the address (the link proves the inbox) and grants the welcome credits once. (3) Signing up with an address that already has an account offers "Sign in" and "Forgot password?" with the email filled in, instead of a dead end. ✅ Done. 3 production checks.
 
 Not planned: PostgreSQL. D1 handles the expected load and no code change is needed for it.
 
@@ -380,6 +381,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-05 | V50 | Added + done | Never-verified sign-ups removed after 7 days; password reset verifies the email; "email already used" offers sign-in and password reset. Privacy Policy updated (EN+SQ). 3 production checks |
 | 2026-11-05 | X1.7 | Done | Landing pages for "AI video nga foto", wedding and birthday videos, plus automatic category pages; sitemap, footer links, CollectionPage JSON-LD, EN+SQ. 6 integration checks |
 | 2026-11-05 | V49 | Done | Sign-in methods panel: set a password on Google/Apple accounts (recent provider sign-in as proof), connect/disconnect Google and Apple on any account, never removing the last way in; no-password accounts can now set up two-step sign-in, change email and delete the account. 12 integration checks |
 | 2026-11-05 | C2.2d | Done | Already covered by C32.7 (cleaned photo sent through a short-lived signed link); ticked |

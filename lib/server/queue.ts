@@ -121,7 +121,7 @@ export async function tickQueue(userId?:string){
  const maintenance=await one("INSERT INTO app_settings (key,value) VALUES ('last_maintenance',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE CAST(value AS INTEGER)<? RETURNING value",String(now()),now()-3600000);
  if(maintenance){
   await batch([stmt('DELETE FROM rate_limits WHERE reset_at<?',now()-3600000),stmt('DELETE FROM sessions WHERE expires_at<?',now()),stmt('DELETE FROM auth_tokens WHERE expires_at<?',now())]);
-  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads,sweepExpiredCreations,sweepExpiredUploads,sweepPendingPurchases,pruneErrors])await task().catch(e=>reportError('queue','Maintenance task needs another run',{error:e,context:{task:task.name}}));
+  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads,sweepExpiredCreations,sweepExpiredUploads,sweepPendingPurchases,sweepUnverifiedAccounts,pruneErrors])await task().catch(e=>reportError('queue','Maintenance task needs another run',{error:e,context:{task:task.name}}));
  }
  await run("INSERT INTO app_settings (key,value) VALUES ('queue_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(now()));
  // Announcements (V36): the next batch of emails, if one is being sent.
@@ -142,6 +142,24 @@ export async function sweepExpiredCreations(){
 export async function sweepExpiredUploads(){
  const rows=await all('SELECT id FROM user_uploads WHERE created_at<? ORDER BY created_at LIMIT 50',now()-RETENTION_MS);
  for(const r of rows){const gone=await one('DELETE FROM user_uploads WHERE id=? RETURNING storage_key',r.id);if(gone)await storage.delete(gone.storage_key as string);}
+}
+
+/** Sign-ups that never verified their email within 7 days, and never bought, created or linked Google/Apple, are
+ *  removed, so nobody can hold someone else's address by signing up with it (V50). Staff accounts are never touched. */
+export const UNVERIFIED_DAYS=7;
+export async function sweepUnverifiedAccounts(){
+ const rows=await all(`SELECT u.id FROM users u WHERE u.email_verified=0 AND u.role='user' AND u.created_at<?
+  AND NOT EXISTS (SELECT 1 FROM credit_purchases p WHERE p.user_id=u.id) AND NOT EXISTS (SELECT 1 FROM generations g WHERE g.user_id=u.id)
+  AND NOT EXISTS (SELECT 1 FROM credit_transactions t WHERE t.user_id=u.id) AND NOT EXISTS (SELECT 1 FROM accounts a WHERE a.user_id=u.id)
+  ORDER BY u.created_at LIMIT 50`,now()-UNVERIFIED_DAYS*24*3600000);
+ for(const r of rows){
+  const files=await all('SELECT storage_key FROM user_uploads WHERE user_id=?',r.id);
+  // Re-checked in the delete itself, so an account verified a moment ago is kept.
+  await batch([stmt('DELETE FROM analytics_events WHERE user_id=? AND EXISTS (SELECT 1 FROM users WHERE id=? AND email_verified=0)',r.id,r.id),stmt('DELETE FROM users WHERE id=? AND email_verified=0',r.id)]);
+  if(await one('SELECT id FROM users WHERE id=?',r.id))continue;
+  await run('INSERT INTO audit_logs (id,user_id,action,target_id,created_at) VALUES (?,NULL,?,?,?)',uid(),'account.unverified-removed',r.id,now());
+  for(const f of files)await storage.delete(f.storage_key as string).catch(e=>reportError('storage','Account file removal needs a retry',{error:e,context:{key:f.storage_key as string}}));
+ }
 }
 
 /** Settle holds whose generation finished without settling them (e.g. an interrupted capture or release). */

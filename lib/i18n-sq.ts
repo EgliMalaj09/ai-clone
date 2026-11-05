@@ -849,6 +849,8 @@ export const sq:Record<string,string>={
  'This photo failed twice, so it can’t be used again. Try a different photo and follow the photo tips.':'Kjo foto dështoi dy herë, ndaj nuk mund të përdoret më. Provo një foto tjetër dhe ndiq këshillat për fotot.',
  'This creation could not be started. Please try again.':'Ky krijim nuk mund të nisej. Provo përsëri.',
  'An account with this email already exists.':'Ekziston tashmë një llogari me këtë email.',
+ 'Is it yours? Sign in, or set a new password if you forgot it.':'Është e jotja? Hyr, ose vendos një fjalëkalim të ri nëse e ke harruar.',
+ 'Accounts that are not verified within 7 days are removed.':'Llogaritë që nuk verifikohen brenda 7 ditëve fshihen.',
  'New registrations are not open yet. Please check back soon.':'Regjistrimet e reja nuk janë hapur ende. Kthehu së shpejti.',
  'Email or password is incorrect.':'Email-i ose fjalëkalimi është i pasaktë.',
  'This account is suspended. Contact the studio administrator.':'Kjo llogari është pezulluar. Kontakto administratorin e studios.',
