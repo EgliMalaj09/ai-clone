@@ -19,7 +19,7 @@ Update the counts when you tick items.
 | 1. Codebase | 21 | 30 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
-| 3B. Version 1 features | 43 | 45 |
+| 3B. Version 1 features | 43 | 48 |
 | 4. Live testing on staging | 0 | 10 |
 | 4B. Pre-live finishing | 0 | 2 |
 | 5. Launch day | 0 | 5 |
