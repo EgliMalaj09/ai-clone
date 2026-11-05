@@ -1,4 +1,4 @@
-# PROJECT STUDIO — Feature audit & TODO
+# NgaZero — Feature audit & TODO
 
 For the step-by-step launch plan, see [docs/LAUNCH-CHECKLIST.md](docs/LAUNCH-CHECKLIST.md).
 

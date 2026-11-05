@@ -21,7 +21,7 @@ const decode=(value:string)=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
 async function encryptionKey(){
   must(config().secret.length>=32,'Configure the application signing key before storing connections.',503);
   const source=await crypto.subtle.importKey('raw',encoder.encode(config().secret),'HKDF',false,['deriveKey']);
-  return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:encoder.encode('project-studio/connections/v1'),info:encoder.encode('AES-256-GCM')},source,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:encoder.encode('project-studio/connections/v1') /* internal label from before the rename; changing it would make saved keys unreadable */,info:encoder.encode('AES-256-GCM')},source,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
 async function seal(name:Field,value:string){
   const iv=crypto.getRandomValues(new Uint8Array(12));

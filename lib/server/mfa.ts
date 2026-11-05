@@ -32,7 +32,7 @@ async function matchStep(secret:Uint8Array<ArrayBuffer>,code:string,lastStep:num
 async function secretKey(){
  must(config().secret.length>=32,'Configure the application signing key first.',503);
  const source=await crypto.subtle.importKey('raw',encoder.encode(config().secret),'HKDF',false,['deriveKey']);
- return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:encoder.encode('project-studio/totp/v1'),info:encoder.encode('AES-256-GCM')},source,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+ return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:encoder.encode('project-studio/totp/v1') /* internal label from before the rename; changing it would make saved secrets unreadable */,info:encoder.encode('AES-256-GCM')},source,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
 const b64=(b:ArrayBuffer|Uint8Array)=>btoa(String.fromCharCode(...new Uint8Array(b)));
 const unb64=(s:string)=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));

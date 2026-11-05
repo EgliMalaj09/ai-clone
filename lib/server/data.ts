@@ -14,7 +14,7 @@ export function config(){const e=runtime();const demo=e.DEMO_MODE==='true';retur
  // Social sign-in (V1). Google: OAuth client id + secret. Apple: Services id + team id + key id + the .p8 private key.
  googleClientId:e.GOOGLE_CLIENT_ID||'',googleClientSecret:e.GOOGLE_CLIENT_SECRET||'',appleClientId:e.APPLE_CLIENT_ID||'',appleTeamId:e.APPLE_TEAM_ID||'',appleKeyId:e.APPLE_KEY_ID||'',applePrivateKey:e.APPLE_PRIVATE_KEY||'',
  // TODO(C6.4/D5): swap this temporary brand name for the final brand before launch. Set BRAND_NAME in the hosting env, or change the fallback here.
- brandName:e.BRAND_NAME||'Project Studio'};}
+ brandName:e.BRAND_NAME||'NgaZero'};}
 export function db():D1Database{if(!env.DB)throw new Error('Database unavailable');return env.DB;}
 export const stmt=(sql:string,...args:unknown[])=>db().prepare(sql).bind(...args);
 export const one=async(sql:string,...args:unknown[]):Promise<Row|null>=>stmt(sql,...args).first<Row>();

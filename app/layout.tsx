@@ -4,7 +4,7 @@ import { langFromCookie } from "@/lib/i18n";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "PROJECT STUDIO — Your next main character moment",
+  title: "NgaZero — Your next main character moment",
   description: "Choose a look. Upload a photo. Make your own AI video with credits, and pay only for videos that are delivered.",
   icons: {
     icon: "/favicon.svg",

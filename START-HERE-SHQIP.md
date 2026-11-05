@@ -1,4 +1,4 @@
-# Hape PROJECT STUDIO në VS Code
+# Hape NgaZero në VS Code
 
 ## 1. Hap projektin
 

@@ -1,4 +1,4 @@
-# PROJECT STUDIO — Udhëzuesi i administratorit
+# NgaZero — Udhëzuesi i administratorit
 
 ## Hyrja
 

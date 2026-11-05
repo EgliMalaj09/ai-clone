@@ -45,7 +45,7 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] D3.3 Set each template's credit cost so the margin covers AI cost, payment fees, tax and failed attempts. *(Done per template as each new Genjutsu template is created. AI cost ≈ $3.42/video from D3.1; fee and tax parts wait on D1.4 (POK fees) and D2.2 (VAT). Break-even floor ≈ AI cost ÷ cheapest per-credit pack value, then marked up for fees, tax and a failure buffer.)*
   - [x] D3.4 ✅ Welcome credits set to 10 after a verified sign-up (never expire). Applied by `pnpm seed:packs`; changeable in Admin → Studio settings.
 - [x] **D4 🔴 Refund policy.** ✅ **No refunds.** Credit packs are non-refundable (already in the Terms). Failed videos still return their credits automatically; that is not a money refund. A bank chargeback can still happen: record it with Reverse in Admin → Credit purchases, which removes the pack's credits.
-- [ ] **D5 🔴 Brand and domain.** Final product name, domain, logo, favicon, sender email address (e.g. `hello@yourdomain`).
+- [~] **D5 🔴 Brand and domain.** Final product name, domain, logo, favicon, sender email address (e.g. `hello@yourdomain`). ✅ Decided 2026-11-05: name **NgaZero** (Albanian for "from zero"), domain **ngazero.ai**. Still open: logo, favicon and tagline (X2.2), and the sender address (suggested `hello@ngazero.ai`, set in Admin → Connections once I7 is done).
 - [x] **D6 🟡 Content policy.** ✅ **Moderation is the AI provider's job (Higgsfield).** Higgsfield blocks and refuses disallowed content; the app records refusals and blocks repeat offenders (C2 — refusal → strike → 3 = blocked) and runs **no** separate content checks. The only app-side guard we add: **stop retrying the same reference photo(s) after they fail twice**, so a bad reference doesn't keep burning cost (→ V48).
 - [ ] **D7 🟡 Support.** *(Deferred to pre-live, Phase 4B.)* Support email/channel and the promised response time, to be decided just before launch.
 - [ ] **D8 🔴 Fiscalization.** Albanian businesses must fiscalize sales (fiscal invoice with NIVF/NSLF through the tax authority). Ask your accountant whether each credit purchase needs one and whether POK issues it; if not, the app needs a fiscalization service integration (becomes a codebase task).
@@ -102,7 +102,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C6.1 Branded HTML verification email (wordmark, verify button, copy-paste link, 30-min expiry, business name VASIL XHAJA, support contact); plain-text version kept. Logo image waits for D5.
   - [x] C6.2 Same branded HTML + plain-text for the password reset email.
   - [x] C6.3 Albanian text (or Albanian + English) for both emails.
-  - [~] C6.4 Brand name moved to one config value (`BRAND_NAME`, temporary "Project Studio"); no more "PROJECT STUDIO" in emails. **TODO before launch:** set the final brand once D5 is decided (part of X2).
+  - [x] C6.4 Brand name in one config value (`BRAND_NAME`); default is now **NgaZero** (D5). ✅
   - [x] C6.5 Already fixed: resend returns "already verified" for verified accounts (F13); `/reset-password` and `/verify` without a link show a clear "incomplete link" message with a way to request a new one (F14).
 - [x] **C11 🟡 Other emails customers expect.**
   - [x] C11.1 Receipt email after a credit purchase (skip if POK already sends one; check during T2). ✅ After each paid purchase the customer gets a receipt email in their language (pack, credits, amount, discount code if used, purchase and POK transaction IDs), marked as not a tax invoice. Sent once per purchase. See DECISIONS.md #18.
@@ -347,11 +347,11 @@ Done at the end, after the features are built and before launch day, once the fi
   - [x] X1.7 Landing pages for the main searches (e.g. "AI video nga foto", birthday/wedding templates), and category pages people can find from Google. ✅ Landing pages `/ai-video-nga-foto`, `/video-per-dasem` (Couples/Wedding templates) and `/video-per-ditelindje` (Birthday templates), each with its own title, description, heading, intro, share preview and CollectionPage data; one page per category at `/category/<name>` (made automatically from the published templates, 404 when a category is empty). All are in the sitemap, linked from the footer and from each other. Texts in English and Albanian (`lib/landing-pages.ts`; P7 native review applies). **Content note:** the birthday page shows all templates until a template in a "Birthday" category is published (Phase 3); a wedding template should use the "Couples" or "Wedding" category.
   - [ ] X1.8 Register the domain in Google Search Console and Bing Webmaster Tools, submit the sitemap, and check for indexing errors.
 - [ ] **X2 🔴 Branding** (replaces C30; needs D5).
-  - [ ] X2.1 Final name everywhere: replace "PROJECT STUDIO" in the header, footer, page titles, 404 page and admin.
+  - [x] X2.1 Final name everywhere: replace "PROJECT STUDIO" in the header, footer, page titles, 404 page and admin. ✅ NgaZero in header/footer logo (NGA**ZERO**), mobile menu, page titles, share titles, JSON-LD, 404 and error pages, admin, offline page and app manifest (`lib/brand.ts`). Two internal encryption labels keep the old name on purpose (renaming them would make saved secrets unreadable).
   - [ ] X2.2 Logo and favicon (all sizes, including the phone home-screen icon for V7) and the tagline.
-  - [ ] X2.3 Set `BRAND_NAME` (C6.4) and add the logo image to all emails; sender address `MAIL_FROM` on the final domain.
-  - [ ] X2.4 Legal pages, FAQ and help pages use the final name and domain.
-  - [ ] X2.5 Download file names (today `project-studio-….mp4`) and any watermark (V41) use the final brand.
+  - [~] X2.3 Set `BRAND_NAME` (C6.4) and add the logo image to all emails; sender address `MAIL_FROM` on the final domain. ✅ Emails say NgaZero. **Left:** the logo image in emails (needs X2.2) and `MAIL_FROM` = e.g. `hello@ngazero.ai` once the domain is verified in Resend (I7).
+  - [~] X2.4 Legal pages, FAQ and help pages use the final name and domain. ✅ Name updated in the Terms and Privacy Policy (EN+SQ). **Left:** business details and the domain in the legal pages with D9.
+  - [~] X2.5 Download file names (today `project-studio-….mp4`) and any watermark (V41) use the final brand. ✅ Downloads are `ngazero-….mp4` and `ngazero-account.json`. **Left:** the watermark, when V41 is built.
 - [ ] **X3 🟡 Review unused screens.** Go through every screen (storefront, account, admin) once the templates and content exist, and decide for each one: keep, hide from menus, or remove. Nothing is removed before this review, since screens that look unused now may be needed once content is created. Check that links in menus, footer and emails only point to screens that stay.
 
 ## Phase 5 — Launch day
@@ -381,6 +381,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-05 | D5, X2.1, C6.4 | Decided + done | Name NgaZero, domain ngazero.ai; name applied across the site, emails, downloads, manifest and docs. Logo/favicon/tagline still open (X2.2) |
 | 2026-11-05 | V50 | Added + done | Never-verified sign-ups removed after 7 days; password reset verifies the email; "email already used" offers sign-in and password reset. Privacy Policy updated (EN+SQ). 3 production checks |
 | 2026-11-05 | X1.7 | Done | Landing pages for "AI video nga foto", wedding and birthday videos, plus automatic category pages; sitemap, footer links, CollectionPage JSON-LD, EN+SQ. 6 integration checks |
 | 2026-11-05 | V49 | Done | Sign-in methods panel: set a password on Google/Apple accounts (recent provider sign-in as proof), connect/disconnect Google and Apple on any account, never removing the last way in; no-password accounts can now set up two-step sign-in, change email and delete the account. 12 integration checks |

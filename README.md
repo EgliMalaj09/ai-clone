@@ -1,4 +1,4 @@
-# PROJECT STUDIO
+# NgaZero
 
 A working template-based video creation MVP. Customers buy credit packs, choose a template, upload photos and spend the template's credits; the video arrives in My Creations. Credits are reserved when a video starts, charged on delivery and returned automatically if it fails. Design: [credits architecture](docs/CREDITS-ARCHITECTURE.md).
 
