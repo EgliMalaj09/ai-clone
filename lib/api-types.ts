@@ -59,3 +59,6 @@ export type AdminUserDetail={
  balance:Balance;sessions:{active:number;lastSignIn:number|null};uploads:{count:number;bytes:number};
  creations:{total:number;completed:number;failed:number;recent:{id:string;template_name:string;status:string;credit_cost:number;created_at:number;completed_at:number|null;error:string|null;credit_status:string|null}[]};
  activity:{id:string;action:string;created_at:number;actor_email:string|null}[]};
+
+/** Account → Sign-in methods (V49). */
+export type SignInMethods={hasPassword:boolean;recentSignIn:boolean;providers:{provider:'google'|'apple';connected:boolean;available:boolean}[]};

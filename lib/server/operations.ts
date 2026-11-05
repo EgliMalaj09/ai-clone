@@ -4,7 +4,7 @@ import type {StudioUser} from '../contracts';
 import {all,audit,batch,HttpError,must,now,one,run,runtime,stmt,type Row} from './data';
 import {jsonBody,pageQuery} from './http';
 import {balanceOf,reconcileCredits} from './credits';
-import {checkPassword,hash,passwordHash,rateLimit,sessionCookie} from './security';
+import {confirmOwner,hash,passwordHash,rateLimit,sessionCookie} from './security';
 import {dispatcherStatus} from './dispatcher';
 import {mediaUrl} from './storage';
 import {recentErrors} from './errors';
@@ -29,14 +29,17 @@ export async function accountSecurity(req:Request,path:string[],user:StudioUser)
   }
   if(path[1]==='password'&&req.method==='POST'){
     await rateLimit('change-password:'+user.id,5,900000);
-    const b=z.object({currentPassword:z.string().min(1).max(128),newPassword:z.string().min(10,'Use at least 10 characters.').max(128)}).parse(await jsonBody(req));
-    must(b.currentPassword!==b.newPassword,'Choose a different password.');
-    const record=await one('SELECT password_hash FROM users WHERE id=?',user.id);
-    must(record&&await checkPassword(b.currentPassword,record.password_hash),'Your current password is incorrect.',403);
-    const changed=await one('UPDATE users SET password_hash=? WHERE id=? AND password_hash=? RETURNING id',await passwordHash(b.newPassword),user.id,record.password_hash);
+    const b=z.object({currentPassword:z.string().max(128).optional(),newPassword:z.string().min(10,'Use at least 10 characters.').max(128)}).parse(await jsonBody(req));
+    const record=await one('SELECT password_hash FROM users WHERE id=?',user.id);must(record,'Account not found.',404);
+    // V49: an account made with Google/Apple has no password yet; it sets one after a recent provider sign-in.
+    await confirmOwner(req.headers,user.id,b.currentPassword,'Your current password is incorrect.');
+    must(!record.password_hash||b.currentPassword!==b.newPassword,'Choose a different password.');
+    const changed=record.password_hash
+     ?await one('UPDATE users SET password_hash=? WHERE id=? AND password_hash=? RETURNING id',await passwordHash(b.newPassword),user.id,record.password_hash)
+     :await one('UPDATE users SET password_hash=? WHERE id=? AND password_hash IS NULL RETURNING id',await passwordHash(b.newPassword),user.id);
     must(changed,'Your password was already changed. Sign in again.',409);
     await batch([stmt('DELETE FROM sessions WHERE user_id=?',user.id),stmt("DELETE FROM auth_tokens WHERE user_id=? AND type='reset'",user.id)]);
-    await audit(user.id,'account.password-changed',user.id);
+    await audit(user.id,record.password_hash?'account.password-changed':'account.password-set',user.id);
     return response({ok:true},{'Set-Cookie':await sessionCookie(user.id,req)});
   }
   if(path[1]==='export'&&req.method==='GET'){

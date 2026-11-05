@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {audit,batch,config,HttpError,must,now,one,run,stmt,type Row} from './data';
 import {jsonBody} from './http';
-import {checkPassword,hash,randomToken,rateLimit,sessionCookie} from './security';
+import {confirmOwner,hash,randomToken,rateLimit,sessionCookie} from './security';
 import type {StudioUser} from '../contracts';
 
 // Two-step sign-in with an authenticator app (C4.1): TOTP (RFC 6238, SHA-1, 6 digits, 30 s), as used by
@@ -82,7 +82,7 @@ export async function mfaAPI(req:Request,path:string[],user:StudioUser){
  if(req.method==='GET'&&!action)return {enabled:!!u.totp_enabled_at,enabledAt:u.totp_enabled_at??null,recoveryCodesLeft:(JSON.parse(u.totp_recovery||'[]') as string[]).length};
  must(req.method==='POST','Two-step sign-in action not found.',404);
  const b=await jsonBody(req);
- const password=async()=>{const p=z.string().min(1).max(128).parse(b.password);must(u.password_hash&&await checkPassword(p,u.password_hash),'Your password is incorrect.',403);};
+ const password=()=>confirmOwner(req.headers,u.id,b.password);
  if(action==='setup'){
   must(!u.totp_enabled_at,'Two-step sign-in is already on.',409);await password();
   const secret=crypto.getRandomValues(new Uint8Array(20));await run('UPDATE users SET totp_pending=? WHERE id=?',await seal(u.id,secret),u.id);

@@ -434,3 +434,15 @@ tr[draggable=true]{cursor:grab}
 .experiment{border-top:1px solid var(--line);padding-top:14px;margin-top:14px}
 .experiment-form{display:grid;gap:6px;margin:10px 0}
 .experiment-thumb{width:90px;border-radius:8px;margin-top:6px}
+/* V49: Account → Sign-in methods */
+.sign-in-methods{list-style:none;padding:0;margin:14px 0;display:grid;gap:8px}
+.sign-in-methods li{display:flex;align-items:center;gap:10px;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-height:52px}
+.sign-in-methods li>strong{flex:1;min-width:120px}
+.method-on{display:inline-flex;align-items:center;gap:4px;color:#147a46;font-size:13px;font-weight:600}
+.method-off{color:#66707f;font-size:13px}
+.oauth-dot{width:17px;height:17px;border-radius:50%;flex:none;border:0}
+.oauth-dot.oauth-google{background:conic-gradient(#ea4335 0 25%,#fbbc05 0 50%,#34a853 0 75%,#4285f4 0)}
+.oauth-dot.oauth-apple{background:#000}
+.reauth-note{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:12px 0;font-size:13px;color:#4d5562}
+.reauth-note p{margin:0 0 10px}
+.sign-in-methods li .text-button{margin-left:auto}

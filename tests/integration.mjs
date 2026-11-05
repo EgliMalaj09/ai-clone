@@ -616,6 +616,49 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
   ok('An unverified Google email is refused and creates no account',noEmail.location.includes('error=no_email')&&!noEmail.session&&!(await odb.prepare("SELECT id FROM users WHERE email='unverified@studio.test'").first()));
   const a1=await flow('apple');const meApple=await (await odispatch('/api/me',{headers:{cookie:a1.session}})).json();
   ok('Apple sign-in creates a verified account from the id_token',a1.cb.status===302&&!!a1.session&&meApple.user?.email==='apple-user@privaterelay.appleid.com'&&meApple.user.emailVerified);
+  // V49: password and Google/Apple on the same account, both ways.
+  const oapi=async(route,{method='GET',cookie='',data}={})=>{const r=await oauthMf.dispatchFetch(oauthEnv.APP_ORIGIN+'/api/'+route,{method,redirect:'manual',headers:{origin:oauthEnv.APP_ORIGIN,'content-type':'application/json',cookie:['studio_lang=en',cookie].filter(Boolean).join('; ')},body:data===undefined?undefined:JSON.stringify(data)});let body;try{body=await r.json()}catch{body=null}return {status:r.status,body,r};};
+  const tokenOf=c=>c.split('=')[1];const sessionHash=async c=>require('node:crypto').createHash('sha256').update(tokenOf(c)).digest('hex');
+  const age=async(c,minutes)=>odb.prepare('UPDATE sessions SET expires_at=? WHERE token_hash=?').bind(Date.now()+7*86400000-minutes*60000,await sessionHash(c)).run();
+  const social=me1.user.id,socialCookie=g1.session;
+  const m1=(await oapi('account/sign-in-methods',{cookie:socialCookie})).body;
+  ok('A Google-only account shows no password, Google connected and a recent sign-in',m1.hasPassword===false&&m1.recentSignIn===true&&m1.providers.some(p=>p.provider==='google'&&p.connected)&&m1.providers.some(p=>p.provider==='apple'&&!p.connected));
+  const lastOnly=await oapi('account/sign-in-methods/google',{method:'DELETE',cookie:socialCookie,data:{}});
+  ok('The only way into an account cannot be disconnected',lastOnly.status===409&&!!(await odb.prepare("SELECT id FROM accounts WHERE user_id=? AND provider='google'").bind(social).first()));
+  await age(socialCookie,30);
+  const stale=await oapi('account/password',{method:'POST',cookie:socialCookie,data:{newPassword:'Social-password-123'}});
+  const staleDelete=await oapi('account',{method:'DELETE',cookie:socialCookie,data:{}});
+  ok('Without a password, setting one or deleting the account needs a sign-in in the last 10 minutes',stale.status===403&&/sign in again/.test(stale.body.error)&&staleDelete.status===403&&!!(await odb.prepare('SELECT id FROM users WHERE id=?').bind(social).first()));
+  await age(socialCookie,1);
+  const mfaSetup=await oapi('account/mfa/setup',{method:'POST',cookie:socialCookie,data:{}});
+  ok('A Google-only account can start two-step setup after a recent sign-in',mfaSetup.status===200&&!!mfaSetup.body.secret);
+  const setPw=await oapi('account/password',{method:'POST',cookie:socialCookie,data:{newPassword:'Social-password-123'}});
+  const pwLogin=await oapi('auth/login',{method:'POST',data:{email:'google-new@studio.test',password:'Social-password-123'}});
+  ok('A Google-only account sets a password and can then sign in with email and password',setPw.status===200&&pwLogin.status===200&&pwLogin.body.user?.id===social&&(await oapi('account/sign-in-methods',{cookie:pwLogin.r.headers.get('set-cookie').split(';')[0]})).body.hasPassword===true);
+  const socialPw=pwLogin.r.headers.get('set-cookie').split(';')[0];
+  const noCurrent=await oapi('account/password',{method:'POST',cookie:socialPw,data:{newPassword:'Another-password-123'}});
+  ok('Once a password exists, changing it needs the current one again',noCurrent.status===403);
+  // An email account connects Google with a different email address, then disconnects it.
+  const regC=await oauthMf.dispatchFetch(oauthEnv.APP_ORIGIN+'/api/auth/register',{method:'POST',headers:{origin:oauthEnv.APP_ORIGIN,'content-type':'application/json',cookie:'studio_lang=en'},body:JSON.stringify({name:'Connect Me',email:'connect@studio.test',password:'Connect-password-123',acceptTerms:true,confirmAge:true})});
+  const connectCookie=regC.headers.get('set-cookie').split(';')[0],connectUser=(await regC.json()).user.id;
+  async function connectFlow(cookie,provider,password){
+   const start=await oapi('account/sign-in-methods/'+provider+'/connect',{method:'POST',cookie,data:{password}});
+   if(start.status!==200)return {start};
+   const state=new URL(start.body.url).searchParams.get('state'),nonce=setCookies(start.r).map(c=>c.split(';')[0]).find(c=>c.startsWith('oauth_state=')).split('=')[1];
+   const cb=await odispatch('/api/auth/oauth/'+provider+'/callback?code=testcode&state='+encodeURIComponent(state),{headers:{cookie:'oauth_state='+nonce+'; '+cookie}});
+   return {start,cb,location:cb.headers.get('location'),session:session(cb)};
+  }
+  const noPw=await connectFlow(connectCookie,'google','');
+  ok('Connecting Google to an email account needs the account password',noPw.start.status===403);
+  googleUser={sub:'google-connect',email:'someone-else@gmail.com',email_verified:true,name:'Other Name'};
+  const linked=await connectFlow(connectCookie,'google','Connect-password-123');
+  ok('An email account connects a Google account with a different email and returns to Account, without a new session',linked.location.endsWith('/account?connected=google')&&!linked.session&&!!(await odb.prepare("SELECT id FROM accounts WHERE user_id=? AND provider='google' AND provider_account_id='google-connect'").bind(connectUser).first()));
+  const viaGoogle=await flow('google');
+  ok('The connected Google account signs into that email account',viaGoogle.session&&(await (await odispatch('/api/me',{headers:{cookie:viaGoogle.session}})).json()).user?.id===connectUser);
+  const taken=await connectFlow(socialPw,'apple','Social-password-123');
+  ok('A Google or Apple account already used by another account cannot be connected',taken.location?.includes('/account?connect_error=in_use'));
+  const gone=await oapi('account/sign-in-methods/google',{method:'DELETE',cookie:connectCookie,data:{password:'Connect-password-123'}});
+  ok('An account with a password can disconnect Google',gone.status===200&&!gone.body.providers.find(p=>p.provider==='google').connected&&!(await odb.prepare("SELECT id FROM accounts WHERE user_id=? AND provider='google'").bind(connectUser).first()));
   const loginHtml=await (await odispatch('/login')).text();
   ok('The login page offers the configured social sign-ins',loginHtml.includes('Continue with Google')&&loginHtml.includes('Continue with Apple')&&loginHtml.includes('/api/auth/oauth/google'));
  }finally{await oauthMf.dispose();}

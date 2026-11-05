@@ -4,9 +4,9 @@
 // claims. Both identities arrive over a direct TLS call to the provider's token endpoint in return for our code
 // and secret, which is the trust anchor (the same model as Google's userinfo). The signed `state` plus a matching
 // one-time cookie nonce prevent login CSRF. See DECISIONS.md.
-import {HttpError,batch,now,one,run,stmt,uid} from './data';
+import {HttpError,all,audit,batch,must,now,one,run,stmt,uid} from './data';
 import {oauthConfigured,serviceConfig} from './connections';
-import {constantEqual,hash,randomToken,rateLimit,sessionCookie,sign} from './security';
+import {RECENT_SIGN_IN_MS,constantEqual,getUser,hash,randomToken,rateLimit,sessionCookie,sign,signedInAt} from './security';
 import {grantWelcomeCredits} from './credits';
 import {attachReferral} from './promos';
 import {reportError} from './errors';
@@ -18,7 +18,7 @@ export type OauthProvider='google'|'apple';
 export const OAUTH_PROVIDERS:OauthProvider[]=['google','apple'];
 const isProvider=(p:string):p is OauthProvider=>OAUTH_PROVIDERS.includes(p as OauthProvider);
 /** Error codes the login page knows how to translate; anything else becomes a generic failure. */
-class OauthError extends Error{constructor(public code:'cancelled'|'no_email'|'suspended'|'unavailable'|'failed'){super(code)}}
+class OauthError extends Error{constructor(public code:'cancelled'|'no_email'|'suspended'|'unavailable'|'failed'|'in_use'|'already'){super(code)}}
 
 const enc=new TextEncoder();
 const b64=(b:ArrayBuffer|Uint8Array)=>btoa(String.fromCharCode(...new Uint8Array(b)));
@@ -30,9 +30,10 @@ const fromB64url=(s:string)=>fromB64(s.replace(/-/g,'+').replace(/_/g,'/').padEn
 /** A relative same-origin path, never an open redirect. */
 function safePath(p:unknown){return typeof p==='string'&&/^\/[^/\\]/.test(p)&&!p.includes('\\')?p.slice(0,512):'/creations';}
 
-async function makeState(provider:OauthProvider,next:string,ref:string){
+/** `link` is the signed-in account a "Connect Google/Apple" flow adds the identity to (V49); empty for sign-in. */
+async function makeState(provider:OauthProvider,next:string,ref:string,link=''){
   const nonce=randomToken();
-  const data=b64urlJson({p:provider,n:nonce,x:now()+600000,r:next,f:ref});
+  const data=b64urlJson({p:provider,n:nonce,x:now()+600000,r:next,f:ref,...(link?{l:link}:{})});
   return {state:data+'.'+await sign(data),nonce};
 }
 async function readState(state:string){
@@ -40,7 +41,7 @@ async function readState(state:string){
   if(!data||!sig||!constantEqual(await sign(data),sig))throw new OauthError('failed');
   let payload;try{payload=JSON.parse(new TextDecoder().decode(fromB64url(data)))}catch{throw new OauthError('failed')}
   if(!payload||typeof payload.x!=='number'||payload.x<now())throw new OauthError('failed');
-  return payload as {p:OauthProvider;n:string;r:string;f:string};
+  return payload as {p:OauthProvider;n:string;r:string;f:string;l?:string};
 }
 
 async function fetchJson(url:string,init:RequestInit){
@@ -124,17 +125,57 @@ export async function oauthStart(req:Request,provider:string){
   const url=new URL(req.url);
   const next=safePath(url.searchParams.get('next')),ref=(url.searchParams.get('ref')||'').slice(0,20);
   const {state,nonce}=await makeState(provider,next,ref);
+  return redirect(authUrl(c,provider,state),req,cookie('oauth_state',nonce,600,req));
+}
+function authUrl(c:Awaited<ReturnType<typeof serviceConfig>>,provider:OauthProvider,state:string){
   const redirectUri=c.origin+'/api/auth/oauth/'+provider+'/callback';
-  const authUrl=provider==='google'
+  return provider==='google'
     ?'https://accounts.google.com/o/oauth2/v2/auth?'+new URLSearchParams({client_id:c.googleClientId,redirect_uri:redirectUri,response_type:'code',scope:'openid email profile',state,prompt:'select_account'})
     :'https://appleid.apple.com/auth/authorize?'+new URLSearchParams({client_id:c.appleClientId,redirect_uri:redirectUri,response_type:'code',response_mode:'form_post',scope:'name email',state});
-  return redirect(authUrl,req,cookie('oauth_state',nonce,600,req));
+}
+
+/** Account → Sign-in methods (V49): password and the Google/Apple identities linked to the account. */
+export async function signInMethods(req:Request,userId:string){
+  const c=await serviceConfig(true),available=oauthConfigured(c);
+  const [u,links]=await Promise.all([one('SELECT password_hash FROM users WHERE id=?',userId),all('SELECT provider FROM accounts WHERE user_id=?',userId)]);
+  const linked=new Set(links.map(l=>l.provider));
+  return {hasPassword:!!u?.password_hash,recentSignIn:await signedInAt(req.headers)>now()-RECENT_SIGN_IN_MS,
+    providers:OAUTH_PROVIDERS.filter(p=>available[p]||linked.has(p)).map(p=>({provider:p,connected:linked.has(p),available:!!available[p]}))};
+}
+/** Starts "Connect Google/Apple" for the signed-in account; the browser goes to the returned URL. */
+export async function connectProvider(req:Request,provider:string,userId:string){
+  must(isProvider(provider),'Unknown sign-in provider.',404);
+  const c=await serviceConfig(true);must(oauthConfigured(c)[provider],'This sign-in method is not available.',404);
+  must(!await one('SELECT id FROM accounts WHERE user_id=? AND provider=?',userId,provider),'This sign-in is already connected.',409);
+  const {state,nonce}=await makeState(provider,'/account','',userId);
+  return {url:authUrl(c,provider,state),cookie:cookie('oauth_state',nonce,600,req)};
+}
+/** Removes a Google/Apple sign-in, never the last way into the account. */
+export async function disconnectProvider(provider:string,userId:string){
+  must(isProvider(provider),'Unknown sign-in provider.',404);
+  const [u,links]=await Promise.all([one('SELECT password_hash FROM users WHERE id=?',userId),all('SELECT provider FROM accounts WHERE user_id=?',userId)]);
+  must(links.some(l=>l.provider===provider),'This sign-in is not connected.',404);
+  must(u?.password_hash||links.length>1,'Set a password or connect another sign-in first, so you can still get into your account.',409);
+  await run('DELETE FROM accounts WHERE user_id=? AND provider=?',userId,provider);
+  await audit(userId,'account.provider-disconnected',provider);
+}
+/** Adds a provider identity to the signed-in account that started the flow. */
+async function linkIdentity(provider:OauthProvider,identity:Identity,userId:string,req:Request){
+  const u=await one('SELECT id,status FROM users WHERE id=?',userId);if(!u)throw new OauthError('failed');if(u.status!=='active')throw new OauthError('suspended');
+  // If this browser carries a session, it must be the same account (the signed state already names it).
+  const current=await getUser(req.headers);if(current&&current.id!==userId)throw new OauthError('failed');
+  const owner=await one('SELECT user_id FROM accounts WHERE provider=? AND provider_account_id=?',provider,identity.sub);
+  if(owner){if(owner.user_id!==userId)throw new OauthError('in_use');return;}
+  if(await one('SELECT id FROM accounts WHERE user_id=? AND provider=?',userId,provider))throw new OauthError('already');
+  await run('INSERT INTO accounts (id,user_id,provider,provider_account_id) VALUES (?,?,?,?)',uid('acc_'),userId,provider,identity.sub);
+  await audit(userId,'account.provider-connected',provider);
 }
 
 /** Finish a flow: verify state + nonce, exchange the code, create or link the account, open a session. */
 export async function oauthCallback(req:Request,provider:string){
   const c=await serviceConfig(true);
   const clear=cookie('oauth_state','',0,req);
+  let linkState='';
   try{
     if(!isProvider(provider))throw new OauthError('failed');
     if(!oauthConfigured(c)[provider])throw new OauthError('unavailable');
@@ -142,6 +183,7 @@ export async function oauthCallback(req:Request,provider:string){
     const params:Record<string,string>=req.method==='POST'
       ?Object.fromEntries([...(await req.formData()).entries()].map(([k,v])=>[k,String(v)]))
       :Object.fromEntries(url.searchParams.entries());
+    linkState=params.state||'';
     if(params.error)throw new OauthError('cancelled');
     const state=await readState(params.state||'');
     if(state.p!==provider)throw new OauthError('failed');
@@ -152,6 +194,7 @@ export async function oauthCallback(req:Request,provider:string){
     const redirectUri=c.origin+'/api/auth/oauth/'+provider+'/callback';
     const identity=provider==='google'?await googleIdentity(c,params.code,redirectUri):await appleIdentity(c,params.code,redirectUri,params.user);
     if(!identity.sub)throw new OauthError('failed');
+    if(state.l){await linkIdentity(provider,identity,state.l,req);return redirect(c.origin+'/account?'+new URLSearchParams({connected:provider}),req,clear);}
     const userId=await upsertUser(provider,identity,state,req);
     // Two-step sign-in applies here too: an account that has it on gets the code screen, not a session.
     if((await one('SELECT totp_enabled_at FROM users WHERE id=?',userId))?.totp_enabled_at)
@@ -160,6 +203,8 @@ export async function oauthCallback(req:Request,provider:string){
   }catch(e){
     const code=e instanceof OauthError?e.code:'failed';
     if(!(e instanceof OauthError))await reportError('auth','Social sign-in failed',{error:e,context:{provider}});
-    return redirect(c.origin+'/login?error='+code,req,clear);
+    // A "Connect" flow returns to the account page; the state is only trusted for that once its signature checks out.
+    const linking=await readState(linkState).then(s=>!!s.l).catch(()=>false);
+    return redirect(c.origin+(linking?'/account?connect_error=':'/login?error=')+code,req,clear);
   }
 }

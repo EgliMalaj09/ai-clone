@@ -11,7 +11,7 @@ import {validateTemplateMedia} from './validation';
 import {operationsSummary,adminActivity,accountSecurity,adminRecords} from './operations';
 import {all,audit,batch,config,ensureSeed,event,getAdminTemplate,HttpError,must,now,one,parse,photoGuidelines,supportInfo,publicTemplate,run,stmt,templateStatements,uid,type Row} from './data';
 import {authSchema,registerSchema,generationSchema,templateSchema} from './validation';
-import {checkPassword,checkVerifyCode,clearCookie,constantEqual,getUser,hash,makeAuthToken,makeVerifyCode,passwordHash,protectOrigin,rateLimit,requireUser,safeUser,sendAuthMail,sessionCookie} from './security';
+import {checkPassword,checkVerifyCode,clearCookie,confirmOwner,constantEqual,getUser,hash,makeAuthToken,makeVerifyCode,passwordHash,protectOrigin,rateLimit,requireUser,safeUser,sendAuthMail,sessionCookie} from './security';
 import {imageMime,storage,validSignature} from './storage';
 import {pokWebhook} from './payments';
 import {removeGeneration,tickQueue} from './queue';
@@ -33,7 +33,7 @@ import {createCreatorLink,listCreatorLinks,setCreatorLinkActive} from './creator
 import {adminIdeas,listIdeas,suggestIdea,toggleVote,updateIdea} from './template-requests';
 import {cancelAnnouncement,createAnnouncement,listAnnouncements,sendTest,unsubscribe} from './announcements';
 import {finishSecondStep,mfaAPI,startSecondStep} from './mfa';
-import {oauthCallback,oauthStart} from './oauth';
+import {connectProvider,disconnectProvider,oauthCallback,oauthStart,signInMethods} from './oauth';
 import {langFromCookie,translate,type Lang} from '../i18n';
 /** Friendly, translated messages for the form fields customers fill in; other validation messages stay technical. */
 const fieldMessages:Record<string,string>={email:'Enter a valid email address.',password:'Use a password with 10 to 128 characters.',newPassword:'Use a password with 10 to 128 characters.',name:'Enter a name with 2 to 80 characters.',acceptTerms:'Accept the Terms and Privacy Policy to continue.',confirmAge:'Confirm your age to continue.'};
@@ -184,6 +184,15 @@ export async function handleAPI(req:Request){try{
  }
  const user=await requireUser(req.headers,p[0]==='admin');
  if(p[0]==='account'&&['password','sessions','export'].includes(p[1]))return await accountSecurity(req,p,user);
+ // V49: Account → Sign-in methods (password, Google, Apple).
+ if(p[0]==='account'&&p[1]==='sign-in-methods'){
+  if(method==='GET'&&!p[2])return json(await signInMethods(req,user.id));
+  await rateLimit('sign-in-methods:'+user.id,10,900000);
+  const b=z.object({password:z.string().max(128).optional()}).parse(await body(req));
+  if(method==='POST'&&p[2]&&p[3]==='connect'){await confirmOwner(req.headers,user.id,b.password);const r=await connectProvider(req,p[2],user.id);return json({url:r.url},200,{'Set-Cookie':r.cookie});}
+  if(method==='DELETE'&&p[2]&&!p[3]){await confirmOwner(req.headers,user.id,b.password);await disconnectProvider(p[2],user.id);return json(await signInMethods(req,user.id));}
+  throw new HttpError(404,'Sign-in method action not found.');
+ }
  if(p[0]==='account'&&p[1]==='mfa')return json(await mfaAPI(req,p,user));
  await rateLimit('api:'+user.id,240);
  if(p[0]==='uploads'){
@@ -251,13 +260,13 @@ export async function handleAPI(req:Request){try{
  }
  if(p[0]==='account'){
   if(method==='PATCH'){const b=await body(req);if(typeof b.marketingOptIn==='boolean'&&b.name===undefined){await run('UPDATE users SET marketing_opt_in=?,marketing_opt_in_at=? WHERE id=?',b.marketingOptIn?1:0,b.marketingOptIn?now():null,user.id);await audit(user.id,b.marketingOptIn?'account.news-on':'account.news-off',user.id);return json({ok:true});}const name=z.string().trim().min(2).max(80).parse(b.name);await run('UPDATE users SET name=? WHERE id=?',name,user.id);return json({ok:true});}
-  if(method==='POST'&&p[1]==='email'){await rateLimit('change-email:'+user.id,5,3600000);const b=z.object({email:z.string().trim().email().max(254).transform(s=>s.toLowerCase()),password:z.string().min(1).max(128)}).parse(await body(req));
-   const me=await one('SELECT password_hash FROM users WHERE id=?',user.id);must(me&&await checkPassword(b.password,me.password_hash),'Your password is incorrect.',403);must(b.email!==user.email,'This is already your email.');must(!await one('SELECT id FROM users WHERE email=?',b.email),'An account with this email already exists.',409);
+  if(method==='POST'&&p[1]==='email'){await rateLimit('change-email:'+user.id,5,3600000);const b=z.object({email:z.string().trim().email().max(254).transform(s=>s.toLowerCase()),password:z.string().max(128).optional()}).parse(await body(req));
+   await confirmOwner(req.headers,user.id,b.password);must(b.email!==user.email,'This is already your email.');must(!await one('SELECT id FROM users WHERE email=?',b.email),'An account with this email already exists.',409);
    const c=await serviceConfig();
    if(c.demo&&!(c.mailKey&&c.mailFrom)){await run('UPDATE users SET email=?,pending_email=NULL WHERE id=?',b.email,user.id);await audit(user.id,'account.email-changed',user.id);return json({changed:true});}
    await run('UPDATE users SET pending_email=? WHERE id=?',b.email,user.id);const token=await makeAuthToken(user.id,'email');await sendAuthMail(b.email,token,'email',user.locale);await audit(user.id,'account.email-change-requested',user.id);return json({pending:b.email});}
   if(method==='DELETE'&&p[1]==='email'){await run("UPDATE users SET pending_email=NULL WHERE id=?",user.id);await run("DELETE FROM auth_tokens WHERE user_id=? AND type='email'",user.id);return json({ok:true});}
-  if(method==='DELETE'&&!p[1]){await rateLimit('delete-account:'+user.id,5,900000);const b=z.object({password:z.string().min(1).max(128)}).parse(await body(req));const account=await one('SELECT password_hash FROM users WHERE id=?',user.id);must(account&&await checkPassword(b.password,account.password_hash),'Your password is incorrect.',403);await deleteAccount(user);return json({ok:true},200,{'Set-Cookie':clearCookie(req)});}
+  if(method==='DELETE'&&!p[1]){await rateLimit('delete-account:'+user.id,5,900000);const b=z.object({password:z.string().max(128).optional()}).parse(await body(req));await confirmOwner(req.headers,user.id,b.password);await deleteAccount(user);return json({ok:true},200,{'Set-Cookie':clearCookie(req)});}
  }
  if(p[0]==='admin')return await adminAPI(req,p,user);
  throw new HttpError(404,'This action could not be found.');
