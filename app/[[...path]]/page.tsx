@@ -4,6 +4,7 @@ import {headers} from 'next/headers';
 import {notFound} from 'next/navigation';
 import type {Metadata} from 'next';
 import {langFromCookie,translate} from '@/lib/i18n';
+import {landingPage} from '@/lib/landing-pages';
 export const dynamic='force-dynamic';
 const titles:Record<string,string>={explore:'Explore templates',creations:'My creations',favorites:'Favorites',credits:'Credits',pricing:'Pricing',account:'Your account',login:'Sign in',register:'Create an account','forgot-password':'Forgot password','reset-password':'Choose a new password',verify:'Verify your email','confirm-email':'Confirm your new email',privacy:'Privacy Policy',terms:'Terms of Service',faq:'Help & FAQ',contact:'Contact us','removal-request':'Report a video',unsubscribe:'Unsubscribe',ideas:'Template ideas',feed:'Community'};
 export async function generateMetadata({params}:{params:Promise<{path?:string[]}>}):Promise<Metadata>{
@@ -12,6 +13,12 @@ export async function generateMetadata({params}:{params:Promise<{path?:string[]}
  if(path[0]==='template'){
    const {getPublicTemplate,config}=await import('@/lib/server/data');const t=await getPublicTemplate(path[1]);
    if(t){const image=new URL(t.thumbnail,config().origin).toString();return {title:`${t.name} ${tr('AI Video Template')} | PROJECT STUDIO`,description:t.description,alternates:{canonical:config().origin.replace(/\/$/,'')+'/template/'+t.slug},openGraph:{title:`${t.name} ${tr('AI Video Template')}`,description:t.description,images:[image]},twitter:{card:'summary_large_image',title:t.name,description:t.description,images:[image]}};}
+ }
+ // X1.7: landing pages for the main searches and the category pages.
+ if(path[0]==='category'&&path[1]||path.length===1&&landingPage(path[0])){
+   const {landingTemplates,ensureSeed}=await import('@/lib/server/data');await ensureSeed().catch(()=>{});const d=await landingTemplates(path,null);const l=d?.landing;
+   if(l){const vars={category:l.category?tr(l.category):''};const title=translate(lang,l.title,vars),description=translate(lang,l.description,vars);const canonical=config().origin.replace(/\/$/,'')+'/'+path.join('/');const image=d?.templates[0]?new URL(d.templates[0].thumbnail,config().origin).toString():undefined;
+    return {title:`${title} | PROJECT STUDIO`,description,alternates:{canonical},openGraph:{title,description,...(image?{images:[image]}:{})},twitter:{card:'summary_large_image',title,description,...(image?{images:[image]}:{})}};}
  }
  const title=path[0]==='admin'?'Studio admin':path[0]==='credits'&&path[1]==='checkout'?'Test checkout':titles[path[0]||''];
  const noindex=path[0]==='admin'||['creations','credits','account','favorites'].includes(path[0]);
@@ -22,11 +29,12 @@ export default async function Page({params,searchParams}:{params:Promise<{path?:
  const {path=[]}=await params;const query=await searchParams;
  const single=['explore','creations','favorites','credits','pricing','account','login','register','forgot-password','reset-password','verify','confirm-email','privacy','terms','faq','contact','removal-request','unsubscribe','ideas','feed'];
  const adminSections=['templates','media','generations','users','credit-packs','purchases','reports','announcements','ideas','promos','ai-costs','credits','providers','settings','operations','activity','connections'];
- const valid=!path.length||path.length===1&&single.includes(path[0])||path.length===2&&(path[0]==='template'||path[0]==='v')||path.length===3&&path[0]==='credits'&&path[1]==='checkout'||path[0]==='admin'&&(path.length===1||path.length===2&&adminSections.includes(path[1])||path.length===3&&['templates','users'].includes(path[1]));
+ const valid=!path.length||path.length===1&&(single.includes(path[0])||!!landingPage(path[0]))||path.length===2&&path[0]==='category'||path.length===2&&(path[0]==='template'||path[0]==='v')||path.length===3&&path[0]==='credits'&&path[1]==='checkout'||path[0]==='admin'&&(path.length===1||path.length===2&&adminSections.includes(path[1])||path.length===3&&['templates','users'].includes(path[1]));
  if(!valid)notFound();
  const data=await loadPage(path,await headers(),query);
  if(path[0]==='template'&&!data.selectedTemplate)notFound();
  if(path[0]==='v'&&!data.shared)notFound();
+ if(path[0]==='category'&&!data.landing)notFound();
  const ld=await structuredData(path,data);
  return <>{ld&&<script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(ld)}}/>}<Studio route={'/'+path.join('/')} query={query} {...data}/></>;
 }
@@ -36,6 +44,8 @@ async function structuredData(path:string[],data:Awaited<ReturnType<typeof loadP
  const origin=config().origin.replace(/\/$/,'');const BRAND='PROJECT STUDIO';
  if(!path.length||path[0]==='explore')return [{'@context':'https://schema.org','@type':'Organization',name:BRAND,url:origin,logo:origin+'/favicon.svg'},{'@context':'https://schema.org','@type':'WebSite',name:BRAND,url:origin}];
  if(path[0]==='template'&&data.selectedTemplate){const t=data.selectedTemplate;return {'@context':'https://schema.org','@type':'VideoObject',name:t.name,description:t.description,thumbnailUrl:new URL(t.thumbnail,origin).toString(),uploadDate:new Date(t.createdAt).toISOString(),...(t.previewVideo?{contentUrl:new URL(t.previewVideo,origin).toString()}:{})};}
+ // X1.7: a landing or category page is a collection of templates.
+ if(data.landing){const l=data.landing;return {'@context':'https://schema.org','@type':'CollectionPage',name:translate('en',l.title,{category:l.category||''}),url:origin+'/'+path.join('/'),mainEntity:{'@type':'ItemList',itemListElement:data.templates.slice(0,30).map((t,i)=>({'@type':'ListItem',position:i+1,url:origin+'/template/'+t.slug,name:t.name}))}};}
  if(path[0]==='faq'){const {FAQ}=await import('@/lib/faq');return {'@context':'https://schema.org','@type':'FAQPage',mainEntity:FAQ.flatMap(g=>g.items).map(([q,a])=>({'@type':'Question',name:q,acceptedAnswer:{'@type':'Answer',text:a.replace(/\[([^\]]+)\]\(\/[^)\s]*\)/g,'$1')}}))};}
  if(path[0]==='pricing'){const {listPackages}=await import('@/lib/server/credit-purchases');const packs=await listPackages().catch(()=>[]);const items=packs.filter(p=>p.prices.EUR).map((p,i)=>({'@type':'ListItem',position:i+1,item:{'@type':'Product',name:`${p.name} credit pack`,description:`${p.totalCredits} credits`,offers:{'@type':'Offer',price:(p.prices.EUR/100).toFixed(2),priceCurrency:'EUR',availability:'https://schema.org/InStock',url:origin+'/pricing'}}}));return items.length?{'@context':'https://schema.org','@type':'ItemList',itemListElement:items}:null;}
  return null;

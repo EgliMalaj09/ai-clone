@@ -201,6 +201,16 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  // X1 — robots.txt, sitemap.xml and canonical URLs (SEO)
  const robots=await request('/robots.txt');ok('robots.txt blocks admin and points to the sitemap',typeof robots.body==='string'&&robots.body.includes('Disallow: /admin')&&robots.body.includes('Sitemap:'));
  const sitemap=await request('/sitemap.xml');ok('sitemap.xml lists public pages and published templates',typeof sitemap.body==='string'&&sitemap.body.includes('<urlset')&&sitemap.body.includes('/template/formula-driver')&&sitemap.body.includes('/pricing'));
+ // X1.7: landing pages for the main searches and one page per category.
+ ok('sitemap.xml lists the landing pages and every category page',sitemap.body.includes('/ai-video-nga-foto')&&sitemap.body.includes('/video-per-dasem')&&sitemap.body.includes('/category/couples')&&sitemap.body.includes('/category/sports'));
+ const wedding=(await request('/video-per-dasem')).text;
+ ok('The wedding landing page shows wedding templates only, with its own title, heading and canonical',wedding.includes('/template/wedding-cinematic')&&!wedding.includes('/template/formula-driver')&&/<title>AI wedding video from your photos \| PROJECT STUDIO<\/title>/.test(wedding)&&wedding.includes('A cinematic wedding video from your photos')&&/<link rel="canonical" href="[^"]*\/video-per-dasem"/.test(wedding)&&wedding.includes('"@type":"CollectionPage"'));
+ const birthday=(await request('/video-per-ditelindje')).text;
+ ok('A landing page with no templates in its categories yet shows every template',birthday.includes('/template/formula-driver')&&birthday.includes('/template/wedding-cinematic'));
+ const couples=(await request('/category/couples',{lang:'sq'})).text;
+ ok('A category page lists its templates, links to other categories and is translated',couples.includes('/template/wedding-cinematic')&&!couples.includes('/template/astronaut')&&couples.includes('href="/category/sports"')&&couples.includes('Video me AI nga një foto: Çifte'));
+ await request('/category/no-such-category',{expected:404});ok('An unknown category page returns 404',true);
+ const footerLinks=(await request('/')).text;ok('Every page links to the landing pages from the footer',footerLinks.includes('href="/ai-video-nga-foto"')&&footerLinks.includes('href="/video-per-ditelindje"'));
  const pricingHtml=await request('/pricing');ok('Indexable pages declare a canonical URL',typeof pricingHtml.body==='string'&&pricingHtml.body.includes('rel="canonical"'));
  const homeLd=await request('/');ok('Homepage has Organization/WebSite structured data',typeof homeLd.body==='string'&&homeLd.body.includes('application/ld+json')&&homeLd.body.includes('"Organization"')&&homeLd.body.includes('"WebSite"'));
  const tplLd=await request('/template/formula-driver');ok('Template pages have VideoObject structured data',typeof tplLd.body==='string'&&tplLd.body.includes('application/ld+json')&&tplLd.body.includes('"VideoObject"'));

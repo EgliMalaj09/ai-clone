@@ -2,6 +2,7 @@ import {liveWorkflow} from './workflow-presets';
 import {env} from 'cloudflare:workers';
 import {seedTemplates} from '../catalog';
 import {DEFAULT_PHOTO_GUIDELINES,EMPTY_SUPPORT_INFO,cleanGuidelineList,publicOptions,type OptionGroup,type SupportInfo,type AdminTemplate,type PhotoGuidelines,type PublicTemplate,type WorkflowStep} from '../contracts';
+import type {Landing} from '../landing-pages';
 // D1 rows are dynamically shaped; each query's columns are read by name at the call site.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Row=Record<string,any>;
@@ -64,17 +65,34 @@ export async function ensureSeed(){if(seeded)return;const marker=await one("SELE
  const e=runtime();if(e.ADMIN_EMAIL&&e.ADMIN_PASSWORD_HASH){const existing=await one('SELECT id FROM users WHERE email=?',e.ADMIN_EMAIL.toLowerCase());if(!existing)await run('INSERT OR IGNORE INTO users (id,email,name,password_hash,role,status,email_verified,created_at,locale) VALUES (?,?,?,?,?,?,?,?,?)',uid('usr_'),e.ADMIN_EMAIL.toLowerCase(),'Studio Admin',e.ADMIN_PASSWORD_HASH,'admin','active',1,now(),'en');}
  seeded=true;
 }
+/** Templates and heading for a landing or category page (X1.7); null for any other path. */
+export async function landingTemplates(path:string[],userId:string|null){
+ const {landingPage,categorySlug}=await import('../landing-pages');const {applyExperiments}=await import('./experiments');
+ const order='ORDER BY sort_order,featured DESC,trending DESC,created_at DESC,id';
+ const cats=(await all('SELECT DISTINCT category FROM templates WHERE active=1 ORDER BY category')).map(r=>String(r.category));
+ if(path[0]==='category'&&path.length===2){
+  const category=cats.find(c=>categorySlug(c)===path[1]);if(!category)return {templates:[] as PublicTemplate[],categories:cats,landing:null};
+  const rows=await applyExperiments((await all('SELECT * FROM templates WHERE active=1 AND category=? '+order+' LIMIT 200',category)).map(publicTemplate),userId);
+  return {templates:rows,categories:cats,landing:{kind:'category' as const,slug:path[1],category,title:'{category} AI video templates',description:'{category} AI video templates: upload one photo and make your own short video.',heading:'{category} AI videos from one photo',intro:'Pick one of these {category} templates, upload a clear photo and get your own short video in My creations.',count:rows.length}};
+ }
+ const page=path.length===1?landingPage(path[0]):undefined;if(!page)return null;
+ const inCats=page.categories.length?(await all(`SELECT * FROM templates WHERE active=1 AND category IN (${page.categories.map(()=>'?').join(',')}) ${order} LIMIT 200`,...page.categories)):[];
+ const rows=await applyExperiments((inCats.length?inCats:await all('SELECT * FROM templates WHERE active=1 '+order+' LIMIT 200')).map(publicTemplate),userId);
+ return {templates:rows,categories:cats,landing:{kind:'search' as const,slug:page.slug,title:page.title,description:page.description,heading:page.heading,intro:page.intro,count:rows.length}};
+}
 /** Storefront data (C9): one page of the catalog for the current filters, plus the hero posters; favorites load the customer's saved templates. */
 async function storefront(path:string[],query:Record<string,string|undefined>,userId:string|null){
- const empty={templates:[] as PublicTemplate[],hero:[] as PublicTemplate[],categories:[] as string[],pagination:null as null|{page:number;limit:number;total:number;pages:number}};
+ const empty={templates:[] as PublicTemplate[],hero:[] as PublicTemplate[],categories:[] as string[],pagination:null as null|{page:number;limit:number;total:number;pages:number},landing:null as null|Landing};
  if(path[0]==='favorites'){if(!userId)return empty;const rows=await all('SELECT t.* FROM templates t JOIN favorites f ON f.template_id=t.id WHERE f.user_id=? AND t.active=1 ORDER BY t.featured DESC,t.created_at DESC LIMIT 500',userId);return {...empty,templates:rows.map(publicTemplate)};}
+ // X1.7: landing pages for the main searches and one page per category list their templates in full (they are short).
+ const landing=await landingTemplates(path,userId);if(landing)return {...empty,...landing};
  if(path.length&&path[0]!=='explore')return empty;
  const {catalogPage,CATALOG_PAGE_SIZE}=await import('./catalog-query');const {applyExperiments}=await import('./experiments');const {filtersFromQuery,filtersToQuery}=await import('../discovery');
  const params=filtersToQuery(filtersFromQuery(query),new URLSearchParams());params.set('limit',String(CATALOG_PAGE_SIZE));
  const [page,hero]=await Promise.all([catalogPage(new URL('http://catalog/?'+params),userId),path.length?Promise.resolve([]):all('SELECT * FROM templates WHERE active=1 ORDER BY featured DESC,trending DESC,created_at DESC,id LIMIT 3')]);
- return {templates:page.templates,hero:await applyExperiments(hero.map(publicTemplate),userId),categories:page.categories as string[],pagination:page.pagination};
+ return {templates:page.templates,hero:await applyExperiments(hero.map(publicTemplate),userId),categories:page.categories as string[],pagination:page.pagination,landing:null};
 }
-export async function loadPage(path:string[],h:Headers,query:Record<string,string|undefined>={}){const {langFromCookie}=await import('../i18n');const lang=langFromCookie(h.get('cookie'));try{await ensureSeed();const {getUser}=await import('./security');const user=await getUser(h);const {templates,hero,categories,pagination}=await storefront(path,query,user?.id??null);const selected=path[0]==='template'?await getPublicTemplate(path[1]):null;
+export async function loadPage(path:string[],h:Headers,query:Record<string,string|undefined>={}){const {langFromCookie}=await import('../i18n');const lang=langFromCookie(h.get('cookie'));try{await ensureSeed();const {getUser}=await import('./security');const user=await getUser(h);const {templates,hero,categories,pagination,landing}=await storefront(path,query,user?.id??null);const selected=path[0]==='template'?await getPublicTemplate(path[1]):null;
  const gallery=selected?await (await import('./feed')).templateGallery(selected.id).catch(()=>[]):[];
  const shared=path[0]==='v'?await (await import('./share')).sharedVideo(path[1],true):null;
  // Related templates (C27): others from the same category first, then the most featured, never the template itself.
@@ -84,4 +102,4 @@ export async function loadPage(path:string[],h:Headers,query:Record<string,strin
  let lowBalance:null|{cheapest:number;pack:{name:string;credits:number;price:number;currency:string}|null}=null;
  if(user&&credits){const c=await one('SELECT MIN(credit_cost) AS c FROM templates WHERE active=1 AND credit_cost>0');const cheapest=Number(c?.c||0);if(cheapest&&credits.available<cheapest){const packs=await listPackages().catch(()=>[]);const currency=lang==='en'&&packs.some(p=>p.prices.EUR)?'EUR':packs.some(p=>p.prices.ALL)?'ALL':'EUR';const best=packs.filter(p=>p.prices[currency]&&p.totalCredits>=cheapest-credits.available).sort((a,b)=>a.prices[currency]/a.totalCredits-b.prices[currency]/b.totalCredits)[0];lowBalance={cheapest,pack:best?{name:best.name,credits:best.totalCredits,price:best.prices[currency],currency}:null};}}const guidelines=await photoGuidelines().catch(()=>({do:[],dont:[]}));const support=await supportInfo().catch(()=>EMPTY_SUPPORT_INFO);// The customer's language follows the switcher, so emails go out in the language they last used (C10).
  if(user&&user.role!=='admin'&&user.locale!==lang)await run('UPDATE users SET locale=? WHERE id=?',lang,user.id).catch(()=>{});
- return {...availability,lang,shared,gallery,lowBalance,templates,hero,categories,pagination,related:relatedSeen,selectedTemplate:selected,user,credits,creditRef,singleRef,photoGuidelines:guidelines,support,demo:config().demo,favoriteIds:user?(await all('SELECT template_id FROM favorites WHERE user_id=?',user.id)).map(f=>f.template_id as string):[]};}catch(e){const {reportError}=await import('./errors');await reportError('page','Page unavailable',{error:e,context:{path:'/'+path.join('/')}});return {registrationAvailable:false,purchasingAvailable:false,generationAvailable:false,lang,shared:null,gallery:[],lowBalance:null,templates:[],hero:[],categories:[],pagination:null,related:[],selectedTemplate:null,user:null,credits:null,creditRef:{},photoGuidelines:{do:[],dont:[]},support:EMPTY_SUPPORT_INFO,demo:config().demo,favoriteIds:[],error:'The studio is temporarily unavailable. Please refresh in a moment.'};}}
+ return {...availability,landing,lang,shared,gallery,lowBalance,templates,hero,categories,pagination,related:relatedSeen,selectedTemplate:selected,user,credits,creditRef,singleRef,photoGuidelines:guidelines,support,demo:config().demo,favoriteIds:user?(await all('SELECT template_id FROM favorites WHERE user_id=?',user.id)).map(f=>f.template_id as string):[]};}catch(e){const {reportError}=await import('./errors');await reportError('page','Page unavailable',{error:e,context:{path:'/'+path.join('/')}});return {registrationAvailable:false,purchasingAvailable:false,generationAvailable:false,lang,shared:null,gallery:[],lowBalance:null,templates:[],hero:[],categories:[],pagination:null,landing:null,related:[],selectedTemplate:null,user:null,credits:null,creditRef:{},photoGuidelines:{do:[],dont:[]},support:EMPTY_SUPPORT_INFO,demo:config().demo,favoriteIds:[],error:'The studio is temporarily unavailable. Please refresh in a moment.'};}}
