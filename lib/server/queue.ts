@@ -17,7 +17,8 @@ const extensions:Record<string,string>={'video/mp4':'mp4','video/webm':'webm','i
 const active=['queued','preparing','generating','finalizing'];
 /** Best-effort email when a creation finishes (C11.2); a mail problem never affects the creation or its credits. */
 async function notifyFinished(g:Row,kind:GenerationMailKind){
- if(g.test_run)return;
+ // A failed or refused free trial video (V47) used no credits, so there is no "credits returned" email to send.
+ if(g.test_run||g.trial&&kind!=='ready')return;
  try{
   const u=g.user_id?await one('SELECT email,locale FROM users WHERE id=?',g.user_id):null;if(!u?.email)return;
   const c=await serviceConfig();
@@ -27,7 +28,7 @@ async function notifyFinished(g:Row,kind:GenerationMailKind){
 /** kind 'provider' means the AI provider itself reported the job as failed; only those count against a photo (V48).
  * Timeouts, our own errors and provider account problems are 'system' failures and never block a photo. */
 export async function failGeneration(g:Row,error:string,kind:'provider'|'system'='system'){
- const result=await run("UPDATE generations SET status='failed',error=?,internal_error=?,failure_kind=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",kind==='provider'?'Your video could not be completed. Your credits were returned. If it fails again with the same photo, use a different one.':'Your video could not be completed. Your credits were returned.',error.slice(0,2000),kind,now(),g.id,g.lease_token);
+ const result=await run("UPDATE generations SET status='failed',error=?,internal_error=?,failure_kind=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",g.trial?(kind==='provider'?'Your free video could not be completed. You can try your free video again — if it fails again with the same photo, use a different one.':'Your free video could not be completed. You can try your free video again.'):kind==='provider'?'Your video could not be completed. Your credits were returned. If it fails again with the same photo, use a different one.':'Your video could not be completed. Your credits were returned.',error.slice(0,2000),kind,now(),g.id,g.lease_token);
  if(!result.meta.changes)return;
  await run("UPDATE generation_steps SET status='failed',error=? WHERE generation_id=? AND status NOT IN ('completed','cancelled')",error.slice(0,2000),g.id);
  await event('generation_failed',g.user_id,{generationId:g.id});
@@ -40,7 +41,7 @@ export const STRIKE_LIMIT=3;
 /** The AI provider refused the content: the video ends as "refused", its credits return, and the account gets a strike.
  * The third strike blocks the account from uploading, creating and buying until an administrator unblocks it. */
 export async function refuseGeneration(g:Row,reason:string){
- const result=await run("UPDATE generations SET status='refused',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",'This video was refused under the content rules. Your credits were returned.',reason.slice(0,2000),now(),g.id,g.lease_token);
+ const result=await run("UPDATE generations SET status='refused',error=?,internal_error=?,lease_until=0,completed_at=? WHERE id=? AND deleted_at IS NULL AND status IN ('queued','preparing','generating','finalizing') AND lease_token=?",g.trial?'This video was refused under the content rules.':'This video was refused under the content rules. Your credits were returned.',reason.slice(0,2000),now(),g.id,g.lease_token);
  if(!result.meta.changes)return;
  await run("UPDATE generation_steps SET status='failed',error=? WHERE generation_id=? AND status NOT IN ('completed','cancelled')",reason.slice(0,2000),g.id);
  if(g.hold_id)await settleHold(g.hold_id,'release').catch(e=>reportError('credits','Credit release needs review; the hold sweep will retry',{error:e,context:{generationId:g.id as string}}));
@@ -64,7 +65,7 @@ async function tryFallback(g:Row,token:string,reason:string){
  return true;
 }
 export async function tickGeneration(id:string){
- const token=uid();const g=await one("UPDATE generations SET lease_token=?,lease_until=? WHERE id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND lease_until<? AND next_run_at<=? AND (generations.test_run=1 OR EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=generations.hold_id AND h.status='pending')) RETURNING *",token,now()+45000,id,now(),now());if(!g)return;
+ const token=uid();const g=await one("UPDATE generations SET lease_token=?,lease_until=? WHERE id=? AND status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL AND lease_until<? AND next_run_at<=? AND (generations.test_run=1 OR generations.trial=1 OR EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=generations.hold_id AND h.status='pending')) RETURNING *",token,now()+45000,id,now(),now());if(!g)return;
  try{
   const elapsed=now()-(g.started_at||now());if(elapsed>30*60*1000){await failGeneration(g,'Generation exceeded the 30 minute deadline.');return;}
   const snapshot=parse<Row>(g.workflow_snapshot,{});const steps=snapshot.steps as WorkflowStep[];const i=g.current_step;
@@ -72,7 +73,7 @@ export async function tickGeneration(id:string){
   if(g.status==='queued'){await run("UPDATE generations SET status='preparing',started_at=COALESCE(started_at,?),next_run_at=? WHERE id=? AND lease_token=?",now(),now()+500,id,token);await event('generation_started',g.user_id,{generationId:id});return;}
   if(g.status==='finalizing'){
    const asset=await one("SELECT id FROM generated_assets WHERE generation_id=? ORDER BY created_at DESC LIMIT 1",id);must(asset,'No output asset was saved.');
-   const completed=await run("UPDATE generations SET status='completed',completed_at=?,error=NULL WHERE id=? AND lease_token=? AND status='finalizing' AND deleted_at IS NULL AND (test_run=1 OR EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=? AND h.status='pending'))",now(),id,token,g.hold_id);
+   const completed=await run("UPDATE generations SET status='completed',completed_at=?,error=NULL WHERE id=? AND lease_token=? AND status='finalizing' AND deleted_at IS NULL AND (test_run=1 OR trial=1 OR EXISTS (SELECT 1 FROM credit_holds h WHERE h.id=? AND h.status='pending'))",now(),id,token,g.hold_id);
    // Delivered: charge the reserved credits. If this is interrupted, the hold sweep captures it.
    if(completed.meta.changes){if(g.hold_id)await settleHold(g.hold_id,'capture').catch(e=>reportError('credits','Credit capture needs review; the hold sweep will retry',{error:e,context:{generationId:id}}));await event('generation_completed',g.user_id,{generationId:id});await notifyFinished(g,'ready');}return;
   }
@@ -86,7 +87,7 @@ export async function tickGeneration(id:string){
    await failGeneration(g,'Provider submission was interrupted. Reconcile with the provider before retrying.');return;
   }
   if(!record){
-   const vars:Record<string,string>={template_name:snapshot.name,aspect_ratio:step.aspectRatio||snapshot.aspectRatio,duration:String(step.duration||snapshot.duration)};
+   const vars:Record<string,string>={template_name:snapshot.name,aspect_ratio:step.aspectRatio||snapshot.aspectRatio,duration:String(step.duration||snapshot.duration),resolution:String(step.resolution||'')};
    // Store asset identities, not expiring bearer links, between steps and retries.
    for(const [name,value] of Object.entries(parse<Record<string,string>>(g.context,{}))){
     const asset=value.startsWith('asset_')?value:value.match(/\/api\/media\/(asset_[a-zA-Z0-9_]+)/)?.[1];

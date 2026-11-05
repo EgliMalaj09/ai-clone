@@ -1,0 +1,1 @@
+ALTER TABLE `generations` ADD `trial` integer DEFAULT 0 NOT NULL;

@@ -3,7 +3,7 @@ import type {AdminTemplate,PublicTemplate,PhotoGuidelines,SupportInfo} from './c
 
 export type Pagination={page:number;limit:number;total:number;pages:number};
 
-export type Creation={id:string;templateName:string;templateSlug:string;thumbnail:string;status:string;creditCost:number;creditStatus:'pending'|'captured'|'released'|null;createdAt:number;startedAt:number|null;completedAt:number|null;error:string|null;assetId:string|null;assetMime?:string|null;isRedo:boolean;report:ReportSummary|null;repeatCost:number|null;shareUrl:string|null;rating:number|null;isPublic:boolean;typicalSeconds:number|null};
+export type Creation={id:string;templateName:string;templateSlug:string;thumbnail:string;status:string;creditCost:number;creditStatus:'pending'|'captured'|'released'|null;createdAt:number;startedAt:number|null;completedAt:number|null;error:string|null;assetId:string|null;assetMime?:string|null;isRedo:boolean;trial?:boolean;report:ReportSummary|null;repeatCost:number|null;shareUrl:string|null;rating:number|null;isPublic:boolean;typicalSeconds:number|null};
 export type FeedItem={id:string;templateName:string;templateSlug:string;thumbnail:string;video:string;mime?:string;shareUrl:string;likes:number;liked:boolean;publicAt:number};
 export type ReportSummary={status:string;resolution:string|null;reason:string;guideline:string|null;adminReason:string|null;createdAt:number};
 export type CreationsPage={generations:Creation[];activeCount:number;pagination:Pagination};
@@ -47,7 +47,7 @@ export type AdminGeneration={id:string;user_id:string|null;template_name:string;
 export type GenerationStep={id:string;step_order:number;type:string;provider:string;model:string;status:string;error:string|null};
 export type AdminUser={id:string;email:string;name:string;role:string;status:string;content_strikes:number;blocked_at:number|null;email_verified:number;created_at:number;generation_count:number;purchase_count:number;credits:number;spending:{currency:string;amount:number}[]};
 export type Provider={id:string;name:string;enabled:number;configured:boolean};
-export type StudioSettings={welcomeCredits:number;photoGuidelines:PhotoGuidelines;support:SupportInfo;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean;dispatcher:{at:number|null;source:'cron'|'external'|null;fresh:boolean};maintenance:Maintenance;limits:SpendingLimits;exchangeRates:ExchangeRates};
+export type StudioSettings={welcomeCredits:number;freeTrial?:boolean;photoGuidelines:PhotoGuidelines;support:SupportInfo;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean;dispatcher:{at:number|null;source:'cron'|'external'|null;fresh:boolean};maintenance:Maintenance;limits:SpendingLimits;exchangeRates:ExchangeRates};
 export type ExchangeRates={EUR:number;ALL:number};
 export type SpendingLimits={concurrent:number;daily:number;studioDailyCost:number};
 export type Maintenance={purchasesPaused:boolean;creationsPaused:boolean;message:string};

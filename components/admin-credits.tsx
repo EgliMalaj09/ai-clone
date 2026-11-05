@@ -99,3 +99,10 @@ export function WelcomeCredits({value,onSaved}:{value:number;onSaved:()=>void}){
  return <section className="panel"><h2>Welcome credits</h2><p>Credits given once to each new account after its email is verified. 0 turns this off.</p><form onSubmit={async e=>{e.preventDefault();setBusy(true);try{await api('admin/settings','PATCH',{welcomeCredits:Number(amount)});toast.success('Welcome credits updated');onSaved()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}}>
   <Field label="Credits per new account"><input type="number" min={0} max={100000} step={1} required value={amount} onChange={e=>setAmount(e.target.value)}/></Field><button className="button primary small" disabled={busy}>{busy?<Busy/>:'Save'}</button></form></section>;
 }
+
+/** V47: one free 480p video per verified customer account; turn off to stop new free videos (e.g. if it is abused). */
+export function FreeTrialSetting({on,onSaved}:{on:boolean;onSaved:()=>void}){
+ const [busy,setBusy]=useState(false);
+ return <section className="panel"><h2>Free trial video</h2><p>Each verified customer can make one free video, rendered at 480p with no watermark. It costs you the AI price of that video. Turning this off stops new free videos; ones already started still finish.</p>
+  <button className={'button small '+(on?'danger-outline':'primary')} disabled={busy} onClick={async()=>{setBusy(true);try{await api('admin/settings','PATCH',{freeTrial:!on});toast.success(on?'Free trial turned off':'Free trial turned on');onSaved()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}}>{busy?<Busy/>:on?'Turn off the free trial':'Turn on the free trial'}</button></section>;
+}

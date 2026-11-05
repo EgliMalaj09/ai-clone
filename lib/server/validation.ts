@@ -40,7 +40,7 @@ export const registerSchema=z.object({
  marketingOptIn:z.boolean().optional().default(false),
  ref:z.string().max(20).optional(),
 });
-export const generationSchema=z.object({templateId:z.string().max(150),uploadIds:z.array(z.string().max(100)).min(1).max(4),idempotencyKey:z.string().uuid(),expectedCost:z.number().int(),consent:z.literal(true),options:z.record(z.string().max(40)).default({})});
+export const generationSchema=z.object({templateId:z.string().max(150),uploadIds:z.array(z.string().max(100)).min(1).max(4),idempotencyKey:z.string().uuid(),expectedCost:z.number().int(),consent:z.literal(true),options:z.record(z.string().max(40)).default({}),trial:z.boolean().optional()});
 
 /** Preview assets are deliberately public. Only studio media can be published; personal uploads are never reachable here. */
 export async function validateTemplateMedia(t:{thumbnail:string;previewVideo:string;previewImages:string[]}){

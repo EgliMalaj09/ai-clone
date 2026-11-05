@@ -50,7 +50,7 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const second=await request('/api/auth/register',{method:'POST',data:{name:'Other User',email:'other@studio.test',password:'Other-password-123',acceptTerms:true,confirmAge:true},expected:201});
  const adm=await request('/api/auth/login',{method:'POST',data:{email:'admin@studio.test',password:adminPassword}});const adminCookie=adm.cookie;ok('Administrator login succeeds',adm.body.user.role==='admin');
  const grant=(userId,amount)=>request(`/api/admin/users/${userId}/credits`,{method:'POST',cookie:adminCookie,data:{amount,reason:'QA credits',currentPassword:adminPassword,idempotencyKey:randomUUID()}});
- const noCredit=new FormData();noCredit.append('file',new File([await readFile('public/media/formula-driver.webp')],'photo.webp',{type:'image/webp'}));await request('/api/uploads',{method:'POST',cookie:userCookie,data:noCredit,expected:402});ok('Uploading requires credits',true);
+ const noCredit=new FormData();noCredit.append('file',new File([await readFile('public/media/formula-driver.webp')],'photo.webp',{type:'image/webp'}));await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{freeTrial:false}});await request('/api/uploads',{method:'POST',cookie:userCookie,data:noCredit,expected:402});await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{freeTrial:true}});ok('Uploading requires credits (or the free video, V47)',true);
  await grant(reg.body.user.id,2000);await grant(second.body.user.id,100);ok('Admin grants credits',(await balance(userCookie)).available===2000);
  await upload(userCookie,'fake.txt',new Uint8Array(40));ok('Unsupported file format rejected',true);
  const fake=new FormData();fake.append('file',new File([new Uint8Array(64)],'fake.webp',{type:'image/webp'}));await request('/api/uploads',{method:'POST',cookie:userCookie,data:fake,expected:415});ok('Forged image MIME rejected',true);
@@ -575,6 +575,31 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const link=new URL(done.files.find(f=>f.kind==='output').downloadUrl);const fetched=await mf.dispatchFetch(config.APP_ORIGIN+link.pathname+link.search);
  ok('Export download links work without signing in, as attachments',fetched.status===200&&fetched.headers.get('content-disposition')?.includes('attachment'));await fetched.arrayBuffer();
  await request('/api/auth/logout',{method:'POST',cookie:userCookie,data:{}});await request('/api/favorites',{cookie:userCookie,expected:401});ok('Sign-out invalidates the session',true);
+ // V47: one free video per account, rendered at 480p, using no credits.
+ const trialReg=await request('/api/auth/register',{method:'POST',data:{name:'Trial Tester',email:'trial@studio.test',password:'Trial-password-123',acceptTerms:true,confirmAge:true},expected:201});const trialCookie=trialReg.cookie,trialUser=trialReg.body.user.id;
+ const trialPage=(await request('/template/formula-driver',{cookie:trialCookie})).text;
+ ok('A new account with no credits is offered its free video and may upload a photo',trialPage.includes('Your first video is free')&&(await balance(trialCookie)).available===0);
+ const trialPhoto=(await upload(trialCookie)).body.id;
+ const fresh=(await request('/api/templates?limit=50',{cookie:trialCookie})).body.templates,trialTpl=fresh.find(t=>t.slug==='formula-driver'),astronautTpl=fresh.find(t=>t.slug==='astronaut');
+ const trialStart=await request('/api/generations',{method:'POST',cookie:trialCookie,data:{templateId:trialTpl.id,uploadIds:[trialPhoto],idempotencyKey:randomUUID(),expectedCost:trialTpl.creditCost,consent:true,trial:true},expected:201});
+ const trialRow=await db.prepare('SELECT trial,credit_cost,hold_id,workflow_snapshot FROM generations WHERE id=?').bind(trialStart.body.generationId).first();
+ const trialSteps=JSON.parse(trialRow.workflow_snapshot).steps.filter(s=>s.type==='video');
+ ok('The free video uses no credits and asks the AI for 480p',trialRow.trial===1&&trialRow.credit_cost===0&&!trialRow.hold_id&&trialSteps.length>0&&trialSteps.every(s=>s.resolution==='480p'&&s.settings.resolution==='480p')&&(await balance(trialCookie)).available===0);
+ const trialAgain=await request('/api/generations',{method:'POST',cookie:trialCookie,data:{templateId:trialTpl.id,uploadIds:[trialPhoto],idempotencyKey:randomUUID(),expectedCost:trialTpl.creditCost,consent:true,trial:true},expected:201});
+ ok('Sending the same free video twice returns the same video, not a second one',trialAgain.body.generationId===trialStart.body.generationId);
+ const trialDone=await waitDone(trialCookie,trialStart.body.generationId);
+ const trialList=(await request('/api/generations',{cookie:trialCookie})).body.generations;
+ ok('The free video completes without credits and is marked as the free 480p video',trialDone.g.status==='completed'&&trialList.find(g=>g.id===trialStart.body.generationId)?.trial===true&&(await balance(trialCookie)).available===0);
+ const secondTrial=await request('/api/generations',{method:'POST',cookie:trialCookie,data:{templateId:astronautTpl.id,uploadIds:[trialPhoto],idempotencyKey:randomUUID(),expectedCost:astronautTpl.creditCost,consent:true,trial:true},expected:409});
+ await request('/api/uploads',{method:'POST',data:(()=>{const f=new FormData();f.append('file',new File([new Uint8Array(10)],'x.webp',{type:'image/webp'}));return f})(),cookie:trialCookie,expected:402});
+ ok('Only one free video per account; after it, uploads need credits again',/already been used/.test(secondTrial.body.error)&&!(await request('/template/formula-driver',{cookie:trialCookie})).text.includes('Your first video is free'));
+ await db.prepare("UPDATE generations SET status='failed' WHERE id=?").bind(trialStart.body.generationId).run();
+ ok('A failed free video gives the free video back',(await request('/template/formula-driver',{cookie:trialCookie})).text.includes('Your first video is free'));
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{freeTrial:false}});
+ const off=await request('/api/generations',{method:'POST',cookie:trialCookie,data:{templateId:trialTpl.id,uploadIds:[trialPhoto],idempotencyKey:randomUUID(),expectedCost:trialTpl.creditCost,consent:true,trial:true},expected:409});
+ ok('The admin can turn the free trial off',/paused/.test(off.body.error)&&(await request('/api/admin/settings',{cookie:adminCookie})).body.freeTrial===false);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{freeTrial:true}});
+ void trialUser;
  // V1: social sign-in. A separate instance carries Google/Apple keys and mocks the providers' token/identity endpoints.
  const {Response:MFResponse}=require('miniflare');
  const {generateKeyPairSync}=require('node:crypto');

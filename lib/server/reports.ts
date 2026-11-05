@@ -90,6 +90,8 @@ export async function resolveReport(admin:StudioUser,id:string,input:unknown){
  const brand=config().brandName,origin=config().origin,support=config().mailFrom||undefined;
  const customer=og.user_id?await one('SELECT email,locale FROM users WHERE id=?',og.user_id):null;const email=customer?.email as string|undefined,lang=customer?.locale==='en'?'en' as const:'sq' as const;
 
+ // V47: a free trial video used no credits, so it has no free full-quality redo; decline or just reply instead.
+ if(b.decision==='approve')must(!og.trial,'This was the customer’s free trial video, so there is no free redo. Choose another decision.',409);
  if(b.decision==='approve'){
   let amount=Number(og.credit_cost)||0;
   if(amount<=0){const t=await getAdminTemplate(og.template_id as string);amount=t?.creditCost||0;}

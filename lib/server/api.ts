@@ -39,11 +39,12 @@ import {langFromCookie,translate,type Lang} from '../i18n';
 const fieldMessages:Record<string,string>={email:'Enter a valid email address.',password:'Use a password with 10 to 128 characters.',newPassword:'Use a password with 10 to 128 characters.',name:'Enter a name with 2 to 80 characters.',acceptTerms:'Accept the Terms and Privacy Policy to continue.',confirmAge:'Confirm your age to continue.'};
 const zodDefault=/^(String must|Invalid|Required|Expected|Number must)/;
 const fieldMessage=(lang:Lang,path:string,message:string)=>fieldMessages[path]?translate(lang,zodDefault.test(message)?fieldMessages[path]:message):zodDefault.test(message)?`${path}: ${message}`:translate(lang,message);
-import {TERMS_VERSION,cleanGuidelineList,isStaff,optionsCost,pickedChoices,type AdminTemplate,type StudioUser} from '../contracts';
+import {TERMS_VERSION,cleanGuidelineList,isStaff,optionsCost,pickedChoices,type AdminTemplate,type OptionChoice,type OptionGroup,type StudioUser} from '../contracts';
+import {TRIAL_RESOLUTION,TRIAL_USED_SQL,freeTrialAvailable,setTrialEnabled,trialEnabled} from './trial';
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});
 const body=jsonBody;
-const generationPublic=(g:Row)=>({id:g.id,templateName:g.template_name,templateSlug:g.template_slug,thumbnail:g.thumbnail,status:g.status,creditCost:g.credit_cost,creditStatus:g.credit_status??null,createdAt:g.created_at,startedAt:g.started_at,completedAt:g.completed_at,error:g.error,assetId:g.asset_id,assetMime:g.asset_mime??null,isRedo:!!g.report_id});
+const generationPublic=(g:Row)=>({id:g.id,templateName:g.template_name,templateSlug:g.template_slug,thumbnail:g.thumbnail,status:g.status,creditCost:g.credit_cost,creditStatus:g.credit_status??null,createdAt:g.created_at,startedAt:g.started_at,completedAt:g.completed_at,error:g.error,assetId:g.asset_id,assetMime:g.asset_mime??null,isRedo:!!g.report_id,trial:!!g.trial});
 async function generationsFor(userId:string,url:URL,id?:string){
  const {page,limit,offset}=pageQuery(url,24),status=url.searchParams.get('status')||'all';
  const conditions=['g.user_id=?','g.deleted_at IS NULL'],args:unknown[]=[userId];
@@ -81,7 +82,30 @@ async function providerFailures(userId:string,uploadId:string){
  const r=await one("SELECT COUNT(*) AS n FROM generations g, json_each(CASE WHEN json_valid(g.input_ids) THEN g.input_ids ELSE '[]' END) j WHERE g.user_id=? AND g.status='failed' AND g.failure_kind='provider' AND j.value=?",userId,uploadId);
  return Number(r?.n||0);
 }
-async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(user);
+type Chosen=OptionChoice[];
+const picks=(groups:OptionGroup[],chosen:Chosen)=>Object.fromEntries(groups.map((g,i)=>[g.id,chosen[i]?.id]));
+/** The template as this one video will run it: picked options applied, and for the free trial (V47) every video step at 480p. */
+function workflowSnapshot(t:AdminTemplate,chosen:Chosen,picked:Record<string,string|undefined>,trial=false){
+ const aspect=chosen.find(c=>c.aspectRatio)?.aspectRatio,extra=chosen.map(c=>c.prompt).filter(Boolean).join(' '),model=chosen.find(c=>c.model)?.model,main=t.workflow.map(s=>s.type).lastIndexOf('video')>=0?t.workflow.map(s=>s.type).lastIndexOf('video'):t.workflow.length-1;
+ return {name:t.name,slug:t.slug,aspectRatio:aspect||t.aspectRatio,duration:t.duration,options:picked,...(trial?{trial:true}:{}),steps:t.workflow.map((s,i)=>({...s,...(aspect?{aspectRatio:aspect}:{}),...(model&&i===main?{model}:{}),...(trial&&s.type==='video'?{resolution:TRIAL_RESOLUTION}:{}),prompt:(s.prompt||t.hiddenPrompt)+(extra?' '+extra:''),negativePrompt:s.negativePrompt||t.negativePrompt,settings:{...t.settings,...s.settings,...(trial&&s.type==='video'?{resolution:TRIAL_RESOLUTION}:{})}}))};
+}
+/** V47: the account's one free video. No credits move; the insert itself re-checks that no trial has been used. */
+async function startTrial(user:StudioUser,t:AdminTemplate,b:{templateId:string;uploadIds:string[];options:Record<string,string>},chosen:Chosen,picked:Record<string,string|undefined>,ip:string){
+ const existing=async()=>{const g=await one("SELECT id FROM generations WHERE user_id=? AND trial=1 AND template_id=? AND input_ids=? AND status NOT IN ('failed','refused') AND created_at>?",user.id,t.id,JSON.stringify(b.uploadIds),now()-600000);return g?{generationId:g.id as string,balance:await balanceOf(user.id),trial:true}:null;};
+ const again=await existing();if(again)return again;
+ must(await trialEnabled(),'Free videos are paused right now. Use credits to make a video.',409);
+ must(await freeTrialAvailable(user),'Your free video has already been used. Buy credits to make more videos.',409);
+ must(t.generationType!=='image','The free video is for video templates.',409);
+ must(optionsCost(t.creditCost,t.optionGroups||[],b.options)===t.creditCost,'The free video uses the standard options. Remove the extra options, or use credits.',409);
+ if(ip)await rateLimit('free-trial-ip:'+await hash(ip),3,86400000);
+ const id=uid('gen_'),created=now(),snapshot=workflowSnapshot(t,chosen,picked,true);
+ const r=await run(`INSERT INTO generations (id,user_id,template_id,template_name,template_slug,thumbnail,status,currency,estimated_cost,credit_cost,workflow_snapshot,input_ids,next_run_at,created_at,options,trial) SELECT ?,?,?,?,?,?,'queued',?,?,0,?,?,?,?,?,1 WHERE NOT ${TRIAL_USED_SQL}`,
+  id,user.id,t.id,t.name,t.slug,t.thumbnail,t.currency,t.estimatedCost,JSON.stringify(snapshot),JSON.stringify(b.uploadIds),created,created,JSON.stringify(picked),user.id);
+ if(!r.meta.changes){const prior=await existing();must(prior,'Your free video has already been used. Buy credits to make more videos.',409);return prior;}
+ await event('generation_requested',user.id,{generationId:id,credits:0,trial:true});
+ return {generationId:id,balance:await balanceOf(user.id),trial:true};
+}
+async function startGeneration(user:StudioUser,input:unknown,ip=''){assertNotBlocked(user);
  must(user.emailVerified,'Verify your email before creating a video.',403);
  const b=generationSchema.parse(input);
  const key=`generate:${user.id}:${b.idempotencyKey}`;
@@ -100,13 +124,12 @@ async function startGeneration(user:StudioUser,input:unknown){assertNotBlocked(u
  for(const id of b.uploadIds)must(await providerFailures(user.id,id)<PHOTO_FAILURE_LIMIT,'This photo failed twice, so it can’t be used again. Try a different photo and follow the photo tips.',409);
  await assertGeneratable(t);
  await assertWithinLimits(user.id);
+ if(b.trial)return await startTrial(user,t,b,chosen,picks(groups,chosen),ip);
  const balance=await balanceOf(user.id);must(balance.available>=cost,`You need ${cost} credits for this video and have ${balance.available}.`,402);
  const generationId=uid('gen_'),created=now();
- const aspect=chosen.find(c=>c.aspectRatio)?.aspectRatio,extra=chosen.map(c=>c.prompt).filter(Boolean).join(' '),model=chosen.find(c=>c.model)?.model,main=t.workflow.map(s=>s.type).lastIndexOf('video')>=0?t.workflow.map(s=>s.type).lastIndexOf('video'):t.workflow.length-1;
- const picks=Object.fromEntries(groups.map((g,i)=>[g.id,chosen[i]?.id]));
- const snapshot={name:t.name,slug:t.slug,aspectRatio:aspect||t.aspectRatio,duration:t.duration,options:picks,steps:t.workflow.map((s,i)=>({...s,...(aspect?{aspectRatio:aspect}:{}),...(model&&i===main?{model}:{}),prompt:(s.prompt||t.hiddenPrompt)+(extra?' '+extra:''),negativePrompt:s.negativePrompt||t.negativePrompt,settings:{...t.settings,...s.settings}}))};
+ const picked=picks(groups,chosen),snapshot=workflowSnapshot(t,chosen,picked);
  const hold=await placeHold({userId:user.id,amount:cost,generationId,key,extra:(holdId,tx)=>{const g=onlyIfApplied(tx);return [stmt(`INSERT INTO generations (id,user_id,template_id,template_name,template_slug,thumbnail,status,currency,estimated_cost,credit_cost,hold_id,workflow_snapshot,input_ids,next_run_at,created_at,options) SELECT ?,?,?,?,?,?,'queued',?,?,?,?,?,?,?,?,? WHERE ${g.sql}`,
-  generationId,user.id,t.id,t.name,t.slug,t.thumbnail,t.currency,t.estimatedCost,cost,holdId,JSON.stringify(snapshot),JSON.stringify(b.uploadIds),created,created,JSON.stringify(picks),...g.args)];}});
+  generationId,user.id,t.id,t.name,t.slug,t.thumbnail,t.currency,t.estimatedCost,cost,holdId,JSON.stringify(snapshot),JSON.stringify(b.uploadIds),created,created,JSON.stringify(picked),...g.args)];}});
  if(!hold.applied){const again=await repeat();must(again,'This creation could not be started. Please try again.',409);return again;}
  await event('generation_requested',user.id,{generationId,credits:cost,...await experimentTag(t.id,user.id)});
  return {generationId,balance:{available:hold.available,held:hold.held}};
@@ -199,7 +222,7 @@ export async function handleAPI(req:Request){try{
  if(p[0]==='account'&&p[1]==='mfa')return json(await mfaAPI(req,p,user));
  await rateLimit('api:'+user.id,240);
  if(p[0]==='uploads'){
-  if(method==='POST'){assertNotBlocked(user);await rateLimit('upload:'+user.id,40,3600000);must(isStaff(user.role)||(await balanceOf(user.id)).available>0,'Buy credits to upload photos and create videos.',402);const usage=await one('SELECT COALESCE(SUM(size),0) AS bytes,COUNT(*) AS count FROM user_uploads WHERE user_id=?',user.id);must(usage&&usage.bytes<512*1024*1024&&usage.count<250,'Your photo storage is full. Remove unused uploads in Account.',413);
+  if(method==='POST'){assertNotBlocked(user);await rateLimit('upload:'+user.id,40,3600000);must(isStaff(user.role)||(await balanceOf(user.id)).available>0||await freeTrialAvailable(user),'Buy credits to upload photos and create videos.',402);const usage=await one('SELECT COALESCE(SUM(size),0) AS bytes,COUNT(*) AS count FROM user_uploads WHERE user_id=?',user.id);must(usage&&usage.bytes<512*1024*1024&&usage.count<250,'Your photo storage is full. Remove unused uploads in Account.',413);
    const {file,bytes}=await readUploadedFile(req,8*1024*1024,'Photos must be under 8 MB.');must(usage.bytes+file.size<=512*1024*1024,'Your photo storage is full. Remove unused uploads in Account.',413);const mime=imageMime(bytes);must(mime&&mime===file.type,'Upload a valid JPG, PNG, or WEBP image.',415);
    // Store a cleaned copy: no location or other metadata, nothing hidden after the image, real size checked.
    const clean=cleanImage(bytes,mime);must(clean,'This photo could not be read. Try another JPG, PNG or WEBP photo.',415);
@@ -223,7 +246,7 @@ export async function handleAPI(req:Request){try{
   if(method==='POST'){const b=await body(req);const id=z.string().parse(b.templateId);must(await one('SELECT id FROM templates WHERE id=? AND active=1',id),'Template unavailable.',404);const existing=await one('SELECT id FROM favorites WHERE user_id=? AND template_id=?',user.id,id);if(existing)await run('DELETE FROM favorites WHERE id=?',existing.id);else await run('INSERT OR IGNORE INTO favorites (id,user_id,template_id,created_at) VALUES (?,?,?,?)',uid(),user.id,id,now());await event('template_favorited',user.id,{templateId:id,saved:!existing});return json({saved:!existing});}
  }
  if(p[0]==='generations'){
-  if(method==='POST'&&!p[1]){await rateLimit('generate:'+user.id,30,3600000);return json(await startGeneration(user,await body(req)),201);}
+  if(method==='POST'&&!p[1]){await rateLimit('generate:'+user.id,30,3600000);return json(await startGeneration(user,await body(req),req.headers.get('cf-connecting-ip')||''),201);}
   // V21: one photo, several templates in one step. The total is checked first; each video then reserves its own credits.
   if(method==='POST'&&p[1]==='batch'){await rateLimit('generate:'+user.id,30,3600000);const b=z.object({uploadIds:z.array(z.string().max(100)).min(1).max(4),idempotencyKey:z.string().uuid(),consent:z.literal(true),items:z.array(z.object({templateId:z.string().max(150),expectedCost:z.number().int(),options:z.record(z.string().max(40)).default({})})).min(1).max(5)}).parse(await body(req));
    must(new Set(b.items.map(i=>i.templateId)).size===b.items.length,'Choose each template once.');
@@ -425,9 +448,10 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='PATCH'){const b=await body(req);const enabled=z.boolean().parse(b.enabled);must(['mock','higgsfield','fal','replicate'].includes(p[2]),'Unknown provider.');await run('UPDATE provider_configurations SET enabled=?,updated_at=? WHERE id=?',Number(enabled),now(),p[2]);await audit(user.id,'provider.update',p[2]);return json({ok:true});}
  }
  if(p[1]==='settings'){
-  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),photoGuidelines:await photoGuidelines(),support:await supportInfo(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus(),maintenance:await maintenanceStatus(),limits:await spendingLimits(),exchangeRates:await exchangeRates()});}
-  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({welcomeCredits:z.number().int().min(0).max(100000).optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional(),limits:z.object({concurrent:z.number().int().min(0).max(100),daily:z.number().int().min(0).max(1000),studioDailyCost:z.number().int().min(0).max(1000000000)}).optional(),exchangeRates:z.object({EUR:z.number().positive().max(100000),ALL:z.number().positive().max(100000)}).optional(),support:z.object({email:z.union([z.literal(''),z.string().trim().email().max(120)]),phone:z.string().trim().max(40).regex(/^[+\d ()-]*$/,'Use digits, spaces and + only for the phone number.'),responseTime:z.string().trim().max(120),instagram:socialLink,tiktok:socialLink,facebook:socialLink,reviewUrl:socialLink.default('')}).optional()}).parse(await body(req));
+  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),freeTrial:await trialEnabled(),photoGuidelines:await photoGuidelines(),support:await supportInfo(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus(),maintenance:await maintenanceStatus(),limits:await spendingLimits(),exchangeRates:await exchangeRates()});}
+  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({welcomeCredits:z.number().int().min(0).max(100000).optional(),freeTrial:z.boolean().optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional(),limits:z.object({concurrent:z.number().int().min(0).max(100),daily:z.number().int().min(0).max(1000),studioDailyCost:z.number().int().min(0).max(1000000000)}).optional(),exchangeRates:z.object({EUR:z.number().positive().max(100000),ALL:z.number().positive().max(100000)}).optional(),support:z.object({email:z.union([z.literal(''),z.string().trim().email().max(120)]),phone:z.string().trim().max(40).regex(/^[+\d ()-]*$/,'Use digits, spaces and + only for the phone number.'),responseTime:z.string().trim().max(120),instagram:socialLink,tiktok:socialLink,facebook:socialLink,reviewUrl:socialLink.default('')}).optional()}).parse(await body(req));
    if(b.support){await run("INSERT INTO app_settings (key,value) VALUES ('support_info',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(b.support));await audit(user.id,'settings.update','support_info');}
+   if(b.freeTrial!==undefined){await setTrialEnabled(b.freeTrial);await audit(user.id,'settings.update','free_trial');}
    if(b.welcomeCredits!==undefined){await run("INSERT INTO app_settings (key,value) VALUES ('welcome_credits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(b.welcomeCredits));await audit(user.id,'settings.update','welcome_credits');}
    if(b.photoGuidelines){const value={do:cleanGuidelineList(b.photoGuidelines.do),dont:cleanGuidelineList(b.photoGuidelines.dont)};must(value.do.length&&value.dont.length,'Add at least one “do” and one “don’t” guideline.');await run("INSERT INTO app_settings (key,value) VALUES ('photo_guidelines',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(value));await audit(user.id,'settings.update','photo_guidelines');}
    if(b.maintenance){const up=(k:string,v:string)=>run("INSERT INTO app_settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",k,v);await up('maintenance_purchases',b.maintenance.purchasesPaused?'1':'0');await up('maintenance_creations',b.maintenance.creationsPaused?'1':'0');await up('maintenance_message',b.maintenance.message);await audit(user.id,'settings.update','maintenance');}

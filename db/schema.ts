@@ -82,6 +82,8 @@ export const generations=sqliteTable('generations',{
  rating:integer('rating'),ratedAt:integer('rated_at'),publicAt:integer('public_at'),likes:integer('likes').notNull().default(0),
  // Free admin test run (V32): real AI, no credits reserved or charged, no content strike.
  testRun:integer('test_run').notNull().default(0),
+ // V47: the account's one free video (no credits, rendered at 480p).
+ trial:integer('trial').notNull().default(0),
  // The options the customer picked for this video (V22), so it can be shown and made again the same way.
  options:text('options').notNull().default('{}'),
 },t=>[index('idx_generations_user_date').on(t.userId,t.createdAt),index('idx_generation_queue').on(t.status,t.nextRunAt,t.leaseUntil),index('idx_generations_thumbnail').on(t.thumbnail)]);
