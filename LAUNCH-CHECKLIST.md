@@ -16,7 +16,7 @@ Update the counts when you tick items.
 | Phase | Done | Total |
 |---|---:|---:|
 | 0. Business decisions | 4 | 18 |
-| 1. Codebase | 22 | 30 |
+| 1. Codebase | 23 | 31 |
 | 2. Infrastructure | 0 | 13 |
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 50 | 50 |
@@ -98,7 +98,7 @@ These come first, because the code and infrastructure work depends on them.
   - [x] C5.1 ✅ Already correct: deletion removes DB rows (cascading uploads/assets) first, then R2 files in a retry-logged loop (F17).
   - [x] C5.2 ✅ Dashboard user count is a plain COUNT(*) with no phantom status filter (F18).
   - [x] C5.3 ✅ Generated assets use the right extension from the MIME map (webp/jpg/png), not always .png (F15).
-- [ ] **C6 🔴 Account emails (sign-up and password).** Sign-up depends on these, so they block the launch.
+- [x] **C6 🔴 Account emails (sign-up and password).** ✅ All parts done (C6.1–C6.5).
   - [x] C6.1 Branded HTML verification email (wordmark, verify button, copy-paste link, 30-min expiry, business name VASIL XHAJA, support contact); plain-text version kept. Logo image waits for D5.
   - [x] C6.2 Same branded HTML + plain-text for the password reset email.
   - [x] C6.3 Albanian text (or Albanian + English) for both emails.
@@ -121,6 +121,7 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] C32.8 **Owner, at the end (Phase 4):** with your Higgsfield key in Admin → Connections, make 2–3 real videos and confirm: the model field names (`image_urls` for Seedream edit, `image_url` and `duration` for Kling), the host results are downloaded from, and the real cost per video.
   - [x] C32.6 Contract tests with a fake Higgsfield, like the fal and Replicate ones.
 - [x] **C12 🟡 Replicate adapter (F8).** Support versioned community models and reliable output-type detection, so any model can be used later without code changes. ✅ Accepts official `owner/model`, community `owner/model:version` and bare version IDs (validated on save); the result file is picked from any output shape (URL, list, file object, named outputs; video first), and the stored file type is sniffed from its bytes.
+- [ ] **C33 🔴 Deploy to your own Cloudflare account.** The build still carries the old Sites hosting placeholders (fake D1 database ID, `site-creator-*` names). Read the D1 database ID/name and the R2 bucket name from settings, add one command (`pnpm cloudflare:deploy`) that builds, applies the D1 migrations and deploys, update docs/OPERATIONS.md, and add an Albanian step-by-step guide. Needed for I1–I4 and I11.
 - [~] **C13 🟡 Money display and minimums (F20).** Show ALL prices correctly (no rounding of 299.50 → 300) and confirm POK's minimum amounts for ALL and EUR in the pack validator.
   - [x] C13.1 ✅ Prices are shown exactly: whole lek without decimals, any fractional amount with two decimals (never rounded). Pack prices in ALL are whole lek (POK charges lek as whole numbers).
   - [ ] C13.2 **Needs POK:** confirm POK's minimum charge for ALL and EUR (check during T2) and set it in the pack validator (today: at least 0.50).
@@ -175,10 +176,10 @@ These come first, because the code and infrastructure work depends on them.
 
 ## Phase 2 — Infrastructure
 
-- [ ] **I1 🔴 Hosting account.** Cloudflare account (or the Sites project) with Workers, D1 and R2 enabled, on a paid plan if you expect real traffic.
+- [ ] **I1 🔴 Hosting account.** Your own Cloudflare account with Workers, D1 and R2 enabled, on the **Workers Paid plan ($5/month)** for staging and live (the free plan's 10 ms limit breaks password sign-in at times). Needs C33 (deploy to your own account).
 - [ ] **I2 🔴 Production database (D1).**
   - [ ] I2.1 Create the production D1 database and bind it as `DB`.
-  - [ ] I2.2 Apply all migrations in `drizzle/` (0000 onwards, currently up to 0028) through the hosting workflow.
+  - [ ] I2.2 Apply all migrations in `drizzle/` (0000 onwards, currently up to 0031) through the hosting workflow.
   - [ ] I2.3 Check the tables exist and the starter templates are seeded.
 - [ ] **I3 🔴 File storage (R2).**
   - [ ] I3.1 Create the production bucket and bind it as `BUCKET`. Keep it private; the app serves signed links.
@@ -190,9 +191,9 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] I4.4 Set `DEMO_MODE=false` and `APP_ORIGIN=https://yourdomain`.
 - [ ] **I5 🔴 Domain and HTTPS.** Point the domain at the Worker, confirm HTTPS works, and make sure `APP_ORIGIN` matches exactly (no trailing slash).
 - [ ] **I6 🔴 Payment webhook.**
-  - [ ] I6.1 Create the webhook endpoint in the provider dashboard pointing at the URL shown in Admin → Connections.
-  - [ ] I6.2 Subscribe to the events listed there (checkout completed, async succeeded/failed, expired, `charge.refunded`, `charge.dispute.created` for Stripe).
-  - [ ] I6.3 Save the secret key and the webhook signing secret in Admin → Connections.
+  - [ ] I6.1 Nothing to create in the POK dashboard: the app sends POK its webhook address with every order (signed per purchase). It only has to be reachable from the internet (I9).
+  - [ ] I6.2 Save the POK key ID, key secret and merchant ID in Admin → Connections, and choose staging or production there.
+  - [ ] I6.3 Make one test purchase on staging and check in Admin → Purchases that it turned paid by itself (the webhook arrived).
 - [ ] **I7 🔴 Email sending (Resend).** Without it, sign-up stays closed in live mode.
   - [ ] I7.1 Create the Resend account and an API key (starts with `re_`).
   - [ ] I7.2 Quick local test before the domain is ready: `DEMO_MODE=false`, `RESEND_API_KEY`, `MAIL_FROM=onboarding@resend.dev`, then sign up with the email of your Resend account (Resend only delivers there until a domain is verified).
@@ -209,7 +210,7 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] I10.3 Cloudflare rate limiting or WAF rules on `/api/auth/*`, `/api/uploads` and `/api/generations` (L6).
   - [ ] I10.4 A simple load test (e.g. 50 users creating videos at once) on staging.
 - [ ] **I11 🔴 Separate staging environment.** A second copy (own database, storage and test keys) that stays after launch, so every bug fix is tested there before production. Since there's no v2 for a while, this is how you fix bugs safely.
-- [ ] **I12 🔴 Cost alerts.** Billing alerts on Cloudflare, fal.ai, Resend and the domain, sent to your phone.
+- [ ] **I12 🔴 Cost alerts.** Billing alerts on Cloudflare, Higgsfield, Resend and the domain, sent to your phone.
 - [ ] **I13 🟡 Error alerts.** Errors from the error tracker (C7) and stale-dispatcher alerts (I10.2) reach your phone or email, not only a dashboard.
 
 ## Phase 3 — Content
@@ -381,6 +382,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-05 | C6, C33, I1, I2, I6, I12 | Updated | C6 ticked (all parts done); C33 added (deploy to own Cloudflare account); I1 needs Workers Paid; I6 rewritten for POK (webhook address sent per order); migrations up to 0031; cost alerts name Higgsfield |
 | 2026-11-05 | V47, V24, V44 | Done / covered / dropped | V47 free 480p video built (no credits, one per account, admin switch, 8 integration checks). V24 music comes from the Higgsfield models. V44 dropped |
 | 2026-11-05 | D14, D16, V2, V41, V47 | Decided | Owner: AI provider is Higgsfield, **no watermark anywhere**. V2 and V41 dropped; V47 is now one free 480p video without watermark, rendered at 480p by Higgsfield (no media service needed) |
 | 2026-11-05 | D5, X2.1, C6.4 | Decided + done | Name NgaZero, domain ngazero.ai; name applied across the site, emails, downloads, manifest and docs. Logo/favicon/tagline still open (X2.2) |
