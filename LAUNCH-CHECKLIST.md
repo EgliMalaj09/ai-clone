@@ -342,7 +342,7 @@ Done at the end, after the features are built and before launch day, once the fi
   - [~] X1.3 Per-template Open Graph + Twitter images (the poster) are already emitted; the **homepage** OG image needs a brand asset (waits for X2/branding). (orig: one for the homepage and one per template (its poster), so links shared on WhatsApp, Instagram and Facebook show a preview.
   - [x] X1.4 ✅ JSON-LD injected: Organization + WebSite on the homepage, VideoObject on template pages, Product/Offer for the credit packs on /pricing. Generated server-side in `app/[[...path]]/page.tsx`. (orig: Organization and WebSite on the homepage, Product/Offer for credit packs, VideoObject for template examples, FAQPage for the FAQ (C26).
   - [x] X1.5 ✅ Every indexable page declares a canonical URL on `APP_ORIGIN` (template pages too); private/admin pages stay noindex. No duplicate pages (e.g. with and without a trailing slash or filter parameters).
-  - [ ] X1.6 Speed (Core Web Vitals): compress previews, lazy-load videos below the fold, check with PageSpeed Insights on mobile.
+  - [~] X1.6 Speed (Core Web Vitals): compress previews, lazy-load videos below the fold, check with PageSpeed Insights on mobile. ✅ Code part done: admin screens load only on /admin (customer pages download ~160 KB less JavaScript); preview images the admin uploads are shrunk in the browser to 1080 px WebP (a 3000×4000 photo went from 436 KB to 28 KB) and preview videos over 8 MB get a warning; studio preview files are cached by browsers for a year; the template page asks for its poster first; the first row on Explore loads at once, everything further down loads lazily; videos already wait for a tap (preload none). Local Lighthouse mobile (7 runs each): template page 82–95 → 92–96; home and Explore unchanged within noise (~85), no layout shift (CLS 0). **Left:** the PageSpeed Insights check on mobile against staging, after I1/I2 (needs a public URL) and with the real previews from Phase 3.
   - [ ] X1.7 Landing pages for the main searches (e.g. "AI video nga foto", birthday/wedding templates), and category pages people can find from Google.
   - [ ] X1.8 Register the domain in Google Search Console and Bing Webmaster Tools, submit the sitemap, and check for indexing errors.
 - [ ] **X2 🔴 Branding** (replaces C30; needs D5).
@@ -380,6 +380,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-05 | X1.6 | Partly done | Admin code split from customer pages; admin preview images shrunk to 1080 px WebP before upload, big preview videos warned; studio previews cached for a year; template poster preloaded; first Explore row eager. PageSpeed check on staging still to do. 1 new + 1 stronger integration check |
 | 2026-11-05 | X3 | Added | Pre-live review of unused screens (keep / hide / remove); no screen removed before it |
 | 2026-11-05 | V49 | Added | Password + Google/Apple on the same account both ways: set a password on a social account, connect/disconnect Google or Apple on an email account; no account action stuck behind a password the account doesn't have |
 | 2026-11-05 | C4.6 | Done | Security review: two-step sign-in now also required after Google/Apple sign-in (1 integration check); constant-time unsubscribe signature check; CSV export keeps negative numbers numeric |

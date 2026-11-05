@@ -1,6 +1,7 @@
 'use client';
 import {preparePhoto} from '@/lib/prepare-photo';
 import {useRef,useState} from 'react';
+import {preload} from 'react-dom';
 import {ArrowLeft,ArrowRight,ArrowUpRight,Upload,ImagePlus,X,Check,Heart,Clock,Smartphone,ShieldCheck,RefreshCw,Sparkles,Play,Film,Download,Mail} from 'lucide-react';
 import {toast} from 'sonner';
 import {Checkbox} from '@/components/ui/checkbox';
@@ -14,6 +15,8 @@ import {FeedCard} from './feed-page';
 type Uploaded={id:string;url:string;name:string};
 export default function TemplateDetail({template:t,related=[],gallery=[],user,demo,favorite,onFavorite,generationAvailable,balance,creditRef,singleRef,purchasingAvailable,photoGuidelines}:{template:PublicTemplate;related?:PublicTemplate[];gallery?:FeedItem[];generationAvailable:boolean;balance:Balance|null;creditRef?:CreditRef;singleRef?:CreditRef;purchasingAvailable?:boolean;photoGuidelines:PhotoGuidelines;user:StudioUser|null;demo:boolean;favorite:boolean;onFavorite:()=>void}){
  // `tr` translates (C10); `t` is the template.
+ // The poster is the largest thing on the page: ask for it first so it appears quickly on phones (X1.6).
+ if(t.thumbnail)preload(t.thumbnail,{as:'image',fetchPriority:'high'});
  const {t:tr,credits,lang}=useI18n();
  const [uploads,setUploads]=useState<(Uploaded|null)[]>(Array(t.requiredImageCount).fill(null));
  // V22/V23/V37: options the customer picks; the price shown and charged includes them.

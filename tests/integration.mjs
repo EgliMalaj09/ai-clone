@@ -26,6 +26,9 @@ try{
  // C9: the storefront is paged on the server; pages don't overlap and filters apply before paging.
  const p1=(await request('/api/templates?limit=5&page=1')).body,p4=(await request('/api/templates?limit=5&page=4')).body;ok('Catalog pages: 5 per page, 4 pages, last page holds the rest',p1.templates.length===5&&p1.pagination.pages===4&&p1.pagination.total===18&&p4.templates.length===3&&!p4.templates.some(t=>p1.templates.some(x=>x.id===t.id)));
  const cat=formula.category;const byText=(await request('/api/templates?q='+encodeURIComponent(cat.toLowerCase()))).body;ok('Catalog search matches the category name too',byText.templates.length>0&&byText.templates.some(t=>t.category===cat));
+ // X1.6: the template poster is requested first, and customer pages don't ship the admin screens.
+ const detailHtml=(await request('/template/formula-driver')).text,homeHtml=(await request('/')).text;
+ ok('Template pages preload their poster; the storefront does not load the admin code',/<link rel="preload" href="[^"]*formula-driver[^"]*" as="image"/.test(detailHtml)&&/chunks\/studio-/.test(homeHtml)&&!/chunks\/admin-/.test(homeHtml));
  const filtered=(await request('/explore?q=formula')).text;ok('Explore renders the filtered first page on the server',filtered.includes('/template/formula-driver')&&!filtered.includes('/template/astronaut'));
  await request('/template/does-not-exist',{expected:404});await request('/missing-route',{expected:404});ok('Missing templates and routes return 404',true);
  await request('/api/admin/templates',{expected:401});ok('Admin API rejects anonymous access',true);
@@ -272,7 +275,8 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await grant(adm.body.user.id,10);
  await request('/api/uploads',{method:'POST',data:mediaForm('photo.webp','image/webp',webp),cookie:adminCookie,expected:413});ok('Admin previews ignore the customer photo quota, which still applies to photos',true);
  await db.prepare("DELETE FROM user_uploads WHERE id LIKE 'up_quota_%'").run();
- ok('Template previews are public and cacheable',(await request(ma.body.url)).response.headers.get('cache-control').includes('public'));
+ const previewCache=(await request(ma.body.url)).response.headers.get('cache-control');
+ ok('Template previews are public and kept by browsers (their ID never changes)',previewCache.includes('public')&&previewCache.includes('immutable'));
  const mb=await adminMedia('example-b.webp','image/webp',webp),mv=await adminMedia('preview.mp4','video/mp4',mp4),mc=await adminMedia('thumb-c.webp','image/webp',webp),md=await adminMedia('never-saved.webp','image/webp',webp),me=await adminMedia('poster.webp','image/webp',webp);
  ok('Admin uploads MP4 preview videos',mv.body.mime==='video/mp4');
  const mediaTemplate=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Media Test',slug:'qa-media-test',thumbnail:ma.body.url,previewVideo:mv.body.url,previewImages:[mb.body.url]},expected:201})).body.template;
