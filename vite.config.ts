@@ -1,19 +1,36 @@
+import { readFileSync } from "node:fs";
 import vinext from "vinext";
 import { defineConfig } from "vite";
 import hostingConfig from "./.openai/hosting.json";
 import { readExecutionProfile } from "./scripts/execution-profile.mjs";
 import { sites } from "./build/sites-vite-plugin";
 
-const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
+const LOCAL_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
 
 const { d1, r2 } = hostingConfig;
+
+// Real Cloudflare names and IDs (C33). Only used for a deploy build
+// (`pnpm cloudflare:deploy` sets NGAZERO_DEPLOY=1); local dev keeps the
+// placeholder IDs so the local database under .wrangler/state stays the same.
+const deploy = process.env.NGAZERO_DEPLOY === "1";
+const cf = deploy
+  ? (JSON.parse(readFileSync(new URL("./cloudflare.json", import.meta.url), "utf8")) as {
+      accountId: string;
+      workerName: string;
+      d1: { name: string; id: string };
+      r2: { bucket: string };
+    })
+  : null;
+if (cf && (!cf.accountId || !cf.d1.id))
+  throw new Error("cloudflare.json is missing accountId or d1.id. Run `pnpm cloudflare:deploy`, which fills them in.");
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const managedLinux = readExecutionProfile() === "managed-linux";
 
 const localBindingConfig = {
+  ...(cf ? { name: cf.workerName, account_id: cf.accountId, workers_dev: true } : {}),
   main: "./worker.ts",
   compatibility_flags: ["nodejs_compat"],
   // Runs worker.ts scheduled() every minute: the production queue dispatcher (C3).
@@ -23,8 +40,8 @@ const localBindingConfig = {
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_name: cf?.d1.name ?? "site-creator-d1",
+          database_id: cf?.d1.id ?? LOCAL_PLACEHOLDER_DATABASE_ID,
         },
       ]
     : [],
@@ -32,7 +49,7 @@ const localBindingConfig = {
     ? [
         {
           binding: r2,
-          bucket_name: "site-creator-r2",
+          bucket_name: cf?.r2.bucket ?? "site-creator-r2",
         },
       ]
     : [],

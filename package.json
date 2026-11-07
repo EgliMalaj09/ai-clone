@@ -23,7 +23,8 @@
     "test:providers": "node tests/providers.mjs",
     "test:production": "node tests/production.mjs",
     "test:credits": "node tests/credits.mjs",
-    "test:i18n": "node tests/i18n-keys.mjs"
+    "test:i18n": "node tests/i18n-keys.mjs",
+    "cloudflare:deploy": "node scripts/cloudflare-deploy.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

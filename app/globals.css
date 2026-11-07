@@ -379,10 +379,10 @@ tr[draggable=true]{cursor:grab}
 @media (max-width:920px){.site-header nav a[href="/pricing"]{display:none}}
 /* Saved photos (V17) */
 .saved-photo-tools{display:grid;gap:6px;margin:10px 0}
-.saved-picker{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-.saved-grid{display:flex;flex-wrap:wrap;gap:10px;width:100%;margin-top:4px}
-.saved-grid button{display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line);border-radius:12px;background:white;padding:6px;cursor:pointer;font-size:12px;color:var(--ink);width:96px}
-.saved-grid button[aria-selected=true]{border-color:var(--blue)}
+.saved-picker{display:grid;gap:12px;padding:14px 16px;border:1px solid #d6ddfd;border-radius:14px;background:#f4f6ff}.saved-picker-head{display:flex;gap:11px;align-items:center;color:var(--blue)}.saved-picker-head div{display:grid;gap:1px}.saved-picker-head strong{color:var(--ink);font-size:15px}.saved-slots{display:flex;flex-wrap:wrap;gap:6px}.saved-slot{border:1px solid var(--line);background:white;border-radius:999px;padding:5px 13px;font-size:13px;font-weight:600;color:#5d646e}.saved-slot.on{border-color:var(--blue);color:var(--blue);box-shadow:0 0 0 2px #3154f526}
+.saved-grid{display:flex;flex-wrap:wrap;gap:10px;width:100%}
+.saved-grid button{position:relative;transition:border-color .15s,box-shadow .15s,transform .15s;display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line);border-radius:12px;background:white;padding:6px;cursor:pointer;font-size:12px;color:var(--ink);width:96px}
+.saved-grid button:hover:not(:disabled){border-color:#9fb0fa;transform:translateY(-1px)}.saved-grid button[aria-selected=true]{border-color:var(--blue);box-shadow:0 0 0 3px #3154f533}.saved-check{position:absolute;top:2px;right:2px;display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--blue);color:white}
 .saved-grid img{width:80px;height:80px;object-fit:cover;border-radius:8px}
 .saved-library{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin:12px 0}
 .saved-photo{display:flex;flex-direction:column;gap:6px}
@@ -457,3 +457,13 @@ tr[draggable=true]{cursor:grab}
 /* V50: sign-up with an email that already has an account */
 .email-taken{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:0 0 14px;font-size:13px}
 .email-taken p{margin:0 0 10px}
+
+/* NgaZero card loader (pre-rendered WebP): first load, route changes, videos in progress. */
+.card-loader{display:inline-flex;flex:none}
+.card-loader img{display:block}
+.zero-loading{min-height:50vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;color:var(--subtle);font-weight:600}
+.nz-splash{display:none;position:fixed;inset:0;z-index:1000;background:#fff;flex-direction:column;align-items:center;justify-content:center;gap:20px;transition:opacity .35s ease}
+.nz-splash .brand{font-size:22px}
+html.nz-splash-on .nz-splash{display:flex}
+html.nz-splash-out .nz-splash{opacity:0;pointer-events:none}
+@media (prefers-reduced-motion:reduce){.nz-splash{transition:none}}

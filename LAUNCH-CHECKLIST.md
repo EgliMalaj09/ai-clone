@@ -45,7 +45,7 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] D3.3 Set each template's credit cost so the margin covers AI cost, payment fees, tax and failed attempts. *(Done per template as each new Genjutsu template is created. AI cost ≈ $3.42/video from D3.1; fee and tax parts wait on D1.4 (POK fees) and D2.2 (VAT). Break-even floor ≈ AI cost ÷ cheapest per-credit pack value, then marked up for fees, tax and a failure buffer.)*
   - [x] D3.4 ✅ Welcome credits set to 10 after a verified sign-up (never expire). Applied by `pnpm seed:packs`; changeable in Admin → Studio settings.
 - [x] **D4 🔴 Refund policy.** ✅ **No refunds.** Credit packs are non-refundable (already in the Terms). Failed videos still return their credits automatically; that is not a money refund. A bank chargeback can still happen: record it with Reverse in Admin → Credit purchases, which removes the pack's credits.
-- [~] **D5 🔴 Brand and domain.** Final product name, domain, logo, favicon, sender email address (e.g. `hello@yourdomain`). ✅ Decided 2026-11-05: name **NgaZero** (Albanian for "from zero"), domain **ngazero.ai**. **Domain not bought yet:** buy ngazero.ai (`.ai` needs at least 2 years up front), ideally at Cloudflare Registrar so it sits next to the hosting, and grab the matching Instagram/TikTok handles. Staging (I11) does not need it: it can run on the free `workers.dev` address. Still open: logo, favicon and tagline (X2.2), and the sender address (suggested `hello@ngazero.ai`, set in Admin → Connections once I7 is done).
+- [~] **D5 🔴 Brand and domain.** Final product name, domain, logo, favicon, sender email address (e.g. `hello@yourdomain`). ✅ Decided 2026-11-05: name **NgaZero** (Albanian for "from zero"), domain **ngazero.com** (changed from ngazero.ai; ✅ bought 2026-11-07). Still to do: grab the matching Instagram/TikTok handles. Staging (I11) does not need it: it can run on the free `workers.dev` address. Still open: logo, favicon and tagline (X2.2), and the sender address (suggested `hello@ngazero.com`, set in Admin → Connections once I7 is done).
 - [x] **D6 🟡 Content policy.** ✅ **Moderation is the AI provider's job (Higgsfield).** Higgsfield blocks and refuses disallowed content; the app records refusals and blocks repeat offenders (C2 — refusal → strike → 3 = blocked) and runs **no** separate content checks. The only app-side guard we add: **stop retrying the same reference photo(s) after they fail twice**, so a bad reference doesn't keep burning cost (→ V48).
 - [ ] **D7 🟡 Support.** *(Deferred to pre-live, Phase 4B.)* Support email/channel and the promised response time, to be decided just before launch.
 - [ ] **D8 🔴 Fiscalization.** Albanian businesses must fiscalize sales (fiscal invoice with NIVF/NSLF through the tax authority). Ask your accountant whether each credit purchase needs one and whether POK issues it; if not, the app needs a fiscalization service integration (becomes a codebase task).
@@ -121,7 +121,7 @@ These come first, because the code and infrastructure work depends on them.
   - [ ] C32.8 **Owner, at the end (Phase 4):** with your Higgsfield key in Admin → Connections, make 2–3 real videos and confirm: the model field names (`image_urls` for Seedream edit, `image_url` and `duration` for Kling), the host results are downloaded from, and the real cost per video.
   - [x] C32.6 Contract tests with a fake Higgsfield, like the fal and Replicate ones.
 - [x] **C12 🟡 Replicate adapter (F8).** Support versioned community models and reliable output-type detection, so any model can be used later without code changes. ✅ Accepts official `owner/model`, community `owner/model:version` and bare version IDs (validated on save); the result file is picked from any output shape (URL, list, file object, named outputs; video first), and the stored file type is sniffed from its bytes.
-- [ ] **C33 🔴 Deploy to your own Cloudflare account.** The build still carries the old Sites hosting placeholders (fake D1 database ID, `site-creator-*` names). Read the D1 database ID/name and the R2 bucket name from settings, add one command (`pnpm cloudflare:deploy`) that builds, applies the D1 migrations and deploys, update docs/OPERATIONS.md, and add an Albanian step-by-step guide. Needed for I1–I4 and I11.
+- [x] **C33 🔴 Deploy to your own Cloudflare account.** The build still carries the old Sites hosting placeholders (fake D1 database ID, `site-creator-*` names). Read the D1 database ID/name and the R2 bucket name from settings, add one command (`pnpm cloudflare:deploy`) that builds, applies the D1 migrations and deploys, update docs/OPERATIONS.md, and add an Albanian step-by-step guide. Needed for I1–I4 and I11. ✅ Code done 2026-11-07: `cloudflare.json` + `pnpm cloudflare:deploy` (creates D1/R2, migrates, deploys, uploads secrets), docs/OPERATIONS.md and START-HERE-SHQIP.md §3a. ✅ First real deploy worked 2026-11-07 (ngazero.ngazero.workers.dev).
 - [~] **C13 🟡 Money display and minimums (F20).** Show ALL prices correctly (no rounding of 299.50 → 300) and confirm POK's minimum amounts for ALL and EUR in the pack validator.
   - [x] C13.1 ✅ Prices are shown exactly: whole lek without decimals, any fractional amount with two decimals (never rounded). Pack prices in ALL are whole lek (POK charges lek as whole numbers).
   - [ ] C13.2 **Needs POK:** confirm POK's minimum charge for ALL and EUR (check during T2) and set it in the pack validator (today: at least 0.50).
@@ -215,7 +215,7 @@ These come first, because the code and infrastructure work depends on them.
 
 ## Phase 3 — Content
 
-- [~] **P1 🔴 Credit packs live.** Structure applied: the four D3 packs are seeded (EUR + ALL) and active, verified on the packs API; prices render correctly. **To do on production:** run `pnpm seed:packs -- --remote` (or create them in Admin), and revisit prices against measured AI costs (D3.1/D3.3).
+- [~] **P1 🔴 Credit packs live.** Structure applied: the four D3 packs are seeded (EUR + ALL) and active, verified on the packs API; prices render correctly. ✅ Seeded on the live site 2026-11-07 (4 packs + 10 welcome credits). **Still to do:** revisit prices against measured AI costs (D3.1/D3.3).
 - [ ] **P2 🔴 Template credit costs.** Set every published template's credit cost and check the margin column in Admin → Templates.
 - [ ] **P3 🔴 Legal pages (L8).** Replace the draft Terms and Privacy with your business identity, contact details, the no-refund policy for packs, photo retention (24 h for unused photos), how long videos are kept, and the content policy from D6. Have a lawyer review them. The Terms currently say "intended for adults"; change this to the 13+ rule (D13).
 - [ ] **P4 🔴 Real template examples (L9).** Replace every concept preview with a real generated example (poster and video) made with the live workflow.
@@ -307,21 +307,22 @@ Not planned: PostgreSQL. D1 handles the expected load and no code change is need
 
 Run these on a staging copy with test keys before switching to live keys (L1). Record each result in the change log.
 
-- [ ] **T1 🔴 Accounts and email.**
-  - [ ] T1.1 Sign up: the verification email arrives within a minute, in the inbox.
-  - [ ] T1.2 The link opens your domain and verifies the account; welcome credits arrive if set.
-  - [ ] T1.3 An expired link (after 30 minutes) shows a clear message, and "Resend" on the Account page sends a new one.
-  - [ ] T1.4 Before verifying, buying credits and creating videos are blocked with a clear message.
-  - [ ] T1.5 Forgot password: the reset email arrives, the link works once, and old sessions are signed out.
-  - [ ] T1.6 Delete the account from the Account page.
-- [ ] **T2 🔴 Buying credits.**
+- [x] **T1 🔴 Accounts and email.** Tested 2026-11-07 on ngazero.ngazero.workers.dev (demo mode, Resend sending from hello@ngazero.com): T1.1, T1.4, T1.5, T1.7 tested by hand; T1.2, T1.3 and T1.6 marked done by the owner (see notes).
+  - [x] T1.1 Sign up: the verification email arrives within a minute, in the inbox. ✅ 2026-11-07: code arrived and verified the account; a wrong code is refused.
+  - [x] T1.2 ✅ 2026-11-07, marked done by the owner (verified with the code, not the link; recheck the link once ngazero.com is connected). The link opens your domain and verifies the account; welcome credits arrive if set.
+  - [x] T1.3 ✅ 2026-11-07: "Resend" sends a new code (tested); the expired-link part marked done by the owner, not tested by hand: an expired link (after 30 minutes) shows a clear message, and "Resend" on the Account page sends a new one.
+  - [x] T1.4 ✅ 2026-11-07. Before verifying, buying credits and creating videos are blocked with a clear message.
+  - [x] T1.5 ✅ 2026-11-07. Forgot password: the reset email arrives, the link works once, and old sessions are signed out.
+  - [x] T1.6 Delete the account from the Account page. ✅ 2026-11-07, marked done by the owner; covered by the automated security tests (re-authentication, storage and identity removed).
+  - [x] T1.7 Change password in Account: works and other sessions are signed out. ✅ 2026-11-07.
+- [ ] **T2 🔴 Buying credits.** *2026-11-07, demo mode (test checkout, no POK): buying a pack adds the credits and Reverse in admin removes them; works. The items below still need real POK staging.*
   - [ ] T2.1 Successful card payment: credits appear once.
   - [ ] T2.2 Declined card: no credits, clear message.
   - [ ] T2.3 Abandoned checkout: the purchase expires.
   - [ ] T2.4 Webhook replay from the provider dashboard: credits are not added twice.
   - [ ] T2.5 Full refund from the dashboard: credits are removed.
   - [ ] T2.6 Test dispute: credits are removed and it appears under reversed purchases.
-- [ ] **T3 🔴 Generating videos.**
+- [ ] **T3 🔴 Generating videos.** *2026-11-07, demo mode (mock provider, sample clip): upload → create → My Creations works end to end, and the related emails arrived. The items below still need the real AI provider (Higgsfield).*
   - [ ] T3.1 Every published template produces a good video from a real photo.
   - [ ] T3.2 Credits are reserved at start and charged once on delivery.
   - [ ] T3.3 A forced failure (e.g. a wrong model ID) returns the credits.
@@ -350,7 +351,7 @@ Done at the end, after the features are built and before launch day, once the fi
 - [ ] **X2 🔴 Branding** (replaces C30; needs D5).
   - [x] X2.1 Final name everywhere: replace "PROJECT STUDIO" in the header, footer, page titles, 404 page and admin. ✅ NgaZero in header/footer logo (NGA**ZERO**), mobile menu, page titles, share titles, JSON-LD, 404 and error pages, admin, offline page and app manifest (`lib/brand.ts`). Two internal encryption labels keep the old name on purpose (renaming them would make saved secrets unreadable).
   - [ ] X2.2 Logo and favicon (all sizes, including the phone home-screen icon for V7) and the tagline.
-  - [~] X2.3 Set `BRAND_NAME` (C6.4) and add the logo image to all emails; sender address `MAIL_FROM` on the final domain. ✅ Emails say NgaZero. **Left:** the logo image in emails (needs X2.2) and `MAIL_FROM` = e.g. `hello@ngazero.ai` once the domain is verified in Resend (I7).
+  - [~] X2.3 Set `BRAND_NAME` (C6.4) and add the logo image to all emails; sender address `MAIL_FROM` on the final domain. ✅ Emails say NgaZero. **Left:** the logo image in emails (needs X2.2) and `MAIL_FROM` = e.g. `hello@ngazero.com` once the domain is verified in Resend (I7).
   - [~] X2.4 Legal pages, FAQ and help pages use the final name and domain. ✅ Name updated in the Terms and Privacy Policy (EN+SQ). **Left:** business details and the domain in the legal pages with D9.
   - [x] X2.5 Download file names (today `project-studio-….mp4`) and any watermark (V41) use the final brand. ✅ Downloads are `ngazero-….mp4` and `ngazero-account.json`. No watermark (V41 dropped).
 - [ ] **X3 🟡 Review unused screens.** Go through every screen (storefront, account, admin) once the templates and content exist, and decide for each one: keep, hide from menus, or remove. Nothing is removed before this review, since screens that look unused now may be needed once content is created. Check that links in menus, footer and emails only point to screens that stay.
@@ -382,6 +383,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-07 | C33, D5, T1 | Done + tested | Deployed to own Cloudflare (`pnpm cloudflare:deploy`) at ngazero.ngazero.workers.dev, domain changed to ngazero.com; demo sign-up now requires email verification once Resend is connected. Tested: sign-up code, wrong code refused, resend code, blocked before verification, forgot password, change password |
 | 2026-11-05 | C6, C33, I1, I2, I6, I12 | Updated | C6 ticked (all parts done); C33 added (deploy to own Cloudflare account); I1 needs Workers Paid; I6 rewritten for POK (webhook address sent per order); migrations up to 0031; cost alerts name Higgsfield |
 | 2026-11-05 | V47, V24, V44 | Done / covered / dropped | V47 free 480p video built (no credits, one per account, admin switch, 8 integration checks). V24 music comes from the Higgsfield models. V44 dropped |
 | 2026-11-05 | D14, D16, V2, V41, V47 | Decided | Owner: AI provider is Higgsfield, **no watermark anywhere**. V2 and V41 dropped; V47 is now one free 480p video without watermark, rendered at 480p by Higgsfield (no media service needed) |

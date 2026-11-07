@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { langFromCookie } from "@/lib/i18n";
 import "./globals.css";
+import { CardLoader } from "@/components/card-loader";
+
+// First visit in a session: a short NgaZero splash with the light ring. It hides as soon as the page has loaded (at least 0.7 s, at most 2.5 s).
+const SPLASH = `(function(){try{if(sessionStorage.getItem("nzs"))return;sessionStorage.setItem("nzs","1");var d=document.documentElement,t0=Date.now(),gone=0;d.classList.add("nz-splash-on");function done(){if(gone++)return;setTimeout(function(){d.classList.add("nz-splash-out");setTimeout(function(){d.classList.remove("nz-splash-on","nz-splash-out")},400)},Math.max(0,700-(Date.now()-t0)))}if(document.readyState==="complete")done();else addEventListener("load",done);setTimeout(done,2500)}catch(e){}})();`;
 
 export const metadata: Metadata = {
   title: "NgaZero — Your next main character moment",
@@ -23,9 +27,13 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang={langFromCookie((await headers()).get("cookie"))}>
+    <html lang={langFromCookie((await headers()).get("cookie"))} suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: SPLASH }} /></head>
       {/* Browser extensions (e.g. ColorZilla) add attributes to <body> before React loads; ignore those differences. */}
-      <body className="antialiased" suppressHydrationWarning>{children}</body>
+      <body className="antialiased" suppressHydrationWarning>
+        <div className="nz-splash" aria-hidden="true"><CardLoader size={110} eager /><span className="brand">Nga<b>Zero</b></span></div>
+        {children}
+      </body>
     </html>
   );
 }

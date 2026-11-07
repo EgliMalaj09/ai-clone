@@ -540,6 +540,8 @@ export const sq:Record<string,string>={
  'Use a saved photo':'Përdor një foto të ruajtur',
  'My photos':'Fotot e mia',
  'Saved photo':'Foto e ruajtur',
+ 'Tap one of your saved photos to use it.':'Prek një nga fotot e tua të ruajtura për ta përdorur.',
+ 'Photo {n}':'Foto {n}',
  'Save photos to reuse them for any template. Saved photos and your videos are kept for 30 days, then deleted automatically; unused uploads go after 24 hours. Photos are private.':'Ruaj fotot për t’i përdorur sërish për çdo shabllon. Fotot e ruajtura dhe videot e tua mbahen për 30 ditë, pastaj fshihen automatikisht; ngarkimet e papërdorura fshihen pas 24 orësh. Fotot janë private.',
  'Your photos and videos are kept for 30 days, then deleted automatically. Download anything you want to keep.':'Fotot dhe videot e tua mbahen për 30 ditë, pastaj fshihen automatikisht. Shkarko çdo gjë që do të mbash.',
  'The photo is removed from storage. Videos you already made with it are kept.':'Fotoja hiqet nga ruajtja. Videot që ke bërë tashmë me të mbeten.',

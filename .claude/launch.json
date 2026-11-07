@@ -3,9 +3,34 @@
   "configurations": [
     {
       "name": "dev",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev"],
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "scripts/run-framework.mjs",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "start",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--import",
+        "./scripts/sites-env.mjs",
+        "./node_modules/wrangler/bin/wrangler.js",
+        "dev",
+        "--config",
+        "dist/server/wrangler.json",
+        "--local",
+        "--persist-to",
+        ".wrangler/state",
+        "--ip",
+        "127.0.0.1",
+        "--port",
+        "3000",
+        "--inspector-port",
+        "0"
+      ],
+      "port": 3000
     }
   ]
 }
