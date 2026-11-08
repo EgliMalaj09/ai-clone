@@ -1,3 +1,4 @@
+import {balancePaused} from './provider-balance';
 import {z} from 'zod';
 import {all,audit,batch,config,HttpError,must,one,runtime,stmt} from './data';
 import {jsonBody} from './http';
@@ -75,6 +76,7 @@ export async function maintenanceStatus(){
   const get=(k:string)=>rows.find(r=>r.key===k)?.value;
   return {purchasesPaused:get('maintenance_purchases')==='1',creationsPaused:get('maintenance_creations')==='1',message:(get('maintenance_message') as string)||''};
 }
+export const BALANCE_PAUSE_MESSAGE='Video creation is paused for a short while. Please check back soon.';
 export const DEFAULT_MAINTENANCE_MESSAGE='We’re doing some maintenance. Please check back shortly.';
 /** Generation needs an AI provider, the background dispatcher and public access; it does not need payments. */
 function generationReady(r:Awaited<ReturnType<typeof purchaseReadiness>>){return r.demo||r.ai&&r.dispatcher&&r.publicAccess;}
@@ -85,6 +87,8 @@ export async function assertGeneratable(template:AdminTemplate){
   const r=await purchaseReadiness();
   const m=await maintenanceStatus();
   must(!m.creationsPaused,m.message||DEFAULT_MAINTENANCE_MESSAGE,503);
+  // The Higgsfield balance safeguard: customers only see that creation is paused for a while.
+  must(!await balancePaused(),m.message||BALANCE_PAUSE_MESSAGE,503);
   must(template.workflow.length>0&&template.workflow.every(s=>r.demo?s.provider==='mock':s.provider!=='mock'),'This template is not available yet.',409);
   must(generationReady(r),'Video creation is not open yet. Please check back soon.',503);
   must(templateRunnable(template,r),'This template is temporarily unavailable.',503);
@@ -92,7 +96,8 @@ export async function assertGeneratable(template:AdminTemplate){
 /** What the storefront may offer: registration, buying credits (needs payments) and generating a template. */
 export async function publicAvailability(template?:AdminTemplate|null){
   const r=await purchaseReadiness();
-  const m=await maintenanceStatus();
+  const m0=await maintenanceStatus(),paused=!m0.creationsPaused&&await balancePaused().catch(()=>false);
+  const m=paused?{...m0,creationsPaused:true,message:m0.message||BALANCE_PAUSE_MESSAGE}:m0;
   return {registrationAvailable:r.registrationAvailable,purchasingAvailable:r.ready&&!m.purchasesPaused,generationAvailable:generationReady(r)&&!m.creationsPaused&&(!template||templateRunnable(template,r)),maintenance:m,oauthProviders:r.oauthProviders};
 }
 export async function connectionStatus(){

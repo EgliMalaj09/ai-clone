@@ -14,7 +14,8 @@ import {authSchema,registerSchema,generationSchema,templateSchema} from './valid
 import {checkPassword,checkVerifyCode,clearCookie,confirmOwner,constantEqual,getUser,hash,makeAuthToken,makeVerifyCode,passwordHash,protectOrigin,rateLimit,requireUser,safeUser,sendAuthMail,sessionCookie} from './security';
 import {imageMime,storage,validSignature} from './storage';
 import {pokWebhook} from './payments';
-import {removeGeneration,tickQueue} from './queue';
+import {failGeneration,removeGeneration,tickQueue} from './queue';
+import {providerFor} from './providers';
 import {createReport,listReports,reportDetail,resolveReport,reportsForGenerations,publicReport,hasOpenReport,uploadsLockedByReport,userHasOpenReport} from './reports';
 import {assertWithinLimits,spendingLimits} from './limits';
 import {exchangeRates,convertMinor} from './rates';
@@ -41,6 +42,8 @@ const zodDefault=/^(String must|Invalid|Required|Expected|Number must)/;
 const fieldMessage=(lang:Lang,path:string,message:string)=>fieldMessages[path]?translate(lang,zodDefault.test(message)?fieldMessages[path]:message):zodDefault.test(message)?`${path}: ${message}`:translate(lang,message);
 import {TERMS_VERSION,TRIAL_MAX_SECONDS,cleanGuidelineList,isStaff,optionsCost,pickedChoices,type AdminTemplate,type OptionChoice,type OptionGroup,type StudioUser} from '../contracts';
 import {packOffer,pricingSettings,savePricing,templateCredits} from './pricing';
+import {addBalanceEntry,providerBalance,saveBalanceSettings} from './provider-balance';
+import {alertOverview,alertSettings,clearAlert,healthStatus,runAlertChecks,saveAlertSettings} from './alerts';
 import {TRIAL_RESOLUTION,TRIAL_USED_SQL,freeTrialAvailable,setTrialEnabled,trialEnabled} from './trial';
 
 const json=(data:unknown,status=200,headers:Record<string,string>={})=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'same-origin',...headers}});
@@ -99,7 +102,7 @@ async function startTrial(user:StudioUser,t:AdminTemplate,b:{templateId:string;u
  must(await freeTrialAvailable(user),'Your free video has already been used. Buy credits to make more videos.',409);
  must(t.generationType!=='image','The free video is for video templates.',409);
  must(optionsCost(t.creditCost,t.optionGroups||[],b.options)===t.creditCost,'The free video uses the standard options. Remove the extra options, or use credits.',409);
- if(ip)await rateLimit('free-trial-ip:'+await hash(ip),3,86400000);
+ if(ip)await rateLimit('free-trial-ip:'+await hash(ip),3,30*86400000);// 3 free videos per network per 30 days
  const id=uid('gen_'),created=now(),snapshot=workflowSnapshot(t,chosen,picked,true);
  const r=await run(`INSERT INTO generations (id,user_id,template_id,template_name,template_slug,thumbnail,status,currency,estimated_cost,credit_cost,workflow_snapshot,input_ids,next_run_at,created_at,options,trial) SELECT ?,?,?,?,?,?,'queued',?,?,0,?,?,?,?,?,1 WHERE NOT ${TRIAL_USED_SQL}`,
   id,user.id,t.id,t.name,t.slug,t.thumbnail,t.currency,t.estimatedCost,JSON.stringify(snapshot),JSON.stringify(b.uploadIds),created,created,JSON.stringify(picked),user.id);
@@ -170,9 +173,10 @@ export async function handleAPI(req:Request){try{
  // cross-site POST; the signed state and a one-time nonce cookie are what protect the flow.
  if(p[0]==='auth'&&p[1]==='oauth'&&p[2]){if(p[3]==='callback')return await oauthCallback(req,p[2]);if(method==='GET')return await oauthStart(req,p[2]);}
  protectOrigin(req);
- if(p.join('/')==='queue/dispatch'&&method==='POST'){must(config().cronSecret&&constantEqual(req.headers.get('authorization')||'','Bearer '+config().cronSecret),'Unauthorized queue worker.',401);const processed=await tickQueue();await recordDispatch('external');return json({processed});}
+ if(p.join('/')==='queue/dispatch'&&method==='POST'){must(config().cronSecret&&constantEqual(req.headers.get('authorization')||'','Bearer '+config().cronSecret),'Unauthorized queue worker.',401);const processed=await tickQueue();await recordDispatch('external');await runAlertChecks().catch(()=>{});return json({processed});}
  const ip=req.headers.get('cf-connecting-ip')||'local';
- if(p.join('/')==='health'&&method==='GET')return json({status:'ok',demo:config().demo});
+ // An outside uptime monitor can watch this: 503 when the background worker has stopped (V53).
+ if(p.join('/')==='health'&&method==='GET'){const h=await healthStatus();return json({status:h.ok?'ok':'worker-stopped',demo:config().demo,worker:h.worker},h.ok?200:503);}
  if(p[0]==='templates'&&method==='GET'&&p.length<=2)return json(await queryCatalog(url,p[1],(await getUser(req.headers))?.id));
  if(p.join('/')==='credit-packages'&&method==='GET')return json({packages:await listPackages(),offer:await packOffer()});
  if(p.join('/')==='removal-requests'&&method==='POST'){await rateLimit('removal:'+await hash(req.headers.get('cf-connecting-ip')||'anon'),5,3600000);return json(await createRemovalRequest(await body(req),langFromCookie(req.headers.get('cookie'))),201);}
@@ -356,6 +360,9 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
  if(p[1]==='ideas'){if(method==='GET'&&!p[2])return json(await adminIdeas());if(method==='PATCH'&&p[2])return json(await updateIdea(user,p[2],await body(req)));}
  if(p[1]==='experiments'&&p[3]==='stop'&&method==='POST')return json(await stopExperiment(user,p[2]));
  if(p[1]==='templates'&&p[2]&&p[3]==='experiments'){if(method==='GET')return json(await experimentResults(p[2]));if(method==='POST')return json(await startExperiment(user,p[2],await body(req)),201);}
+ // Higgsfield balance safeguard: the studio's own estimate, top-ups, corrections and the warning/pause levels.
+ if(p[1]==='alerts'&&method==='GET')return json(await alertOverview());
+ if(p[1]==='provider-balance'){if(method==='GET')return json(await providerBalance());if(method==='POST')return json(await addBalanceEntry(user,await body(req)));if(method==='PATCH')return json(await saveBalanceSettings(user,await body(req)));}
  if(p[1]==='ai-costs'){if(method==='GET'&&!p[2])return json(await aiCosts(new URL(req.url)));if(method==='POST'&&p[2]==='invoices')return json(await saveInvoice(user,await body(req)));}
  if(p[1]==='template-stats'&&method==='GET')return json(await templateStats(new URL(req.url)));
  if(p[1]==='templates'){
@@ -398,6 +405,16 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
  }
  if(p[1]==='generations'){
   if(method==='GET'&&p[2]){const g=await one('SELECT g.*,u.email,h.status AS credit_status FROM generations g LEFT JOIN users u ON u.id=g.user_id LEFT JOIN credit_holds h ON h.id=g.hold_id WHERE g.id=?',p[2]);must(g,'Generation not found.',404);const steps=await all('SELECT * FROM generation_steps WHERE generation_id=? ORDER BY step_order',g.id);return json({generation:g,steps});}
+  // V53: cancel a stuck video and give the customer's credits back (the provider is asked to cancel when it still can).
+  if(method==='POST'&&p[3]==='cancel'){
+   const g=await one('SELECT * FROM generations WHERE id=?',p[2]);must(g&&!g.deleted_at&&['queued','preparing','generating','finalizing'].includes(g.status),'Only a video that is still running can be cancelled.',409);
+   for(const s of await all("SELECT provider,provider_job_id FROM generation_steps WHERE generation_id=? AND provider_job_id IS NOT NULL AND status NOT IN ('completed','failed','cancelled')",g.id))await providerFor(s.provider as string).cancelJob(s.provider_job_id as string).catch(()=>{});
+   // Take the video over from any worker first (its later updates check the lease token and do nothing), then end it.
+   const lease=uid();await run("UPDATE generations SET lease_token=?,lease_until=? WHERE id=? AND status IN ('queued','preparing','generating','finalizing')",lease,now()+300000,g.id);
+   await failGeneration({...g,lease_token:lease},'Cancelled by the studio after getting stuck.','system');
+   const after=await one('SELECT status FROM generations WHERE id=?',g.id);must(after?.status==='failed','The video changed while cancelling. Refresh and try again.',409);
+   await clearAlert('stuck:'+g.id);await audit(user.id,'generation.cancel',g.id);return json({ok:true});
+  }
   // A retry reserves the customer's credits again; failed attempts already returned theirs.
   if(method==='POST'&&p[3]==='retry'){
    const g=await one('SELECT * FROM generations WHERE id=?',p[2]);must(g?.status==='failed'&&!g.deleted_at&&g.user_id&&g.credit_cost>0,'Only failed creations of existing accounts can be retried.',409);
@@ -451,9 +468,10 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='PATCH'){const b=await body(req);const enabled=z.boolean().parse(b.enabled);must(['mock','higgsfield','fal','replicate'].includes(p[2]),'Unknown provider.');await run('UPDATE provider_configurations SET enabled=?,updated_at=? WHERE id=?',Number(enabled),now(),p[2]);await audit(user.id,'provider.update',p[2]);return json({ok:true});}
  }
  if(p[1]==='settings'){
-  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),freeTrial:await trialEnabled(),photoGuidelines:await photoGuidelines(),support:await supportInfo(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus(),maintenance:await maintenanceStatus(),limits:await spendingLimits(),exchangeRates:await exchangeRates(),pricing:await pricingSettings()});}
-  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({pricing:z.unknown().optional(),welcomeCredits:z.number().int().min(0).max(100000).optional(),freeTrial:z.boolean().optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional(),limits:z.object({concurrent:z.number().int().min(0).max(100),daily:z.number().int().min(0).max(1000),studioDailyCost:z.number().int().min(0).max(1000000000)}).optional(),exchangeRates:z.object({EUR:z.number().positive().max(100000),ALL:z.number().positive().max(100000)}).optional(),support:z.object({email:z.union([z.literal(''),z.string().trim().email().max(120)]),phone:z.string().trim().max(40).regex(/^[+\d ()-]*$/,'Use digits, spaces and + only for the phone number.'),responseTime:z.string().trim().max(120),instagram:socialLink,tiktok:socialLink,facebook:socialLink,reviewUrl:socialLink.default('')}).optional()}).parse(await body(req));
+  if(method==='GET'){const welcome=await one("SELECT value FROM app_settings WHERE key='welcome_credits'");const c=await serviceConfig();return json({welcomeCredits:Number(welcome?.value||0),freeTrial:await trialEnabled(),photoGuidelines:await photoGuidelines(),support:await supportInfo(),demo:c.demo,paymentsConfigured:!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId,emailConfigured:!!c.mailKey&&!!c.mailFrom,queueConfigured:!!c.cronSecret,dispatcher:await dispatcherStatus(),maintenance:await maintenanceStatus(),limits:await spendingLimits(),exchangeRates:await exchangeRates(),pricing:await pricingSettings(),alerts:await alertSettings()});}
+  if(method==='PATCH'){const line=z.string().max(160);const b=z.object({alerts:z.unknown().optional(),pricing:z.unknown().optional(),welcomeCredits:z.number().int().min(0).max(100000).optional(),freeTrial:z.boolean().optional(),photoGuidelines:z.object({do:z.array(line).max(12),dont:z.array(line).max(12)}).optional(),maintenance:z.object({purchasesPaused:z.boolean(),creationsPaused:z.boolean(),message:z.string().trim().max(300)}).optional(),limits:z.object({concurrent:z.number().int().min(0).max(100),daily:z.number().int().min(0).max(1000),studioDailyCost:z.number().int().min(0).max(1000000000)}).optional(),exchangeRates:z.object({EUR:z.number().positive().max(100000),ALL:z.number().positive().max(100000)}).optional(),support:z.object({email:z.union([z.literal(''),z.string().trim().email().max(120)]),phone:z.string().trim().max(40).regex(/^[+\d ()-]*$/,'Use digits, spaces and + only for the phone number.'),responseTime:z.string().trim().max(120),instagram:socialLink,tiktok:socialLink,facebook:socialLink,reviewUrl:socialLink.default('')}).optional()}).parse(await body(req));
    if(b.support){await run("INSERT INTO app_settings (key,value) VALUES ('support_info',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",JSON.stringify(b.support));await audit(user.id,'settings.update','support_info');}
+   if(b.alerts!==undefined){await saveAlertSettings(user.id,b.alerts);return json({ok:true});}
    if(b.pricing!==undefined){const r=await savePricing(user,b.pricing);return json({ok:true,repriced:r.repriced});}
    if(b.freeTrial!==undefined){await setTrialEnabled(b.freeTrial);await audit(user.id,'settings.update','free_trial');}
    if(b.welcomeCredits!==undefined){await run("INSERT INTO app_settings (key,value) VALUES ('welcome_credits',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(b.welcomeCredits));await audit(user.id,'settings.update','welcome_credits');}

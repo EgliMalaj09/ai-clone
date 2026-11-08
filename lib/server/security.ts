@@ -49,7 +49,9 @@ export async function sendMail(to:string,mail:{subject:string;html:string;text:s
  try{
   const result=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${c.mailKey}`,'Content-Type':'application/json',...(idempotencyKey?{'Idempotency-Key':idempotencyKey}:{})},signal:AbortSignal.timeout(12000),body:JSON.stringify({from:c.mailFrom,to,subject:mail.subject,html:mail.html,text:mail.text,...(mail.headers?{headers:mail.headers}:{})})});
   if(!result.ok)await reportError('email','Email provider rejected a message',{context:{status:result.status,idempotencyKey}});
+  // V53: a failed send marks email as failing and alerts the owner once; a good send clears it.
+  await (await import('./alerts')).noteMailResult(result.ok,'status '+result.status).catch(()=>{});
   return result.ok;
- }catch(e){await reportError('email','Transactional email failed',{error:e,context:{idempotencyKey}});return false;}
+ }catch(e){await reportError('email','Transactional email failed',{error:e,context:{idempotencyKey}});await (await import('./alerts')).noteMailResult(false,'no response').catch(()=>{});return false;}
 }
 export async function makeAuthToken(userId:string,type:string){const token=randomToken();await batch([stmt('DELETE FROM auth_tokens WHERE user_id=? AND type=?',userId,type),stmt('INSERT INTO auth_tokens (token_hash,user_id,type,expires_at) VALUES (?,?,?,?)',await hash(token),userId,type,now()+1800000)]);return token;}

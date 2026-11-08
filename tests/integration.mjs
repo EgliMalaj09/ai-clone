@@ -160,6 +160,59 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  await request('/api/credits/checkout',{method:'POST',cookie:userCookie,data:{packageId:maintPack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:503});ok('Maintenance pauses new credit purchases',true);
  await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{maintenance:{creationsPaused:false,purchasesPaused:false,message:''}}});
  const resumed=await generate(userCookie,curFormula,[(await upload(userCookie)).body.id]);await waitDone(userCookie,resumed.body.generationId);ok('Creation works again after maintenance is lifted',true);
+ // Higgsfield balance safeguard: the studio's own estimate pauses new videos when it gets too low, until a top-up.
+ ok('The Higgsfield balance is not tracked until the admin enters it',(await request('/api/admin/provider-balance',{cookie:adminCookie})).body.tracking===false);
+ await request('/api/admin/provider-balance',{cookie:userCookie,expected:403});
+ const low=(await request('/api/admin/provider-balance',{method:'POST',cookie:adminCookie,data:{kind:'set',amount:0.5}})).body;
+ ok('A balance below the pause level ($1) pauses creation',low.tracking&&low.available===50&&low.low&&low.paused);
+ const bpUp=await upload(userCookie);const bp=await generate(userCookie,curFormula,[bpUp.body.id],{expected:503});
+ ok('Customers only see that creation is paused for a while',/paused for a short while/.test(bp.body.error)&&(await request('/template/formula-driver')).body.includes('paused for a short while'));
+ const topped=(await request('/api/admin/provider-balance',{method:'POST',cookie:adminCookie,data:{kind:'topup',amount:20,note:'Test top-up'}})).body;
+ ok('A top-up adds to the balance and opens creation again',topped.available===2050&&!topped.paused&&!topped.low);
+ await db.prepare("INSERT INTO generation_steps (id,generation_id,step_order,type,provider,model,status,started_at,completed_at,cost,cost_source) VALUES ('stp_balance_test',?,90,'video','higgsfield','test','completed',?,?,300,'listed')").bind(resumed.body.generationId,Date.now(),Date.now()).run();
+ const after=(await request('/api/admin/provider-balance',{cookie:adminCookie})).body;
+ ok('Recorded Higgsfield costs lower the estimated balance',after.spent===300&&after.available===1750);
+ await request('/api/admin/provider-balance',{method:'PATCH',cookie:adminCookie,data:{alertBelow:1,pauseBelow:5,autoPause:true},expected:400});
+ ok('The warning level cannot be below the pause level',true);
+ await db.prepare("DELETE FROM generation_steps WHERE id='stp_balance_test'").run();await db.prepare("DELETE FROM app_settings WHERE key IN ('provider_balance','provider_balance_notified')").run();
+ ok('Without tracking, creation is never paused by the balance',(await request('/api/admin/provider-balance',{cookie:adminCookie})).body.paused===false);
+ async function clearFailures(){await db.prepare("DELETE FROM app_settings WHERE key='alert_sent:failures'").run();}
+ // V53 owner alerts: each problem is claimed once (alert_sent:<key>) and sent to the alert recipients.
+ const dispatch=()=>request('/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+config.QUEUE_SECRET},data:{}});
+ const sent=async key=>!!(await db.prepare('SELECT key FROM app_settings WHERE key=?').bind('alert_sent:'+key).first());
+ ok('Alerts go to the two owner addresses by default',(await request('/api/admin/settings',{cookie:adminCookie})).body.alerts.emails.join()==='Vasoxhaja04@gmail.com,eglimalaj999@gmail.com');
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{alerts:{emails:['not-an-email'],trialDaily:20}},expected:400});
+ await grant(reg.body.user.id,1000);
+ const stuckGen=(await generate(userCookie,curFormula,[(await upload(userCookie)).body.id])).body.generationId;
+ await db.prepare("UPDATE generations SET status='generating',started_at=?,created_at=?,lease_until=? WHERE id=?").bind(Date.now()-25*60000,Date.now()-25*60000,Date.now()+3600000,stuckGen).run();
+ await dispatch();ok('A video stuck over 20 minutes raises one alert',await sent('stuck:'+stuckGen));
+ const beforeCancel=(await balance(userCookie)).available;
+ await request('/api/admin/generations/'+stuckGen+'/cancel',{method:'POST',cookie:adminCookie,data:{}});
+ const cancelled=await db.prepare('SELECT status FROM generations WHERE id=?').bind(stuckGen).first();
+ ok('Cancel and refund ends the stuck video and returns its credits',cancelled.status==='failed'&&(await balance(userCookie)).available===beforeCancel+curFormula.creditCost&&!(await sent('stuck:'+stuckGen)));
+ await request('/api/admin/generations/'+stuckGen+'/cancel',{method:'POST',cookie:adminCookie,data:{},expected:409});
+ await request('/api/admin/generations/'+stuckGen+'/cancel',{method:'POST',cookie:userCookie,data:{},expected:403});
+ // Failures: NSFW refusals never count; 3 real failures from 2 customers in 30 minutes do.
+ const failRows=(await db.prepare("SELECT id,user_id,completed_at FROM generations WHERE status='completed' ORDER BY created_at DESC LIMIT 3").all()).results,failIds=failRows.map(r=>r.id);
+ await db.prepare(`UPDATE generations SET status='refused',completed_at=? WHERE id IN (${failIds.map(()=>'?').join(',')})`).bind(Date.now(),...failIds).run();
+ await clearFailures();await dispatch();ok('NSFW refusals never raise the failure alarm',!(await sent('failures')));
+ const otherUser=(await db.prepare("SELECT id FROM users WHERE role='user' AND id NOT IN (SELECT user_id FROM generations WHERE id=?) LIMIT 1").bind(failIds[0]).first()).id;
+ await db.prepare(`UPDATE generations SET status='failed',completed_at=? WHERE id IN (${failIds.map(()=>'?').join(',')})`).bind(Date.now(),...failIds).run();
+ await db.prepare('UPDATE generations SET user_id=? WHERE id=?').bind(otherUser,failIds[0]).run();
+ await dispatch();ok('Three real failures from two customers in 30 minutes raise the failure alarm',await sent('failures'));
+ await db.prepare(`UPDATE generations SET completed_at=? WHERE id IN (${failIds.map(()=>'?').join(',')})`).bind(Date.now()-3600000,...failIds).run();
+ await dispatch();ok('The failure alarm resets once failures stop, so it can email again next time',!(await sent('failures')));
+ for(const r of failRows)await db.prepare("UPDATE generations SET status='completed',user_id=?,completed_at=? WHERE id=?").bind(r.user_id,r.completed_at,r.id).run();
+ // A real POK payment pending over an hour raises one alert; abandoned demo checkouts never do.
+ await db.prepare("INSERT INTO credit_purchases (id,user_id,package_id,package_name,credits,amount,currency,status,provider,idempotency_key,created_at,provider_session_id) VALUES ('cp_alert_test',?,'pack_x','Test pack',100,1499,'EUR','pending','pok',?,?,'pok_order_test')").bind(reg.body.user.id,randomUUID(),Date.now()-2*3600000).run();
+ await dispatch();ok('A POK payment pending over an hour raises one alert',await sent('pending:cp_alert_test'));
+ await db.prepare("DELETE FROM credit_purchases WHERE id='cp_alert_test'").run();
+ // Worker health for an outside monitor.
+ ok('The health check reports the background worker as running',(await request('/api/health')).body.worker==='running');
+ await db.prepare("UPDATE app_settings SET value=? WHERE key='queue_heartbeat'").bind(String(Date.now()-15*60000)).run();
+ const down=await request('/api/health',{expected:503});ok('The health check answers 503 when the background worker stopped',down.body.status==='worker-stopped');
+ await dispatch();
+ ok('Free videos are limited to 3 per network per 30 days and counted for the dashboard',typeof (await request('/api/admin/alerts',{cookie:adminCookie})).body.trial.month==='number');
 
  // C23 — spending safety limits
  await grant(reg.body.user.id,10000);

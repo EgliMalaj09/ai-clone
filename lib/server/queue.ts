@@ -6,6 +6,7 @@ import {settleHold} from './credits';
 import {demoVideos} from './demo-assets';
 import {sweepTemplateMedia} from './template-media';
 import {sweepPendingPurchases} from './credit-purchases';
+import {checkProviderBalance} from './provider-balance';
 import {serviceConfig} from './connections';
 import {generationMailContent,type GenerationMailKind} from './email-templates';
 import {sendMail} from './security';
@@ -122,7 +123,7 @@ export async function tickQueue(userId?:string){
  const maintenance=await one("INSERT INTO app_settings (key,value) VALUES ('last_maintenance',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE CAST(value AS INTEGER)<? RETURNING value",String(now()),now()-3600000);
  if(maintenance){
   await batch([stmt('DELETE FROM rate_limits WHERE reset_at<?',now()-3600000),stmt('DELETE FROM sessions WHERE expires_at<?',now()),stmt('DELETE FROM auth_tokens WHERE expires_at<?',now())]);
-  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads,sweepExpiredCreations,sweepExpiredUploads,sweepPendingPurchases,sweepUnverifiedAccounts,pruneErrors])await task().catch(e=>reportError('queue','Maintenance task needs another run',{error:e,context:{task:task.name}}));
+  for(const task of [sweepTemplateMedia,sweepCreditHolds,sweepUnusedUploads,sweepExpiredCreations,sweepExpiredUploads,sweepPendingPurchases,sweepUnverifiedAccounts,pruneErrors,checkProviderBalance])await task().catch(e=>reportError('queue','Maintenance task needs another run',{error:e,context:{task:task.name}}));
  }
  await run("INSERT INTO app_settings (key,value) VALUES ('queue_heartbeat',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",String(now()));
  // Announcements (V36): the next batch of emails, if one is being sent.

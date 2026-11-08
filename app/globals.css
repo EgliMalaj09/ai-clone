@@ -505,3 +505,18 @@ html.nz-splash-out .nz-splash{opacity:0;pointer-events:none}
 .pricing-example ul{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:4px}
 .pricing-example li{display:flex;justify-content:space-between;gap:12px}
 .pricing-example s{color:#68707a;margin-left:4px}
+
+/* Higgsfield balance safeguard (admin). */
+.balance-card h2{display:flex;align-items:center;gap:8px}
+.balance-figures{display:flex;flex-wrap:wrap;gap:28px;margin:6px 0 16px}
+.balance-figures>div{display:flex;flex-direction:column;gap:2px}
+.balance-figures span{font-size:12px;color:#68707a;text-transform:uppercase;letter-spacing:.04em}
+.balance-figures strong{font-size:30px;letter-spacing:-.03em}
+.balance-figures small{font-size:13px;color:#4b5563}
+.balance-low{color:#b45309}
+.balance-settings{margin-top:14px}
+.balance-settings summary{cursor:pointer;font-weight:600;font-size:14px;margin-bottom:10px}
+.balance-entries{list-style:none;padding:0;margin:0;display:grid;gap:6px;font-size:13px}
+.balance-entries li{display:flex;justify-content:space-between;gap:12px}
+.balance-banner{display:flex;align-items:center;gap:10px;margin:0 0 16px;padding:10px 14px;border-radius:10px;background:#fff7e6;border:1px solid #f5c26b;color:#7a4b00;font-size:14px;text-decoration:none}
+.balance-banner.paused{background:#fdecec;border-color:#f1a5a5;color:#8a1c1c}
