@@ -133,6 +133,8 @@ export async function updateConnections(req:Request,user:StudioUser){
     // The Apple sign-in key is a multi-line PEM (.p8); every other value is a single line.
     must(name==='APPLE_PRIVATE_KEY'?!/\u0000/.test(value):!/[\r\n\u0000]/.test(value),'Connection values cannot contain control characters.');
     if(name==='POK_KEY_ID'||name==='POK_KEY_SECRET'||name==='POK_MERCHANT_ID')must(value.length>=6&&!/\s/.test(value),'Use the complete value from your POK merchant dashboard.');
+    // POK merchant IDs are GUIDs (8-4-4-4-12); POK refuses anything else only at checkout, so check it when saving.
+    if(name==='POK_MERCHANT_ID')must(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),'The POK merchant ID looks like 584ff372-be98-4e11-aa2e-720a7a9174ec (8-4-4-4-12 letters and digits with dashes). Copy it from your POK merchant dashboard without quotes or spaces.');
     if(name==='GOOGLE_CLIENT_ID')must(/\.apps\.googleusercontent\.com$/.test(value),'Use the OAuth client ID from Google Cloud (ends in .apps.googleusercontent.com).');
     if(name==='GOOGLE_CLIENT_SECRET')must(value.length>=16&&!/\s/.test(value),'Paste the client secret from the same Google OAuth client.');
     if(name==='APPLE_CLIENT_ID')must(/^[A-Za-z0-9.\-]{3,}$/.test(value),'Use your Apple Services ID (e.g. com.yourbrand.signin).');

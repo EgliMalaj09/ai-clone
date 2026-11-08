@@ -8,6 +8,12 @@ import {boundedText} from './http';
 import {reportError} from './errors';
 
 const hosts={production:'https://api.pokpay.io',staging:'https://api-staging.pokpay.io'} as const;
+// Where the customer pays: POK's SDK opens {app}/sdk-orders/{id} when the order reply carries no link of its own.
+const appHosts={production:'https://app.pokpay.io',staging:'https://app-staging.pokpay.io'} as const;
+/** Field names only (never values) of a POK reply, for the error log when its shape is not what we expect. */
+const shape=(v:unknown,depth=0):unknown=>v&&typeof v==='object'&&!Array.isArray(v)&&depth<3?Object.fromEntries(Object.entries(v as Row).map(([k,x])=>[k,x&&typeof x==='object'&&!Array.isArray(x)?shape(x,depth+1):typeof x])):typeof v;
+/** The order inside a POK reply: data.sdkOrder (documented), or the same without the data wrapper. */
+const orderIn=(data:Row,raw:Row):Row|undefined=>(data.sdkOrder||raw.sdkOrder||(typeof data.id==='string'?data:undefined)) as Row|undefined;
 export const pokCurrencies=['ALL','EUR'] as const;
 
 // Access tokens are cached per isolate until shortly before they expire.
@@ -44,7 +50,7 @@ export async function pok(path:string,body?:Row){
   if(r.status===401){scheme=scheme?'':'Bearer ';({r,data}=await send());}
  }
  if(!r.ok){await reportError('payment','POK request failed',{context:{status:r.status,code:String(data.message||data.code||'')}});throw new Error('The payment service is unavailable. Please try again.');}
- return {data:(data.data||{}) as Row,merchantId:c.pokMerchantId};
+ return {data:(data.data||{}) as Row,raw:data,merchantId:c.pokMerchantId,environment:c.pokEnvironment};
 }
 
 /** POK amounts are in major units; the studio stores minor units. ALL is sold in whole lek. */
@@ -55,16 +61,25 @@ const webhookPath=async(purchaseId:string)=>`/api/webhooks/pok?purchase=${encode
 export async function createPokOrder(o:{id:string;amount:number;currency:string;name:string;successPath:string;cancelPath:string}){
  must((pokCurrencies as readonly string[]).includes(o.currency),'POK accepts payments in ALL and EUR only.',400);
  const c=await serviceConfig();const origin=config().origin;
- const {data}=await pok(`/merchants/${encodeURIComponent(c.pokMerchantId)}/sdk-orders`,{
+ const {data,raw,environment}=await pok(`/merchants/${encodeURIComponent(c.pokMerchantId)}/sdk-orders`,{
   amount:pokAmount(o.amount,o.currency),currencyCode:o.currency,autoCapture:true,products:[],description:o.name,
   merchantCustomReference:o.id,expiresAfterMinutes:30,
   redirectUrl:origin+o.successPath,failRedirectUrl:origin+o.cancelPath,webhookUrl:origin+await webhookPath(o.id),
  });
- const order=data.sdkOrder||{};
- must(typeof order.id==='string'&&typeof order.self?.confirmUrl==='string','Checkout was not ready. Please try again.',502);
- return {id:order.id as string,url:order.self.confirmUrl as string};
+ const order=orderIn(data,raw)||{};
+ const id=typeof order.id==='string'?order.id:typeof data.sdkOrderId==='string'?data.sdkOrderId:'';
+ const link=(order.self||order._self||{}) as Row;
+ let url=typeof link.confirmUrl==='string'?link.confirmUrl:typeof order.confirmUrl==='string'?order.confirmUrl:'';
+ if(id&&!url)url=appHosts[environment==='production'?'production':'staging']+'/sdk-orders/'+encodeURIComponent(id);
+ if(!id)await reportError('payment','POK order reply had no order ID',{context:{fields:JSON.stringify(shape(raw)).slice(0,1500)}});
+ must(id&&url,'Checkout was not ready. Please try again.',502);
+ return {id,url};
 }
-export async function getPokOrder(orderId:string){return (await pok('/sdk-orders/'+encodeURIComponent(orderId))).data.sdkOrder as Row|undefined;}
+export async function getPokOrder(orderId:string){
+ const {data,raw}=await pok('/sdk-orders/'+encodeURIComponent(orderId));const order=orderIn(data,raw);
+ if(!order)await reportError('payment','POK order status reply had no order',{context:{orderId,fields:JSON.stringify(shape(raw)).slice(0,1500)}});
+ return order;
+}
 
 /** Reads the state of a purchase's order from what POK returns: paid only when the full amount was captured. */
 export function pokOrderState(order:Row|undefined,purchase:Row):'paid'|'expired'|'open'|'mismatch'{

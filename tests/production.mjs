@@ -13,7 +13,7 @@ const server=path.resolve('dist/server');
 const modules=(await readdir(server,{recursive:true})).filter(f=>f.endsWith('.js')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:a.localeCompare(b)).map(f=>({type:'ESModule',path:path.join(server,f)}));
 const password=randomBytes(20).toString('hex'),salt=randomBytes(32).toString('hex');
 const env={DEMO_MODE:'false',PUBLIC_SERVICE_ACCESS:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(password,salt,100000,32,'sha256').toString('hex'),REPLICATE_API_TOKEN:'replicate_environment_fixture'};
-const keys={POK_KEY_ID:'pokkey_'+randomBytes(10).toString('hex'),POK_KEY_SECRET:'poksecret_'+randomBytes(20).toString('hex'),POK_MERCHANT_ID:'merchant_'+randomBytes(8).toString('hex'),HIGGSFIELD_API_KEY:'hfkey_'+randomBytes(10).toString('hex'),HIGGSFIELD_API_SECRET:'hfsecret_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test',SENTRY_DSN:'https://'+randomBytes(16).toString('hex')+'@o1.ingest.sentry.io/42'};
+const keys={POK_KEY_ID:'pokkey_'+randomBytes(10).toString('hex'),POK_KEY_SECRET:'poksecret_'+randomBytes(20).toString('hex'),POK_MERCHANT_ID:randomUUID(),HIGGSFIELD_API_KEY:'hfkey_'+randomBytes(10).toString('hex'),HIGGSFIELD_API_SECRET:'hfsecret_'+randomBytes(20).toString('hex'),RESEND_API_KEY:'re_'+randomBytes(20).toString('hex'),MAIL_FROM:'hello@studio.test',SENTRY_DSN:'https://'+randomBytes(16).toString('hex')+'@o1.ingest.sentry.io/42'};
 const image=await readFile('public/media/formula-driver.webp'),video=await readFile('public/media/formula-driver.mp4');
 const requests=[],mails=[],sentry=[];
 const higgsfield=fakeHiggsfield({keyId:keys.HIGGSFIELD_API_KEY,keySecret:keys.HIGGSFIELD_API_SECRET,Response:MFResponse,image,video});
@@ -51,6 +51,7 @@ try{
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,origin:'https://attacker.test',data:{currentPassword:password,values:keys},expected:403});ok('Connection changes reject a cross-site origin');
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:'incorrect-password',values:keys},expected:403});ok('Saving keys requires administrator password reauthentication');
   await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{POK_ENVIRONMENT:'live'}},expected:400});ok('The POK environment accepts only staging or production');
+  const badMerchant=await request('/api/admin/connections',{method:'PATCH',cookie:admin,data:{currentPassword:password,values:{POK_MERCHANT_ID:'`merchant-123456`'}},expected:400});ok('A POK merchant ID that is not a GUID is refused when saving',/8-4-4-4-12/.test(badMerchant.body.error));await db.prepare("DELETE FROM rate_limits WHERE key LIKE 'connections:%'").run();
   await save(keys);
   const stored=(await db.prepare("SELECT key,value FROM app_settings WHERE key LIKE 'connection.%'").all()).results;
   ok('Stored connections do not contain plaintext secrets',stored.length===8&&Object.values(keys).every(secret=>!JSON.stringify(stored).includes(secret)));

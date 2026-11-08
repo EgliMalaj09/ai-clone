@@ -148,6 +148,14 @@ async function liveChecks(){
   ok('The pack offer lowers the POK price of that pack',Number(pok.created.at(-1).amount)*100===Math.round(offerPack.prices.EUR*0.8));
   await call('/api/admin/settings',{method:'PATCH',cookie:admin,data:{pricing:{perSecond:rates,singleMarkup:33,offer:{enabled:true,packageId:'pack_missing',percent:20}}},expected:400});
   ok('The offer must point at an active pack',true);
+
+  // The real POK reply may carry only the order ID: the app then opens POK's own payment page for that order.
+  pok.opts.omitLink=true;
+  const noLink=(await call('/api/credits/checkout',{method:'POST',cookie:buyer,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
+  pok.opts.omitLink=false;
+  ok('Without a link in the POK reply, checkout opens POK’s payment page for the order',noLink.url==='https://app-staging.pokpay.io/sdk-orders/ord_'+pok.created.length);
+  pok.pay('ord_'+pok.created.length);await call('/api/credits/purchases/'+noLink.purchaseId+'/verify',{method:'POST',cookie:buyer,data:{}});
+  ok('A purchase opened that way is still confirmed by reading the order from POK',(await call('/api/credits/purchases/'+noLink.purchaseId,{cookie:buyer})).body.purchase.status==='paid');
  }finally{await live.dispose()}
 }
 try{

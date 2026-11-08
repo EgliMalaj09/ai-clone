@@ -67,7 +67,7 @@ These come first, because the code and infrastructure work depends on them.
 - [ ] **C1 🔴 Payment provider integration** (depends on D1).
   - [x] C1.1 Add a POK adapter next to `lib/server/payments.ts` (create checkout, verify the signed webhook, confirm, fail and reverse purchases). Reuse `lib/server/credit-purchases.ts`; the ledger does not change.
   - [x] C1.2 Add contract tests (fake POK in all test suites).
-  - [ ] C1.4 Confirm on POK staging: the Authorization header format, the webhook body, and that a paid order shows the full `capturedAmount`. **Owner does this personally at the end, during Phase 4 (T2).**
+  - [~] C1.4 Confirm on POK staging: the Authorization header format, the webhook body, and that a paid order shows the full `capturedAmount`. **Owner does this personally at the end, during Phase 4 (T2).** **2026-11-08, partly confirmed on POK production:** sign-in with the SDK key works, orders are created on /merchants/{GUID}/sdk-orders, and reading a paid order confirms the full amount (purchase marked Paid). Found and fixed: the merchant ID must be a GUID (now checked when saving), and the order reply's payment link was not where the app expected (now read from either shape, or built as POK's own sdk-orders page). Still open: the webhook body.
   - [x] ~~C1.3 Implement the partial-refund rule from D4.~~ Not needed: no refunds (D4).
 - [x] **C2 🔴 Content safety (L3).** ✅ Done, except C2.2d which is part of C32 (Higgsfield). Decision: content checks are done by the AI platform (Higgsfield moderation); the app records refusals and blocks repeat offenders. No separate moderation service.
   - [x] ~~C2.1 Moderate uploaded photos with a moderation API.~~ Not needed: Higgsfield moderates and doesn't charge for refused requests.
@@ -319,8 +319,8 @@ Run these on a staging copy with test keys before switching to live keys (L1). R
   - [x] T1.5 ✅ 2026-11-07. Forgot password: the reset email arrives, the link works once, and old sessions are signed out.
   - [x] T1.6 Delete the account from the Account page. ✅ 2026-11-07, marked done by the owner; covered by the automated security tests (re-authentication, storage and identity removed).
   - [x] T1.7 Change password in Account: works and other sessions are signed out. ✅ 2026-11-07.
-- [ ] **T2 🔴 Buying credits.** *2026-11-07, demo mode (test checkout, no POK): buying a pack adds the credits and Reverse in admin removes them; works. The items below still need real POK staging.*
-  - [ ] T2.1 Successful card payment: credits appear once.
+- [ ] **T2 🔴 Buying credits.** *2026-11-07, demo mode (test checkout, no POK): buying a pack adds the credits and Reverse in admin removes them; works. The items below still need real POK staging.* **2026-11-08: first real POK payment done** (live mode, POK production, €1 "POK test" pack): checkout opens POK's payment page, paying returns to NgaZero, the purchase is Paid and 10 credits were added once; no errors logged.
+  - [x] T2.1 Successful card payment: credits appear once. ✅ 2026-11-08, real €1 payment through POK production (purchase cp_ad7fc8e2…, Paid, +10 credits). Receipt email: owner to confirm.
   - [ ] T2.2 Declined card: no credits, clear message.
   - [ ] T2.3 Abandoned checkout: the purchase expires.
   - [ ] T2.4 Webhook replay from the provider dashboard: credits are not added twice.
@@ -387,6 +387,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-08 | T2.1, C1.4 | Tested (POK) | First real POK payment: live mode, POK production, €1 test pack → POK payment page → Paid, +10 credits, back to home. Fixes deployed (version 07b4dc65): POK order link read from either reply shape or built as {app}/sdk-orders/{id}; reply shape logged (field names only) when an order ID is missing; Connections refuses a merchant ID that is not a GUID. Site still in live mode with the €1 test pack active. |
 | 2026-11-08 | C-connections | Done + deployed | Admin → Connections shows a Saved / Not added / Set in hosting badge on every field and a Connected / Partly connected (what's missing) / Not connected status per card, plus the sender address; key values are never shown. Live check: POK (ID, secret, merchant, staging) and Resend + sender saved; Higgsfield keys not saved yet. Version 71df42a4, all suites pass. |
 | 2026-11-08 | V54 | Deployed | Admin-only real Higgsfield test runs live (version 41acdb95, no migrations, still demo mode). Health ok, pages load. |
 | 2026-11-08 | V54 | Built (local) | Admin Test run can use real Higgsfield in demo mode (customers unaffected). 286 integration checks pass. Not deployed. |

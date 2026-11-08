@@ -3,10 +3,11 @@
 import assert from 'node:assert/strict';
 
 export function fakePok({keyId,keySecret,merchantId,Response}){
- const orders=new Map(),created=[];let serial=0;const token='pok_token_'+Math.random().toString(36).slice(2);
+ // opts.omitLink: reply like the real POK API may, with the order ID but no payment link (the app builds it).
+ const opts={omitLink:false};const orders=new Map(),created=[];let serial=0;const token='pok_token_'+Math.random().toString(36).slice(2);
  const json=(data,status=200)=>Response.json(data,{status});
  return {
-  orders,created,
+  orders,created,opts,
   matches:url=>url.hostname==='api-staging.pokpay.io'||url.hostname==='api.pokpay.io',
   async handle(req){
    const url=new URL(req.url);
@@ -15,6 +16,7 @@ export function fakePok({keyId,keySecret,merchantId,Response}){
    if(url.pathname===`/merchants/${merchantId}/sdk-orders`&&req.method==='POST'){
     const b=await req.json();const id='ord_'+(++serial);created.push(b);
     const order={id,amount:Number(b.amount),capturedAmount:0,currencyCode:b.currencyCode,finalAmount:Number(b.amount),merchantCustomReference:b.merchantCustomReference,createdAt:new Date().toISOString(),expiresAt:new Date(Date.now()+(b.expiresAfterMinutes||30)*60000).toISOString(),redirectUrl:b.redirectUrl,failRedirectUrl:b.failRedirectUrl,self:{confirmUrl:'https://pay.pokpay.io/confirm/'+id},webhookUrl:b.webhookUrl};
+    if(opts.omitLink)delete order.self;
     orders.set(id,order);return json({data:{sdkOrder:order}},201);
    }
    const read=url.pathname.match(/^\/sdk-orders\/([^/]+)$/);
