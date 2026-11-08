@@ -51,7 +51,7 @@ These come first, because the code and infrastructure work depends on them.
 - [ ] **D8 🔴 Fiscalization.** Albanian businesses must fiscalize sales (fiscal invoice with NIVF/NSLF through the tax authority). Ask your accountant whether each credit purchase needs one and whether POK issues it; if not, the app needs a fiscalization service integration (becomes a codebase task).
 - [ ] **D9 🔴 Business details on the website.** E-commerce rules require the seller's identity on the site: business name (VASIL XHAJA), NIPT, address, email and phone. Collect them for the footer, Terms and Privacy.
 - [ ] **D10 🔴 Personal data obligations.** Face photos are personal data and may count as biometric data. Check with a lawyer whether you must notify or register with the Information and Data Protection Commissioner, and get the data processing terms of every service that receives customer data (Cloudflare, fal.ai, Resend, POK), since data leaves Albania.
-- [x] **D11 🔴 How long files are kept.** ✅ **30 days, then deleted automatically** (finished videos and their photos). The 30-day limit must be **shown to the customer** so they know (Privacy Policy, FAQ, the template "What you receive" box, My creations). Auto-delete + the visible notice are **not built yet** — tracked in **V46**. (Unused uploads still go at 24 h, unchanged.)
+- [x] **D11 🔴 How long files are kept.** ✅ **Kept until the customer deletes them** (changed 2026-11-08 at the owner's request; was 30 days). Finished videos, saved photos and the photos used for a video stay in My creations / My photos with no time limit; only uploads that are never used or saved go after 24 h. Stated in the Privacy Policy (EN + SQ), FAQ, the "What you receive" box, My creations and My photos. Mention the no-limit photo retention to the lawyer (D10).
 - [x] **D12 🔴 Bad result policy.** ✅ A customer can report any finished video that isn't good. You review each case by hand (their photo + the video). If the photo was good and the generation went wrong, they get **one free new generation of the same video with the same photo**. If the photo itself was the problem (blurry, dark, face hidden, breaks the photo guidelines), there is no free try. No money is ever refunded. Built in C21; photo guidelines in C31.
 - [x] **D13 🔴 Minimum age.** ✅ **13+**, like Genematic. Customers confirm their age at sign-up (C20.2).
   - [ ] D13.1 Ask the lawyer (with D10): in Albania, can 13–17 year olds agree to the use of their data and photos on their own, or is a parent's consent needed (many countries set this at 16)?
@@ -177,33 +177,33 @@ These come first, because the code and infrastructure work depends on them.
 ## Phase 2 — Infrastructure
 
 - [ ] **I1 🔴 Hosting account.** Your own Cloudflare account with Workers, D1 and R2 enabled, on the **Workers Paid plan ($5/month)** for staging and live (the free plan's 10 ms limit breaks password sign-in at times). Needs C33 (deploy to your own account).
-- [ ] **I2 🔴 Production database (D1).**
-  - [ ] I2.1 Create the production D1 database and bind it as `DB`.
-  - [ ] I2.2 Apply all migrations in `drizzle/` (0000 onwards, currently up to 0031) through the hosting workflow.
-  - [ ] I2.3 Check the tables exist and the starter templates are seeded.
+- [x] **I2 🔴 Production database (D1).**
+  - [x] I2.1 Create the production D1 database and bind it as `DB`. ✅ `ngazero-db`, bound as `DB`.
+  - [x] I2.2 Apply all migrations in `drizzle/` (0000 onwards, currently up to 0031) through the hosting workflow. ✅ Applied live up to 0032.
+  - [x] I2.3 Check the tables exist and the starter templates are seeded. ✅ 18 templates live.
 - [ ] **I3 🔴 File storage (R2).**
-  - [ ] I3.1 Create the production bucket and bind it as `BUCKET`. Keep it private; the app serves signed links.
-  - [ ] I3.2 Add lifecycle rules if you want videos removed after a retention period (match the privacy policy).
+  - [x] I3.1 Create the production bucket and bind it as `BUCKET`. Keep it private; the app serves signed links. ✅ `ngazero-media`, bound as `BUCKET`.
+  - [x] I3.2 ~~Lifecycle rules~~ Not needed: nothing expires now (D11). A bucket-wide rule would also delete template previews and Media library files. *(Skipped 2026-11-08.)*
 - [ ] **I4 🔴 Secrets and environment.**
-  - [ ] I4.1 Generate independent random `APP_SECRET` and `QUEUE_SECRET` and store them in the hosting secrets, never in the repo.
+  - [x] I4.1 Generate independent random `APP_SECRET` and `QUEUE_SECRET` and store them in the hosting secrets, never in the repo. ✅ Both set as Cloudflare secrets.
   - [ ] I4.2 Save a copy of `APP_SECRET` in a password manager. Losing it makes the saved connections unreadable.
   - [ ] I4.3 Set `ADMIN_EMAIL` and `ADMIN_PASSWORD_HASH` (from `scripts/init-demo.mjs`), then change the admin password after the first login.
   - [ ] I4.4 Set `DEMO_MODE=false` and `APP_ORIGIN=https://yourdomain`.
 - [ ] **I5 🔴 Domain and HTTPS.** Point the domain at the Worker, confirm HTTPS works, and make sure `APP_ORIGIN` matches exactly (no trailing slash).
-- [ ] **I6 🔴 Payment webhook.**
-  - [ ] I6.1 Nothing to create in the POK dashboard: the app sends POK its webhook address with every order (signed per purchase). It only has to be reachable from the internet (I9).
-  - [ ] I6.2 Save the POK key ID, key secret and merchant ID in Admin → Connections, and choose staging or production there.
-  - [ ] I6.3 Make one test purchase on staging and check in Admin → Purchases that it turned paid by itself (the webhook arrived).
+- [x] **I6 🔴 Payment webhook.**
+  - [x] I6.1 Nothing to create in the POK dashboard: the app sends POK its webhook address with every order (signed per purchase). It only has to be reachable from the internet (I9). ✅
+  - [x] I6.2 Save the POK key ID, key secret and merchant ID in Admin → Connections, and choose staging or production there. ✅ Production keys saved 2026-11-08.
+  - [x] I6.3 Make one test purchase on staging and check in Admin → Purchases that it turned paid by itself (the webhook arrived). ✅ Done on POK production instead of staging (2026-11-08, €1 pack, webhook turned it Paid).
 - [ ] **I7 🔴 Email sending (Resend).** Without it, sign-up stays closed in live mode.
-  - [ ] I7.1 Create the Resend account and an API key (starts with `re_`).
+  - [x] I7.1 Create the Resend account and an API key (starts with `re_`). ✅
   - [ ] I7.2 Quick local test before the domain is ready: `DEMO_MODE=false`, `RESEND_API_KEY`, `MAIL_FROM=onboarding@resend.dev`, then sign up with the email of your Resend account (Resend only delivers there until a domain is verified).
   - [ ] I7.3 Verify your domain in Resend and add the SPF, DKIM and DMARC DNS records.
-  - [ ] I7.4 Choose the sender address (e.g. `hello@yourdomain`) and save the Resend key and `MAIL_FROM` in Admin → Connections.
+  - [x] I7.4 Choose the sender address (e.g. `hello@yourdomain`) and save the Resend key and `MAIL_FROM` in Admin → Connections. ✅ Resend key and sender saved in Connections.
   - [ ] I7.5 Send a test to Gmail, Outlook and an Albanian provider; check it lands in the inbox, not spam.
 - [ ] **I8 🔴 AI provider.**
   - [ ] I8.1 Create the Higgsfield account and API key (ID + secret), add billing, and set a spending limit.
-  - [ ] I8.2 Save the key in Admin → Connections and enable the provider in Admin → AI providers.
-- [ ] **I9 🔴 Public access.** Allow public traffic on the hosting side (webhooks and AI providers must reach the app), then set `PUBLIC_SERVICE_ACCESS=true`.
+  - [x] I8.2 Save the key in Admin → Connections and enable the provider in Admin → AI providers. ✅ Key saved 2026-11-08.
+- [x] **I9 🔴 Public access.** Allow public traffic on the hosting side (webhooks and AI providers must reach the app), then set `PUBLIC_SERVICE_ACCESS=true`. ✅ `PUBLIC_SERVICE_ACCESS=true` on the live Worker.
 - [ ] **I10 🟡 Backups, monitoring and abuse protection.**
   - [ ] I10.1 D1 backups: confirm point-in-time recovery, and export before every migration (L7).
   - [ ] I10.2 Uptime monitor on the homepage and an alert when the dispatcher heartbeat goes stale.
@@ -295,7 +295,7 @@ Everything from the feature list in TODO.md, built before launch. Strike through
 - [x] **V16 🟡 A/B tests.** Test two previews or credit costs for a template. ✅ Template editor → A/B test: test a second credit cost or a second preview (thumbnail/video). Signed-in customers are split by account (always the same version), guests see version A; cards, template page, checkout price and Make it again follow the version. Results per version: views, creations, conversion, credits. See DECISIONS.md #17.
 
 **Implementations from the Phase 0 decisions (built later)**
-- [x] **V46 🔴 30-day retention & auto-delete (D11).** Finished videos and their photos are deleted automatically 30 days after creation (extend the hourly maintenance in `lib/server/queue.ts`; R2 lifecycle rules I3.2 as a backstop). Show the 30-day limit where the customer expects it: Privacy Policy (P3), FAQ, the template "What you receive" box (C27.1) and My creations. Unused uploads still go at 24 h (unchanged). Launch-critical: the Privacy Policy states it, so it must be true. ✅ Done: hourly sweep deletes finished videos and photos after 30 days; stated in Privacy/Terms, FAQ, My creations and the template "What you receive" box.
+- [x] **V46 🔴 ~~30-day retention & auto-delete (D11).~~** **Replaced 2026-11-08:** the 30-day sweep is removed; videos and photos are kept until the customer deletes them. Finished videos and their photos are deleted automatically 30 days after creation (extend the hourly maintenance in `lib/server/queue.ts`; R2 lifecycle rules I3.2 as a backstop). Show the 30-day limit where the customer expects it: Privacy Policy (P3), FAQ, the template "What you receive" box (C27.1) and My creations. Unused uploads still go at 24 h (unchanged). Launch-critical: the Privacy Policy states it, so it must be true. ✅ Done: hourly sweep deletes finished videos and photos after 30 days; stated in Privacy/Terms, FAQ, My creations and the template "What you receive" box.
 - [x] **V47 🟡 Free trial — one 480p video (D16).** ✅ Done: each verified customer account gets one free video, no credits and no watermark. The video steps ask Higgsfield for 480p (`resolution: "480p"`). It works on video templates with the standard options; the customer can choose to pay for full quality instead. Uploads are allowed while the free video is unused. A failed or refused free video gives it back; refusals still count as content strikes; no free redo on a free video; at most 3 free videos per network address a day. Admin → Settings can turn it off. Creations show "Free video · 480p". Migration 0031. 8 integration checks. **Confirm in C32.8** that Higgsfield's video model takes `resolution: "480p"` (rename the field if Higgsfield uses another).
 - [x] **V48 🟡 Stop a reference photo that fails twice (D6).** After a generation fails **twice on the same reference photo(s)**, block further attempts with that reference and show a clear message, so a bad reference doesn't keep costing money. Separate from content refusals (C2 already blocks after 3); this is for technical failures. ✅ Done: only failures the AI provider reports count (not timeouts, our errors or an empty Higgsfield account); after the 1st the customer is warned, after the 2nd that photo is refused before credits are reserved. Admin test runs and approved free redos are exempt.
 - [x] **V49 🟡 Password and Google/Apple sign-in on the same account, both ways.** Every account can use both email + password and Google/Apple, whichever way it started. (1) **Signed up with Google/Apple → add a password:** Account → Account security shows "Set a password" when the account has none (verified by a fresh social sign-in or an emailed code, not a current password); after that, password sign-in, two-step setup, email change and account deletion work as for any account. Until then, those actions must not be stuck behind "Your password": today a social-only account can't set up two-step sign-in, change its email or delete itself without first using "Forgot password". (2) **Signed up with email → connect Google/Apple:** Account → Account security lists the connected sign-ins with "Connect Google" / "Connect Apple" (linked to the signed-in account, even if the Google email is different) and "Disconnect" (refused when it is the only way left to sign in). Today linking only happens silently when the Google email matches. Two-step sign-in applies to every route (already true since C4.6). ✅ Done: Account → Account security → **Sign-in methods** lists password, Google and Apple. Google/Apple-only accounts set a password after a sign-in in the last 10 minutes ("Sign in again with Google/Apple" otherwise); the same rule replaces the password for two-step setup, email change and account deletion. Email accounts connect Google/Apple (account password required; the Google email may differ) and disconnect them; the last way into an account can't be removed; an identity already used by another account is refused. Two-step sign-in applies to every route. 12 integration checks.
@@ -387,6 +387,8 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-08 | D11, V46, I3.2 | Changed (local) | No more 30-day deletion: videos and photos stay until the customer deletes them (unused uploads still go at 24 h). Texts updated in English and Albanian. Typecheck, lint, i18n and all suites pass (286 integration). Not deployed. |
+| 2026-11-08 | I2, I3.1, I4.1, I6, I7.1, I7.4, I8.2, I9 | Done | Ticked setup that is already live on ngazero.ngazero.workers.dev. Still open: I1 (confirm Workers Paid plan), I3.2, I4.2–I4.4, I5 domain, I7.2/I7.3/I7.5, I8.1 spending limit. |
 | 2026-11-08 | C1.4 | Confirmed | POK webhook works: second €1 payment, tab closed after 3DS approval; POK's webhook arrived signed and the purchase became Paid within the same second. C1.4 fully confirmed (on production). |
 | 2026-11-08 | T2.1, C1.4 | Tested (POK) | First real POK payment: live mode, POK production, €1 test pack → POK payment page → Paid, +10 credits, back to home. Fixes deployed (version 07b4dc65): POK order link read from either reply shape or built as {app}/sdk-orders/{id}; reply shape logged (field names only) when an order ID is missing; Connections refuses a merchant ID that is not a GUID. Site still in live mode with the €1 test pack active. |
 | 2026-11-08 | C-connections | Done + deployed | Admin → Connections shows a Saved / Not added / Set in hosting badge on every field and a Connected / Partly connected (what's missing) / Not connected status per card, plus the sender address; key values are never shown. Live check: POK (ID, secret, merchant, staging) and Resend + sender saved; Higgsfield keys not saved yet. Version 71df42a4, all suites pass. |
