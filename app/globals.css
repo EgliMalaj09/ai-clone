@@ -529,3 +529,5 @@ html.nz-splash-out .nz-splash{opacity:0;pointer-events:none}
 .connection-status{display:inline-block;margin:2px 0 8px}
 .status.muted{background:#f1f2f4;color:#68707a}
 .connection-sender{display:flex;align-items:center;gap:6px;font-size:14px}
+
+.setup-qr{display:block;margin:10px 0;border-radius:8px;background:#fff;image-rendering:pixelated}
