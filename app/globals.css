@@ -520,3 +520,12 @@ html.nz-splash-out .nz-splash{opacity:0;pointer-events:none}
 .balance-entries li{display:flex;justify-content:space-between;gap:12px}
 .balance-banner{display:flex;align-items:center;gap:10px;margin:0 0 16px;padding:10px 14px;border-radius:10px;background:#fff7e6;border:1px solid #f5c26b;color:#7a4b00;font-size:14px;text-decoration:none}
 .balance-banner.paused{background:#fdecec;border-color:#f1a5a5;color:#8a1c1c}
+
+/* Connections: a clear saved / not added badge per field and a status per card (values are never shown). */
+.connection-field{position:relative}
+.key-badge{position:absolute;top:0;right:0;display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;font-size:11px;font-weight:700}
+.key-badge.saved{background:#e7f6ec;color:#187f44}
+.key-badge.missing{background:#f1f2f4;color:#68707a}
+.connection-status{display:inline-block;margin:2px 0 8px}
+.status.muted{background:#f1f2f4;color:#68707a}
+.connection-sender{display:flex;align-items:center;gap:6px;font-size:14px}

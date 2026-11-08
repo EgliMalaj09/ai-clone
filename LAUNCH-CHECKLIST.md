@@ -387,6 +387,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-08 | C-connections | Done + deployed | Admin → Connections shows a Saved / Not added / Set in hosting badge on every field and a Connected / Partly connected (what's missing) / Not connected status per card, plus the sender address; key values are never shown. Live check: POK (ID, secret, merchant, staging) and Resend + sender saved; Higgsfield keys not saved yet. Version 71df42a4, all suites pass. |
 | 2026-11-08 | V54 | Deployed | Admin-only real Higgsfield test runs live (version 41acdb95, no migrations, still demo mode). Health ok, pages load. |
 | 2026-11-08 | V54 | Built (local) | Admin Test run can use real Higgsfield in demo mode (customers unaffected). 286 integration checks pass. Not deployed. |
 | 2026-11-08 | V52, V53 | Deployed | Balance safeguard and owner alerts live (version a37251d4, no migrations, still demo mode). Verified: pages load, /api/health ok with worker running, no errors from the new per-minute checks. |
