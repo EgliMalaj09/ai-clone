@@ -551,6 +551,11 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const doneRun=await waitDone(adminCookie,testRun.generationId);const adminAfter=await balance(adminCookie);const runRow=await db.prepare('SELECT test_run,credit_cost,hold_id FROM generations WHERE id=?').bind(testRun.generationId).first();
  ok('A free admin test run completes without reserving or charging credits',doneRun.g.status==='completed'&&runRow.test_run===1&&runRow.credit_cost===0&&!runRow.hold_id&&adminAfter.available===adminBefore.available&&adminAfter.held===adminBefore.held);
  await request('/api/admin/templates/'+draftTpl.id,{method:'DELETE',cookie:adminCookie});
+ // Admin test runs may use a real provider in demo mode, but only once it is connected; customers never reach it.
+ const hfTpl=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Higgsfield Run',slug:'qa-higgsfield-run',active:false,workflow:clone.workflow.map(s=>({...s,provider:'higgsfield',model:'higgsfield/genjutsu-light/motion-transfer/v1.0'}))},expected:201})).body.template;
+ const hfRun=await request('/api/admin/templates/'+hfTpl.id+'/test-run',{method:'POST',cookie:adminCookie,data:{uploadIds:[adminPhoto.body.id]},expected:409});
+ ok('A Higgsfield test run in demo mode asks to connect Higgsfield first',/Connect Higgsfield/.test(hfRun.body.error));
+ await request('/api/admin/templates/'+hfTpl.id,{method:'DELETE',cookie:adminCookie});
  // V22/V23/V37: template options change the prompt (style), format and model/price (quality); prompts and models stay private.
  const optTpl=(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template;
  const optGroups=[{id:'mood',kind:'style',label:'Mood',labelSq:'Atmosfera',choices:[{id:'day',label:'Day',prompt:'sunny afternoon'},{id:'night',label:'Night',prompt:'neon night lights'}]},{id:'format',kind:'format',label:'Format',choices:[{id:'vertical',label:'Vertical',aspectRatio:'9:16'},{id:'square',label:'Square',aspectRatio:'1:1'}]},{id:'quality',kind:'quality',label:'Quality',choices:[{id:'standard',label:'Standard'},{id:'premium',label:'Premium',credits:100,model:'studio-demo-premium'}]}];

@@ -1,5 +1,5 @@
 import {liveWorkflow} from './workflow-presets';
-import {assertGeneratable,connectionStatus,maintenanceStatus,providerConfigured,publicAvailability,serviceConfig,updateConnections} from './connections';
+import {assertGeneratable,assertTestRunnable,connectionStatus,maintenanceStatus,providerConfigured,publicAvailability,serviceConfig,updateConnections} from './connections';
 import {ZodError,z} from 'zod';
 import {jsonBody,pageQuery,readUploadedFile} from './http';
 import {cleanImage} from './image-clean';
@@ -373,7 +373,7 @@ async function adminAPI(req:Request,p:string[],user:StudioUser){const method=req
   if(method==='POST'&&p[2]&&p[3]==='test-run'){await rateLimit('test-run:'+user.id,20,3600000);const b=z.object({uploadIds:z.array(z.string().max(100)).min(1).max(4)}).parse(await body(req));const t=await getAdminTemplate(p[2]);must(t&&t.id===p[2],'Template not found.',404);
    must(b.uploadIds.length===t.requiredImageCount&&new Set(b.uploadIds).size===b.uploadIds.length,`Upload ${t.requiredImageCount} different photo${t.requiredImageCount>1?'s':''}.`);
    for(const id of b.uploadIds)must(await one('SELECT id FROM user_uploads WHERE id=? AND user_id=?',id,user.id),'An uploaded photo is unavailable or belongs to another account.',403);
-   await assertGeneratable({...t,active:true});
+   await assertTestRunnable(t);
    const id=uid('gen_'),created=now();const snapshot={name:t.name,slug:t.slug,aspectRatio:t.aspectRatio,duration:t.duration,steps:t.workflow.map(s=>({...s,prompt:s.prompt||t.hiddenPrompt,negativePrompt:s.negativePrompt||t.negativePrompt,settings:{...t.settings,...s.settings}}))};
    await run("INSERT INTO generations (id,user_id,template_id,template_name,template_slug,thumbnail,status,currency,estimated_cost,credit_cost,workflow_snapshot,input_ids,next_run_at,created_at,test_run) VALUES (?,?,?,?,?,?,'queued',?,?,0,?,?,?,?,1)",id,user.id,t.id,t.name,t.slug,t.thumbnail,t.currency,t.estimatedCost,JSON.stringify(snapshot),JSON.stringify(b.uploadIds),created,created);
    await audit(user.id,'template.test-run',t.id);return json({generationId:id},201);}

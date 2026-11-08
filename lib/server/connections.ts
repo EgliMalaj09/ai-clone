@@ -93,6 +93,18 @@ export async function assertGeneratable(template:AdminTemplate){
   must(generationReady(r),'Video creation is not open yet. Please check back soon.',503);
   must(templateRunnable(template,r),'This template is temporarily unavailable.',503);
 }
+/** Admin test runs (V32): may call a real, connected AI provider even in demo mode, so the owner can try Higgsfield
+ * while customers still only get sample videos. The balance safeguard still applies; the maintenance pause does not. */
+export async function assertTestRunnable(template:AdminTemplate){
+  const r=await purchaseReadiness();
+  must(template.workflow.length>0,'Add a workflow step first.',409);
+  for(const s of template.workflow){
+    must(r.demo||s.provider!=='mock','A development workflow cannot run in production.',409);
+    must(r.enabledProviders.includes(s.provider),s.provider==='mock'?'The sample video simulator is off.':`Connect ${s.provider==='higgsfield'?'Higgsfield (key ID and key secret)':s.provider} in Admin → Connections first.`,409);
+  }
+  must(generationReady(r),'Video creation is not open yet. Please check back soon.',503);
+  must(!await balancePaused(),'The Higgsfield balance is below your pause level. Add your top-up on the dashboard first.',503);
+}
 /** What the storefront may offer: registration, buying credits (needs payments) and generating a template. */
 export async function publicAvailability(template?:AdminTemplate|null){
   const r=await purchaseReadiness();
