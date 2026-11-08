@@ -6,7 +6,8 @@ import {purchaseReadiness,maintenanceStatus,DEFAULT_MAINTENANCE_MESSAGE} from '.
 import {pageQuery} from './http';
 import {createPokOrder,getPokOrder,pokCurrencies,pokOrderState} from './payments';
 import {available,onlyIfApplied,post,SYSTEM} from './credits';
-import {optionsCost,type StudioUser} from '../contracts';
+import {optionsCost,singleVideoAmount,type StudioUser} from '../contracts';
+import {offerPrice,pricingSettings} from './pricing';
 import {applyExperiment,runningExperiments} from './experiments';
 import {reportError} from './errors';
 import {checkoutDiscount,recordDiscountUse,rewardReferral} from './promos';
@@ -32,14 +33,14 @@ export async function creditValues(){
  for(const p of await listPackages())for(const [currency,price] of Object.entries(p.prices)){const v=price/p.totalCredits;if(values[currency]===undefined||v<values[currency])values[currency]=v;}
  return values;
 }
-/** Highest price of one credit per currency across active packs — the single-video rate (V45), so packs stay the better deal. */
+/** Price of one credit when buying a single video (V45): the dearest pack's credit price plus the single-video markup
+ * (Admin → Settings → Pricing), so every pack stays the better deal. */
 export async function singleCreditValues(){
- const values:Record<string,number>={};
+ const values:Record<string,number>={};const {singleMarkup}=await pricingSettings();
  for(const p of await listPackages())for(const [currency,price] of Object.entries(p.prices)){const v=price/p.totalCredits;if(values[currency]===undefined||v>values[currency])values[currency]=v;}
+ for(const c of Object.keys(values))values[c]*=1+singleMarkup/100;
  return values;
 }
-/** Real-money charge for `credits` worth of a single video, rounded up to a chargeable amount (whole lek for ALL, min 0.50). */
-function videoAmount(credits:number,currency:string,perCredit:number){const step=currency==='ALL'?100:1;return Math.max(50,Math.ceil(credits*perCredit/step)*step);}
 export async function savePackage(id:string|null,input:unknown,user:StudioUser){
  const b=packageSchema.parse(input);
  if(id)must(await one('SELECT id FROM credit_packages WHERE id=?',id),'Credit pack not found.',404);
@@ -63,12 +64,15 @@ export async function startPackCheckout(user:StudioUser,input:unknown){
  const pack=await one('SELECT * FROM credit_packages WHERE id=? AND active=1',b.packageId);must(pack,'This credit pack is not available.',404);
  const fullAmount=supportedPrices(parse<Record<string,number>>(pack.prices,{}))[b.currency];must(Number.isSafeInteger(fullAmount)&&fullAmount>0,'This pack is not sold in that currency.',400);
  // V4: a discount code lowers the price of this purchase; it counts as used when the payment is confirmed.
- const promo=await checkoutDiscount(user,b.promoCode,fullAmount,b.currency);const amount=promo?.amount??fullAmount;
+ const promo=await checkoutDiscount(user,b.promoCode,fullAmount,b.currency);
+ // The pack offer (Admin → Settings → Pricing) applies on its own; with a discount code too, the lower price wins.
+ const offer=await offerPrice(pack.id as string,fullAmount,b.currency);
+ const useOffer=!!offer&&(!promo||offer.amount<promo.amount);const amount=useOffer?offer!.amount:promo?.amount??fullAmount;const discountLabel=useOffer?`OFFER-${offer!.percent}%`:promo?.code??null;
  const maint=await maintenanceStatus();must(!maint.purchasesPaused,maint.message||DEFAULT_MAINTENANCE_MESSAGE,503);
  if(!config().demo)must((await purchaseReadiness()).ready,'Buying credits is not open yet. Please check back soon.',503);
  const id=uid('cp_');
  try{await run('INSERT INTO credit_purchases (id,user_id,package_id,package_name,credits,amount,currency,status,provider,idempotency_key,created_at,promo_code,full_amount) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-  id,user.id,pack.id,pack.name,Number(pack.credits)+Number(pack.bonus_credits),amount,b.currency,'pending',config().demo?'mock':'pok',b.idempotencyKey,now(),promo?.code??null,promo?fullAmount:null);
+  id,user.id,pack.id,pack.name,Number(pack.credits)+Number(pack.bonus_credits),amount,b.currency,'pending',config().demo?'mock':'pok',b.idempotencyKey,now(),discountLabel,amount<fullAmount?fullAmount:null);
   if(b.gift)await run('UPDATE credit_purchases SET gift_email=?,gift_name=?,gift_message=? WHERE id=?',b.gift.email,b.gift.name,b.gift.message,id);}
  catch(e){const duplicate=await one('SELECT * FROM credit_purchases WHERE user_id=? AND idempotency_key=?',user.id,b.idempotencyKey);if(duplicate)return {purchaseId:duplicate.id,...await ensurePackCheckout(duplicate,user.email)};throw e}
  await event('credits_checkout_started',user.id,{purchaseId:id});
@@ -92,7 +96,7 @@ export async function startVideoPurchase(user:StudioUser,input:unknown){
  const cost=optionsCost(t.creditCost,t.optionGroups||[],b.options);
  must(cost===b.expectedCost,'This video’s price changed. Refresh to review it.',409);
  const perCredit=(await singleCreditValues())[b.currency];must(perCredit>0,'This video is not sold in that currency.',400);
- const amount=videoAmount(cost,b.currency,perCredit);
+ const amount=singleVideoAmount(cost,perCredit,b.currency);
  const maint=await maintenanceStatus();must(!maint.purchasesPaused,maint.message||DEFAULT_MAINTENANCE_MESSAGE,503);
  if(!config().demo)must((await purchaseReadiness()).ready,'Buying is not open yet. Please check back soon.',503);
  const id=uid('cp_');

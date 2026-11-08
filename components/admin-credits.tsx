@@ -7,7 +7,7 @@ import {Dialog,DialogContent,DialogDescription,DialogHeader,DialogTitle,DialogTr
 import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table';
 import {api,useAPI,Busy,Confirm,ErrorBox,Field,Loading,Pick,date} from './shared';
 import {Pager,RecordSearch} from './admin-operations';
-import {credits,money,statusLabel} from '@/lib/contracts';
+import {PRICING_RESOLUTIONS,credits,lengthCredits,money,percentOff,singleVideoAmount,statusLabel,type Pricing} from '@/lib/contracts';
 import type {CreditHistory,CreditPackage,CreditPurchase,Pagination} from '@/lib/api-types';
 
 // POK charges in these currencies only.
@@ -103,6 +103,27 @@ export function WelcomeCredits({value,onSaved}:{value:number;onSaved:()=>void}){
 /** V47: one free 480p video per verified customer account; turn off to stop new free videos (e.g. if it is abused). */
 export function FreeTrialSetting({on,onSaved}:{on:boolean;onSaved:()=>void}){
  const [busy,setBusy]=useState(false);
- return <section className="panel"><h2>Free trial video</h2><p>Each verified customer can make one free video, rendered at 480p with no watermark. It costs you the AI price of that video. Turning this off stops new free videos; ones already started still finish.</p>
+ return <section className="panel"><h2>Free trial video</h2><p>Each verified customer can make one free video, rendered at 480p with no watermark, on the templates you mark “Free trial” (videos of 5 seconds or less). It costs you the AI price of that video. Turning this off stops new free videos; ones already started still finish.</p>
   <button className={'button small '+(on?'danger-outline':'primary')} disabled={busy} onClick={async()=>{setBusy(true);try{await api('admin/settings','PATCH',{freeTrial:!on});toast.success(on?'Free trial turned off':'Free trial turned on');onSaved()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}}>{busy?<Busy/>:on?'Turn off the free trial':'Turn on the free trial'}</button></section>;
+}
+
+/** Pricing by length, the single-video markup and the pack offer (Admin → Settings). */
+export function PricingSettings({value,onSaved}:{value:Pricing;onSaved:()=>void}){
+ const packs=useAPI<{packages:CreditPackage[]}>('admin/credit-packages');
+ const [p,setP]=useState<Pricing>(value),[busy,setBusy]=useState(false);
+ const active=(packs.data?.packages||[]).filter(x=>x.active);
+ const cur=active.some(x=>x.prices.EUR)?'EUR':active.some(x=>x.prices.ALL)?'ALL':'';
+ const priced=active.filter(x=>cur&&x.prices[cur]);
+ const example=lengthCredits(5,5,'720p',p.perSecond);
+ const dearest=priced.length?Math.max(...priced.map(x=>x.prices[cur]/x.totalCredits)):0;
+ const single=dearest?singleVideoAmount(example,dearest*(1+p.singleMarkup/100),cur):0;
+ const num=(v:string)=>Number(v.replace(',','.'));
+ async function save(e:React.FormEvent){e.preventDefault();setBusy(true);try{const r=await api<{repriced:number}>('admin/settings','PATCH',{pricing:p});toast.success(r.repriced?`Pricing saved. ${r.repriced} template${r.repriced>1?'s':''} re-priced.`:'Pricing saved');onSaved()}catch(e){toast.error((e as Error).message)}finally{setBusy(false)}}
+ return <section className="panel"><h2>Pricing</h2><p>Templates set to “Price by length” cost (video seconds + reference clip seconds) × the credits per second below. Saving re-prices them all.</p>
+  <form onSubmit={save}><div className="form-grid">{PRICING_RESOLUTIONS.map(r=><Field key={r} label={'Credits per second, '+r}><input type="number" min={0.1} step={0.1} required value={p.perSecond[r]??''} onChange={e=>setP(v=>({...v,perSecond:{...v.perSecond,[r]:num(e.target.value)}}))}/></Field>)}</div>
+   <Field label="Single video markup (%)" hint="Added to the dearest pack’s credit price when someone buys one video without a pack."><input type="number" min={0} max={300} step={1} required value={p.singleMarkup} onChange={e=>setP(v=>({...v,singleMarkup:Math.round(num(e.target.value))}))}/></Field>
+   <label className="switch-row"><div><strong>Special pack offer</strong><small>A % off one pack, shown with an animated badge on the pack lists and when someone is about to buy a single video.</small></div><Switch checked={p.offer.enabled} onCheckedChange={on=>setP(v=>({...v,offer:{...v.offer,enabled:on,packageId:v.offer.packageId||priced[0]?.id||''}}))} aria-label="Special pack offer"/></label>
+   {p.offer.enabled&&<div className="form-grid"><Field label="Pack on offer"><Pick label="Pack on offer" value={p.offer.packageId} onChange={id=>setP(v=>({...v,offer:{...v.offer,packageId:id}}))} options={active.map(x=>({value:x.id,label:x.name}))}/></Field><Field label="Discount (%)"><input type="number" min={1} max={90} step={1} required value={p.offer.percent} onChange={e=>setP(v=>({...v,offer:{...v.offer,percent:Math.round(num(e.target.value))}}))}/></Field></div>}
+   {cur&&priced.length>0&&<div className="pricing-example"><strong>Example: a 5 s video with a 5 s reference clip at 720p = {credits(example)}</strong><ul>{priced.map(x=>{const off=p.offer.enabled&&p.offer.packageId===x.id?percentOff(x.prices[cur],p.offer.percent,cur):x.prices[cur];return <li key={x.id}><span>{x.name}: {Math.floor(x.totalCredits/example)} videos for {money(off,cur)}{off<x.prices[cur]&&<s> {money(x.prices[cur],cur)}</s>}</span><b>{money(Math.round(off/x.totalCredits*example),cur)} per video</b></li>})}<li><span>One video, no pack</span><b>{money(single,cur)}</b></li></ul></div>}
+   <button className="button primary small" disabled={busy}>{busy?<Busy/>:'Save pricing'}</button></form></section>;
 }

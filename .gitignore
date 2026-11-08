@@ -49,3 +49,6 @@ next-env.d.ts
 /test-results/
 
 *.tsbuildinfo
+
+# Live database backups (contain customer data)
+backups/

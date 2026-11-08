@@ -50,6 +50,9 @@ export const templates=sqliteTable('templates',{
  options:text('options').notNull().default('[]'),
  // What the customer photographs (V39): a person (face rules) or a product (product photo rules).
  subject:text('subject').notNull().default('person'),
+ // Pricing by length: when auto_price is on, credit_cost = (duration + reference clip seconds) × the credits per second of
+ // the resolution (Admin → Settings → Pricing). free_trial marks the templates a customer's one free 480p video may use.
+ autoPrice:integer('auto_price').notNull().default(0),clipSeconds:integer('clip_seconds').notNull().default(0),freeTrial:integer('free_trial').notNull().default(0),
 },t=>[index('idx_templates_active_category').on(t.active,t.category)]);
 export const templateWorkflows=sqliteTable('template_workflows',{
  id:text('id').primaryKey(),templateId:text('template_id').notNull().unique().references(()=>templates.id,{onDelete:'cascade'}),version:integer('version').notNull().default(1),

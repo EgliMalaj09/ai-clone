@@ -135,6 +135,19 @@ async function liveChecks(){
   ok('Buy-one-video creates a pending purchase for exactly the template credit cost',vidP.credits===vt.creditCost&&vidP.status==='pending'&&vidP.currency==='EUR'&&vidP.packageName.includes(vt.name)&&vidP.amount>0);
   pok.pay(pok.last().id);await call('/api/credits/purchases/'+vid.purchaseId+'/verify',{method:'POST',cookie:lucky,data:{}});
   ok('Paying a single-video purchase grants exactly that template credit cost, once',(await call('/api/credits',{cookie:lucky})).body.available===vt.creditCost&&(await call('/api/credits/purchases/'+vid.purchaseId,{cookie:lucky})).body.purchase.status==='paid');
+  // Pricing: one video costs the dearest pack's credit price plus the 33% markup (rounded up to 10 cents); the pack offer
+  // takes its % off that pack at checkout; templates priced by length are re-priced when the rates change.
+  const packList=(await call('/api/credit-packages')).body.packages.filter(p=>p.prices.EUR);const dear=Math.max(...packList.map(p=>p.prices.EUR/p.totalCredits));
+  ok('A single video costs the dearest pack credit price plus 33%, rounded up to 10 cents',vidP.amount===Math.max(50,Math.ceil(vt.creditCost*dear*1.33/10-1e-9)*10));
+  const offerPack=packList[0],rates={'480p':1,'720p':3,'1080p':4,'4K':8};
+  await db.prepare("UPDATE templates SET auto_price=1,clip_seconds=5,duration=5,resolution='720p' WHERE id=?").bind(vt.id).run();
+  const saved=(await call('/api/admin/settings',{method:'PATCH',cookie:admin,data:{pricing:{perSecond:rates,singleMarkup:33,offer:{enabled:true,packageId:offerPack.id,percent:20}}}})).body;
+  ok('Saving the rates re-prices templates priced by length: (5 s + 5 s clip) × 3 = 30 credits',saved.repriced>=1&&(await db.prepare('SELECT credit_cost FROM templates WHERE id=?').bind(vt.id).first()).credit_cost===30);
+  ok('Customers see the pack offer',(await call('/api/credit-packages')).body.offer?.packageId===offerPack.id&&(await call('/api/credit-packages')).body.offer?.percent===20);
+  await call('/api/credits/checkout',{method:'POST',cookie:lucky,data:{packageId:offerPack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201});
+  ok('The pack offer lowers the POK price of that pack',Number(pok.created.at(-1).amount)*100===Math.round(offerPack.prices.EUR*0.8));
+  await call('/api/admin/settings',{method:'PATCH',cookie:admin,data:{pricing:{perSecond:rates,singleMarkup:33,offer:{enabled:true,packageId:'pack_missing',percent:20}}},expected:400});
+  ok('The offer must point at an active pack',true);
  }finally{await live.dispose()}
 }
 try{

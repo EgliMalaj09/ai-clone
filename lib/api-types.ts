@@ -1,5 +1,5 @@
 // Response shapes of the JSON API as the browser receives them. Database rows keep their snake_case column names.
-import type {AdminTemplate,PublicTemplate,PhotoGuidelines,SupportInfo} from './contracts';
+import type {AdminTemplate,PublicTemplate,PhotoGuidelines,Pricing,SupportInfo} from './contracts';
 
 export type Pagination={page:number;limit:number;total:number;pages:number};
 
@@ -47,7 +47,7 @@ export type AdminGeneration={id:string;user_id:string|null;template_name:string;
 export type GenerationStep={id:string;step_order:number;type:string;provider:string;model:string;status:string;error:string|null};
 export type AdminUser={id:string;email:string;name:string;role:string;status:string;content_strikes:number;blocked_at:number|null;email_verified:number;created_at:number;generation_count:number;purchase_count:number;credits:number;spending:{currency:string;amount:number}[]};
 export type Provider={id:string;name:string;enabled:number;configured:boolean};
-export type StudioSettings={welcomeCredits:number;freeTrial?:boolean;photoGuidelines:PhotoGuidelines;support:SupportInfo;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean;dispatcher:{at:number|null;source:'cron'|'external'|null;fresh:boolean};maintenance:Maintenance;limits:SpendingLimits;exchangeRates:ExchangeRates};
+export type StudioSettings={welcomeCredits:number;freeTrial?:boolean;photoGuidelines:PhotoGuidelines;support:SupportInfo;demo:boolean;paymentsConfigured:boolean;emailConfigured:boolean;queueConfigured:boolean;dispatcher:{at:number|null;source:'cron'|'external'|null;fresh:boolean};maintenance:Maintenance;limits:SpendingLimits;exchangeRates:ExchangeRates;pricing:Pricing};
 export type ExchangeRates={EUR:number;ALL:number};
 export type SpendingLimits={concurrent:number;daily:number;studioDailyCost:number};
 export type Maintenance={purchasesPaused:boolean;creationsPaused:boolean;message:string};
@@ -62,3 +62,5 @@ export type AdminUserDetail={
 
 /** Account → Sign-in methods (V49). */
 export type SignInMethods={hasPassword:boolean;recentSignIn:boolean;providers:{provider:'google'|'apple';connected:boolean;available:boolean}[]};
+/** A % off one credit pack (Admin → Settings → Pricing), applied automatically at checkout. */
+export type PackOffer={packageId:string;percent:number};

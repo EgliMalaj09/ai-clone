@@ -467,3 +467,41 @@ tr[draggable=true]{cursor:grab}
 html.nz-splash-on .nz-splash{display:flex}
 html.nz-splash-out .nz-splash{opacity:0;pointer-events:none}
 @media (prefers-reduced-motion:reduce){.nz-splash{transition:none}}
+
+/* Special pack offer: animated badge, banner and the pop-up before buying a single video. */
+@keyframes offer-shine{0%{background-position:-160% 0}55%,100%{background-position:260% 0}}
+@keyframes offer-wiggle{0%,82%,100%{transform:rotate(0) scale(1)}86%{transform:rotate(-6deg) scale(1.08)}90%{transform:rotate(5deg) scale(1.08)}94%{transform:rotate(-3deg)}}
+@keyframes offer-glow{0%,100%{box-shadow:0 0 0 2px #ff8a3d55,0 10px 30px -12px #ff4d6d66}50%{box-shadow:0 0 0 3px #ff8a3d99,0 14px 40px -10px #ff4d6d99}}
+@keyframes offer-pop{0%{opacity:0;transform:scale(.86) translateY(14px)}60%{opacity:1;transform:scale(1.03) translateY(-2px)}100%{transform:scale(1) translateY(0)}}
+@keyframes offer-float{0%{opacity:0;transform:translate(0,0) scale(.4)}20%{opacity:1}100%{opacity:0;transform:translate(var(--dx),-120px) scale(1)}}
+.offer-ribbon{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;padding:4px 10px;border-radius:99px;color:#fff;font-size:11px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;white-space:nowrap;
+ background:linear-gradient(110deg,#ff4d6d 0%,#ff8a3d 40%,#ffd23f 50%,#ff8a3d 60%,#ff4d6d 100%);background-size:250% 100%;animation:offer-shine 2.6s ease-in-out infinite,offer-wiggle 4s ease-in-out infinite}
+.pack-card.on-offer,.pricing-card.on-offer{position:relative;border-color:#ff8a3d;animation:offer-glow 2.4s ease-in-out infinite}
+.pricing-card.on-offer .offer-ribbon{position:absolute;top:-12px;left:20px}
+.pricing-amount s{margin-left:8px;font-size:.5em;color:#68707a;font-weight:500}
+.offer-banner{display:flex;align-items:center;gap:12px;width:100%;margin:4px 0 14px;padding:12px 14px;border:1px solid #ffc9a8;border-radius:12px;background:linear-gradient(90deg,#fff4ec,#fff);text-align:left;font-weight:600;cursor:pointer;animation:offer-pop .5s ease-out both}
+.offer-banner span:not(.offer-ribbon){flex:1}
+.offer-dialog{overflow:hidden;text-align:center;align-items:center;justify-items:center;animation:offer-pop .45s cubic-bezier(.2,.9,.3,1.2) both}
+.offer-dialog>*{position:relative;z-index:1}
+.offer-dialog .offer-ribbon{align-self:center}
+.offer-icon{display:grid;place-items:center;width:62px;height:62px;border-radius:50%;color:#fff;background:linear-gradient(135deg,#ff4d6d,#ff8a3d);animation:offer-wiggle 3s ease-in-out infinite}
+.offer-title{font-size:22px;letter-spacing:-.02em}
+.offer-compare{display:grid;grid-template-columns:1.3fr 1fr;gap:10px;width:100%;margin:6px 0}
+.offer-compare>div{display:flex;flex-direction:column;gap:2px;padding:14px 12px;border-radius:12px;border:1px solid var(--line);text-align:left}
+.offer-compare span{font-size:13px;color:#4b5563}
+.offer-compare strong{font-size:24px;letter-spacing:-.03em}
+.offer-compare s{font-size:13px;color:#68707a}
+.offer-compare small{font-size:12px;color:#68707a}
+.offer-pack{border-color:#ff8a3d!important;background:linear-gradient(160deg,#fff4ec,#fff);animation:offer-glow 2.4s ease-in-out infinite}
+.offer-single{opacity:.8}
+.offer-cta{animation:offer-glow 2.4s ease-in-out infinite}
+.offer-skip{font-size:13px;color:#68707a}
+.offer-loading{padding:40px;display:grid;place-items:center}
+.offer-burst{position:absolute;inset:auto 0 0 0;height:100%;pointer-events:none;z-index:0}
+.offer-burst i{position:absolute;bottom:30%;left:calc(8% + var(--i) * 9%);width:8px;height:8px;border-radius:2px;background:hsl(calc(var(--i) * 36) 90% 60%);--dx:calc((var(--i) - 4.5) * 9px);animation:offer-float 1.6s ease-out calc(var(--i) * .08s) both}
+@media (max-width:480px){.offer-compare{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.offer-ribbon,.pack-card.on-offer,.pricing-card.on-offer,.offer-banner,.offer-dialog,.offer-icon,.offer-pack,.offer-cta,.offer-burst i{animation:none}.offer-burst{display:none}}
+.pricing-example{margin:12px 0;padding:12px 14px;border-radius:10px;background:#f6f7f9;font-size:13px}
+.pricing-example ul{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:4px}
+.pricing-example li{display:flex;justify-content:space-between;gap:12px}
+.pricing-example s{color:#68707a;margin-left:4px}

@@ -3,7 +3,7 @@ import {all,audit,config,event,HttpError,must,now,one,run,uid} from './data';
 import {grant,SYSTEM} from './credits';
 import {rateLimit} from './security';
 import {reportError} from './errors';
-import type {StudioUser} from '../contracts';
+import {percentOff,type StudioUser} from '../contracts';
 
 // Promo codes and referrals (V4).
 // A credits code adds credits once per customer. A discount code takes a percentage off a credit pack at checkout and
@@ -37,7 +37,7 @@ export async function redeemCode(user:StudioUser,input:unknown){
 }
 
 /** Price after a discount code: at least 0.50, and whole lek for ALL (POK charges lek as whole numbers). */
-export function discounted(amount:number,percent:number,currency:string){const raw=amount*(100-percent)/100;const v=currency==='ALL'?Math.round(raw/100)*100:Math.round(raw);return Math.max(50,v);}
+export const discounted=percentOff;
 /** At checkout: validates the code for this customer and returns the discounted amount. */
 export async function checkoutDiscount(user:StudioUser,raw:string|undefined,amount:number,currency:string){
  if(!raw)return null;const c=await findCode(raw,user.id);must(c.kind==='discount','This code adds credits. Redeem it under “Have a code?” instead.',409);

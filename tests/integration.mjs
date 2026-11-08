@@ -576,6 +576,10 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  ok('Export download links work without signing in, as attachments',fetched.status===200&&fetched.headers.get('content-disposition')?.includes('attachment'));await fetched.arrayBuffer();
  await request('/api/auth/logout',{method:'POST',cookie:userCookie,data:{}});await request('/api/favorites',{cookie:userCookie,expected:401});ok('Sign-out invalidates the session',true);
  // V47: one free video per account, rendered at 480p, using no credits.
+ // Only templates marked "Free trial" (5 seconds or less) offer the free video.
+ const unmarkedReg=await request('/api/auth/register',{method:'POST',data:{name:'Unmarked Tester',email:'unmarked@studio.test',password:'Trial-password-123',acceptTerms:true,confirmAge:true},expected:201});
+ ok('A template not marked as a free trial does not offer the free video',!(await request('/template/formula-driver',{cookie:unmarkedReg.cookie})).text.includes('Your first video is free'));
+ await db.prepare("UPDATE templates SET free_trial=1 WHERE slug IN ('formula-driver','astronaut')").run();
  const trialReg=await request('/api/auth/register',{method:'POST',data:{name:'Trial Tester',email:'trial@studio.test',password:'Trial-password-123',acceptTerms:true,confirmAge:true},expected:201});const trialCookie=trialReg.cookie,trialUser=trialReg.body.user.id;
  const trialPage=(await request('/template/formula-driver',{cookie:trialCookie})).text;
  ok('A new account with no credits is offered its free video and may upload a photo',trialPage.includes('Your first video is free')&&(await balance(trialCookie)).available===0);

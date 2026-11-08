@@ -14,6 +14,8 @@ export type PublicTemplate = {
   subject?: 'person'|'product';
   /** What the customer receives (V8): a video or a photo. */
   kind?: 'video'|'image';
+  /** This template can be the customer's one free 480p video (5 seconds at most). */
+  freeTrial?: boolean;
 };
 /** Template options (V22 style, V23 format, V37 quality). The first choice of each group is the default. */
 export type OptionChoice={id:string;label:string;labelSq?:string;credits?:number;aspectRatio?:string;prompt?:string;model?:string};
@@ -38,6 +40,10 @@ export type AdminTemplate = PublicTemplate & {
   publishAt?: number|null;
   optionGroups?: OptionGroup[];
   archivedAt?: number|null;
+  /** Price by length: credit cost = (duration + reference clip seconds) × credits per second of the resolution. */
+  autoPrice?: boolean;
+  /** Length of the reference video the AI also bills for (motion transfer). Counted up to MAX_CLIP_SECONDS. */
+  clipSeconds?: number;
 };
 export type StudioUser = {id:string;name:string;email:string;role:string;status:string;createdAt:number;avatar:string|null;emailVerified:boolean;contentStrikes:number;blocked:boolean;twoFactor?:boolean;locale?:'sq'|'en';pendingEmail?:string|null;marketingOptIn?:boolean;hasPassword?:boolean};
 // The published version of the Terms and Privacy Policy. Bump this whenever the legal pages change
@@ -89,6 +95,25 @@ export const RETENTION_DAYS=30;
 export const money=(amount:number,currency='USD')=>{const whole=Number.isInteger(amount/100);return new Intl.NumberFormat('en-US',{style:'currency',currency,...(whole?{}:{minimumFractionDigits:2,maximumFractionDigits:2})}).format(amount/100);};
 // Lowest price of one credit per currency (minor units, fractional), from the active packs. Lets guests see roughly what credits cost.
 export type CreditRef=Record<string,number>;
+/** Pricing rules (Admin → Settings → Pricing). perSecond: credits per billed second for each resolution.
+ * singleMarkup: % added to the dearest pack's credit price when someone buys one video without a pack.
+ * offer: a % off one pack, shown as a special offer in the pack lists and when someone buys a single video. */
+export type Pricing={perSecond:Record<string,number>;singleMarkup:number;offer:{enabled:boolean;packageId:string;percent:number}};
+export const PRICING_RESOLUTIONS=['480p','720p','1080p','4K'] as const;
+export const DEFAULT_PRICING:Pricing={perSecond:{'480p':1,'720p':2,'1080p':4,'4K':8},singleMarkup:33,offer:{enabled:false,packageId:'',percent:20}};
+/** The AI trims reference clips to this length, so longer clips cost no more. */
+export const MAX_CLIP_SECONDS=15;
+/** Free trial videos are 480p and at most this long. */
+export const TRIAL_MAX_SECONDS=5;
+/** Credits for a video priced by length: (video seconds + reference clip seconds) × credits per second. */
+export const lengthCredits=(duration:number,clipSeconds:number,resolution:string,perSecond:Record<string,number>)=>{
+ const rate=perSecond[resolution]??perSecond['720p']??2;
+ return Math.max(1,Math.ceil((Math.max(0,duration)+Math.min(Math.max(0,clipSeconds||0),MAX_CLIP_SECONDS))*rate-1e-9));
+};
+/** A percentage off a price (minor units): at least 0.50, and whole lek for ALL (POK charges lek as whole numbers). */
+export const percentOff=(amount:number,percent:number,currency:string)=>{const raw=amount*(100-percent)/100;const v=currency==='ALL'?Math.round(raw/100)*100:Math.round(raw);return Math.max(50,v);};
+/** Exact charge for one video bought without a pack, rounded up to 10 cents (or 10 lek). perCredit already includes the markup. */
+export const singleVideoAmount=(credits:number,perCredit:number,currency:string)=>{const step=currency==='ALL'?1000:10;return Math.max(50,Math.ceil(credits*perCredit/step-1e-9)*step);};
 /** Approximate real-money price of a credit cost, e.g. "≈ ALL 140". Uses lek when available, else euro; '' when unknown. */
 export const approxPrice=(creditCost:number,ref?:CreditRef)=>{
  if(!ref||creditCost<=0)return '';
