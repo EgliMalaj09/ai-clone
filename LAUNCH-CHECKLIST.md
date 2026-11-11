@@ -335,7 +335,7 @@ Run these on a staging copy with test keys before switching to live keys (L1). R
 - [ ] **T5 🟡 Devices.** Check the main flows on an iPhone, an Android phone and desktop browsers.
 - [ ] **T6 🟡 Admin.** Ledger reconciliation shows "Balances match the ledger", and adjust credits, dashboard and export all work.
 - [ ] **T7 🔴 Real photo quality test.** For every template, test photos of different ages, skin tones, glasses, beards, low light, side profiles and group photos. Decide what the app should refuse (C2.3) and unpublish templates that fail too often.
-- [ ] **T8 🔴 Security test.** Run `/security-review`, try opening another user's creations and purchases by ID, and try changing amounts during a real POK staging payment.
+- [~] **T8 🔴 Security test.** Run `/security-review`, try opening another user's creations and purchases by ID, and try changing amounts during a real POK staging payment. 🟡 Partly done 2026-11-11: the automated `/security-review` was re-run on the latest branch and came back clean — no high/medium findings. Checked safe: OAuth state/nonce + email-verified gating, POK webhook-as-hint with full re-read and amount/reference validation, test-payment hard-gated to demo+mock, signed media access, CSV formula escaping, session/MFA/CSRF. One low/defence-in-depth note: JSON-LD is `JSON.stringify`'d into a script tag without `<`-escaping (safe today — admin-controlled data only). **Still owner, on staging:** try opening another customer's creations/purchases by ID, and try tampering with the amount during a real POK staging payment.
 - [ ] **T9 🟡 Slow phone test.** Use the site on a mid-range phone with slow mobile data; uploads and video playback must still work.
 - [ ] **T10 🟡 Email display test.** Check the verification and reset emails in Gmail, Outlook and phone mail apps, in light and dark mode.
 
@@ -387,6 +387,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-11 | T8 | Partial | Re-ran /security-review on the latest branch: clean, no high/medium findings. Live IDOR + POK amount-tamper tests still to do on staging. |
 | 2026-11-08 | D11, V46, I3.2 | Changed (local) | No more 30-day deletion: videos and photos stay until the customer deletes them (unused uploads still go at 24 h). Texts updated in English and Albanian. Typecheck, lint, i18n and all suites pass (286 integration). Not deployed. |
 | 2026-11-08 | I2, I3.1, I4.1, I6, I7.1, I7.4, I8.2, I9 | Done | Ticked setup that is already live on ngazero.ngazero.workers.dev. Still open: I1 (confirm Workers Paid plan), I3.2, I4.2–I4.4, I5 domain, I7.2/I7.3/I7.5, I8.1 spending limit. |
 | 2026-11-08 | C1.4 | Confirmed | POK webhook works: second €1 payment, tab closed after 3DS approval; POK's webhook arrived signed and the purchase became Paid within the same second. C1.4 fully confirmed (on production). |
