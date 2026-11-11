@@ -37,7 +37,9 @@ export default async function Page({params,searchParams}:{params:Promise<{path?:
  if(path[0]==='v'&&!data.shared)notFound();
  if(path[0]==='category'&&!data.landing)notFound();
  const ld=await structuredData(path,data);
- return <>{ld&&<script type="application/ld+json" dangerouslySetInnerHTML={{__html:JSON.stringify(ld)}}/>}<Studio route={'/'+path.join('/')} query={query} {...data}/></>;
+ // Escape `<` (and the U+2028/U+2029 line separators) so a value in the structured data can never break out of the script tag.
+ const ldJson=ld&&JSON.stringify(ld).replace(new RegExp('[<\\u2028\\u2029]','g'),c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
+ return <>{ldJson&&<script type="application/ld+json" dangerouslySetInnerHTML={{__html:ldJson}}/>}<Studio route={'/'+path.join('/')} query={query} {...data}/></>;
 }
 // Structured data (JSON-LD) for search engines (X1.4): Organization + WebSite on the homepage,
 // VideoObject on a template page, and Product/Offer for the credit packs on pricing.
