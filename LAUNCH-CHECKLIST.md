@@ -21,7 +21,7 @@ Update the counts when you tick items.
 | 3. Content | 0 | 8 |
 | 3B. Version 1 features | 50 | 50 |
 | 4. Live testing on staging | 0 | 10 |
-| 4B. Pre-live finishing | 0 | 3 |
+| 4B. Pre-live finishing | 0 | 4 |
 | 5. Launch day | 0 | 5 |
 | 6. After launch: operating routine (no new code) | 0 | 6 |
 
@@ -351,7 +351,7 @@ Done at the end, after the features are built and before launch day, once the fi
   - [x] X1.5 ✅ Every indexable page declares a canonical URL on `APP_ORIGIN` (template pages too); private/admin pages stay noindex. No duplicate pages (e.g. with and without a trailing slash or filter parameters).
   - [~] X1.6 Speed (Core Web Vitals): compress previews, lazy-load videos below the fold, check with PageSpeed Insights on mobile. ✅ Code part done: admin screens load only on /admin (customer pages download ~160 KB less JavaScript); preview images the admin uploads are shrunk in the browser to 1080 px WebP (a 3000×4000 photo went from 436 KB to 28 KB) and preview videos over 8 MB get a warning; studio preview files are cached by browsers for a year; the template page asks for its poster first; the first row on Explore loads at once, everything further down loads lazily; videos already wait for a tap (preload none). Local Lighthouse mobile (7 runs each): template page 82–95 → 92–96; home and Explore unchanged within noise (~85), no layout shift (CLS 0). **Left:** the PageSpeed Insights check on mobile against staging, after I1/I2 (needs a public URL) and with the real previews from Phase 3.
   - [x] X1.7 Landing pages for the main searches (e.g. "AI video nga foto", birthday/wedding templates), and category pages people can find from Google. ✅ Landing pages `/ai-video-nga-foto`, `/video-per-dasem` (Couples/Wedding templates) and `/video-per-ditelindje` (Birthday templates), each with its own title, description, heading, intro, share preview and CollectionPage data; one page per category at `/category/<name>` (made automatically from the published templates, 404 when a category is empty). All are in the sitemap, linked from the footer and from each other. Texts in English and Albanian (`lib/landing-pages.ts`; P7 native review applies). **Content note:** the birthday page shows all templates until a template in a "Birthday" category is published (Phase 3); a wedding template should use the "Couples" or "Wedding" category.
-  - [ ] X1.8 Register the domain in Google Search Console and Bing Webmaster Tools, submit the sitemap, and check for indexing errors.
+  - [ ] X1.8 Register the domain in Google Search Console and Bing Webmaster Tools, submit the sitemap, and check for indexing errors. → Moved to **X4.4** (SEO go-live).
   - [x] X1.9 ✅ Template media crawlable: thumbnails and preview videos uploaded through the Media library live under `/api/media/med_…`, which `robots.txt` blocked with the rest of `/api/`, so Google could not have fetched a single real template image or video. Now `Allow: /api/media/med_` (customer files there still need a signature or the owner's session).
   - [x] X1.10 ✅ Video + image sitemap: every template's entry carries its poster (`image:image`) and its preview (`video:video` with thumbnail, title, description, file and duration), the main way Google finds videos for Video search and video results. Static pages no longer get a new `lastmod` on every request (that teaches Google to ignore the dates); collections use the newest template change.
   - [x] X1.11 ✅ Structured data extended: breadcrumbs on template and category pages (NgaZero › Sport › Formula Driver), video duration on VideoObject, Organization with logo PNG, social profiles and the support contact from Admin → Settings, and everything (FAQ, collections, packs) in the language the page shows (Google ignores structured data that doesn't match the page).
@@ -364,6 +364,19 @@ Done at the end, after the features are built and before launch day, once the fi
   - [~] X2.4 Legal pages, FAQ and help pages use the final name and domain. ✅ Name updated in the Terms and Privacy Policy (EN+SQ). **Left:** business details and the domain in the legal pages with D9.
   - [x] X2.5 Download file names (today `project-studio-….mp4`) and any watermark (V41) use the final brand. ✅ Downloads are `ngazero-….mp4` and `ngazero-account.json`. No watermark (V41 dropped).
 - [ ] **X3 🟡 Review unused screens.** Go through every screen (storefront, account, admin) once the templates and content exist, and decide for each one: keep, hide from menus, or remove. Nothing is removed before this review, since screens that look unused now may be needed once content is created. Check that links in menus, footer and emails only point to screens that stay.
+- [ ] **X4 🔴 SEO go-live** (do these after the infrastructure is set up: hosting, domain and email from Phase 2). The SEO code is done (X1, merged to `main` on 2026-11-14 in PR #1) but only starts working once it is live on the real domain. Do them in this order:
+  - [ ] X4.1 Deploy the SEO changes (`pnpm cloudflare:deploy`, with Claude asking first). Merged, not yet live.
+  - [ ] X4.2 Connect ngazero.com to the Worker and set `APP_ORIGIN=https://ngazero.com` (with I4.4/I5). Every canonical URL, sitemap address and share link comes from it, and it turns on the workers.dev → ngazero.com redirect (X1.13).
+  - [ ] X4.3 Check on the live site: https://ngazero.com/robots.txt shows `Allow: /api/media/med_`; https://ngazero.com/sitemap.xml lists every template with a `video:video` entry; opening the workers.dev address lands on ngazero.com.
+  - [ ] X4.4 Google Search Console: add ngazero.com as a **domain** property, verify it with the DNS record in Cloudflare, and submit `https://ngazero.com/sitemap.xml`. Then Bing Webmaster Tools (it can import from Search Console). Replaces X1.8.
+  - [ ] X4.5 Run the Rich Results Test (search.google.com/test/rich-results) on the homepage, one template page, one category page and /pricing; then in Search Console → URL inspection, "Request indexing" for the homepage, /explore and the three landing pages.
+  - [ ] X4.6 Rewrite every template's **name and description in Albanian** in Admin → Templates (description 120–155 characters, with phrases people search for: "video me AI", "nga një foto", the occasion). Today they are the English seed text, and Google reads them on the page, in the sitemap and in the structured data.
+  - [ ] X4.7 Real example videos and posters for every template (P4), uploaded through Admin → Media library, so Google Images and video search can show them.
+  - [ ] X4.8 Fill Admin → Settings → Support (support@ngazero.com, "we reply within hours") and the Instagram/TikTok/Facebook links. They become the contact details and social profiles Google shows for NgaZero.
+  - [ ] X4.9 A 1200×630 brand share image (with X2), to replace the template poster used for now when a page has no picture of its own (X1.3).
+  - [ ] X4.10 PageSpeed Insights on mobile against ngazero.com (the part of X1.6 that needs a public URL); look into anything under ~90.
+  - [ ] X4.11 Off-site (the biggest ranking factor, which code can't do): a Google Business Profile, ngazero.com in the Instagram/TikTok/Facebook bios, listings in Albanian directories, and links from local media and creators.
+  - [ ] X4.12 2–4 weeks after launch: Search Console → Pages and Video indexing reports; fix "Crawled – currently not indexed" and "Video isn't indexed" issues, see which searches bring clicks, and ask Claude for landing pages for the strongest ones.
 
 ## Phase 5 — Launch day
 
@@ -392,6 +405,7 @@ Add a line every time you tick something or change the plan.
 
 | Date | Item | Change | Notes |
 |---|---|---|---|
+| 2026-11-14 | X4 | Added | SEO go-live steps for after the infrastructure is set up: deploy, real domain + APP_ORIGIN, live checks, Search Console/Bing, rich results, Albanian template copy, real media, support/social settings, share image, PageSpeed, off-site links, follow-up after launch. X1.8 moved into X4.4. |
 | 2026-11-14 | X1.2, X1.3, X1.9–X1.13 | Done (local, not deployed) | Enhanced SEO pass: template media allowed in robots.txt (was blocked); video + image sitemap; unique descriptions and Open Graph/Twitter cards on every public page; keyword homepage and template titles; breadcrumbs, video duration and translated structured data; category chips are links; /explore H1; sign-in pages noindex; workers.dev → real domain redirect. 14 integration checks; all suites pass (300 integration). |
 | 2026-11-11 | T8 | Partial | Re-ran /security-review on the latest branch: clean, no high/medium findings. Live IDOR + POK amount-tamper tests still to do on staging. |
 | 2026-11-08 | D11, V46, I3.2 | Changed (local) | No more 30-day deletion: videos and photos stay until the customer deletes them (unused uploads still go at 24 h). Texts updated in English and Albanian. Typecheck, lint, i18n and all suites pass (286 integration). Not deployed. |
