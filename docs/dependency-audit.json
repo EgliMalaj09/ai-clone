@@ -1,40 +1,40 @@
 {
-  "checkedAt": "2026-09-20",
+  "advisories": {
+    "1240992": {
+      "findings": [
+        {
+          "version": "3.0.3",
+          "paths": [
+            ".>eslint-config-next>@next/eslint-plugin-next>fast-glob>micromatch>braces",
+            ".>vinext>vite-plugin-commonjs>vite-plugin-dynamic-import>fast-glob>micromatch>braces"
+          ],
+          "dev": true,
+          "optional": false,
+          "bundled": false
+        }
+      ],
+      "id": 1240992,
+      "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+      "module_name": "braces",
+      "vulnerable_versions": "<=3.0.3",
+      "patched_versions": ">=3.0.4",
+      "severity": "high",
+      "cwe": "CWE-674",
+      "github_advisory_id": "GHSA-vfj7-8cjw-p6xm",
+      "url": "https://github.com/advisories/GHSA-vfj7-8cjw-p6xm"
+    }
+  },
   "metadata": {
     "vulnerabilities": {
       "info": 0,
       "low": 0,
       "moderate": 0,
-      "high": 2,
+      "high": 1,
       "critical": 0
     },
     "dependencies": 205,
     "devDependencies": 521,
     "optionalDependencies": 143,
     "totalDependencies": 761
-  },
-  "remaining": [
-    {
-      "package": "image-size",
-      "severity": "high",
-      "title": "image-size: ICNS parser allows denial of service through an infinite loop",
-      "advisory": "https://github.com/advisories/GHSA-w3rx-r6r6-pgpr",
-      "paths": [
-        [
-          ".>vinext>image-size"
-        ]
-      ]
-    },
-    {
-      "package": "image-size",
-      "severity": "high",
-      "title": "image-size: JXL and HEIF parsers allow denial of service through infinite loops",
-      "advisory": "https://github.com/advisories/GHSA-5p2g-fcmc-qvqq",
-      "paths": [
-        [
-          ".>vinext>image-size"
-        ]
-      ]
-    }
-  ]
+  }
 }

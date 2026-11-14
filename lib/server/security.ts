@@ -1,19 +1,57 @@
 import {serviceConfig} from './connections';
-import {all,batch,config,event,HttpError,must,now,one,run,stmt,uid,type Row} from './data';
+import {authMailContent} from './email-templates';
+import {batch,config,must,now,one,run,stmt,type Row} from './data';
 import type {StudioUser} from '../contracts';
+import {reportError} from './errors';
 const hex=(b:ArrayBuffer|Uint8Array)=>Array.from(new Uint8Array(b)).map(n=>n.toString(16).padStart(2,'0')).join('');
 export const randomToken=()=>hex(crypto.getRandomValues(new Uint8Array(32)));
 export const hash=async(s:string)=>hex(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)));
-export async function passwordHash(password:string,salt=randomToken()){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:new TextEncoder().encode(salt),iterations:100000},key,256);return `pbkdf2$100000$${salt}$${hex(bits)}`;}
+// Raise this to strengthen new hashes later; existing hashes keep verifying because the count is stored in the hash (F16).
+export const PBKDF2_ITERATIONS=100000;
+export async function passwordHash(password:string,salt=randomToken(),iterations=PBKDF2_ITERATIONS){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:new TextEncoder().encode(salt),iterations},key,256);return `pbkdf2$${iterations}$${salt}$${hex(bits)}`;}
 export function constantEqual(a:string,b:string){let result=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)result|=(a.charCodeAt(i)||0)^(b.charCodeAt(i)||0);return result===0;}
-export async function checkPassword(password:string,value:string){const p=value.split('$');return p.length===4&&constantEqual(await passwordHash(password,p[2]),value);}
+export async function checkPassword(password:string,value:string){const p=value.split('$');if(p.length!==4)return false;const iterations=Number(p[1]);if(!Number.isInteger(iterations)||iterations<1||iterations>10000000)return false;return constantEqual(await passwordHash(password,p[2],iterations),value);}
 export async function sign(value:string){must(config().secret.length>=32,'Studio secret is not configured',503);const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(config().secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);return hex(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(value)));}
-export const safeUser=(u:Row):StudioUser=>({id:u.id,name:u.name,email:u.email,role:u.role,status:u.status,createdAt:u.created_at,avatar:u.avatar,emailVerified:!!u.email_verified});
+export const safeUser=(u:Row):StudioUser=>({id:u.id,name:u.name,email:u.email,role:u.role,status:u.status,createdAt:u.created_at,avatar:u.avatar,emailVerified:!!u.email_verified,contentStrikes:Number(u.content_strikes||0),blocked:!!u.blocked_at,twoFactor:!!u.totp_enabled_at,locale:u.locale==='en'?'en':'sq',pendingEmail:u.pending_email??null,marketingOptIn:!!u.marketing_opt_in,hasPassword:!!u.password_hash});
 export async function getUser(h:Headers):Promise<StudioUser|null>{const token=h.get('cookie')?.match(/(?:^|;\s*)studio_session=([^;]+)/)?.[1];if(!token)return null;const u=await one('SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>?',await hash(token),now());return u&&u.status==='active'?safeUser(u):null;}
-export async function requireUser(h:Headers,admin=false){const u=await getUser(h);must(u,'Please sign in to continue.',401);must(!admin||u.role==='admin','Administrator access is required.',403);return u;}
-export async function sessionCookie(userId:string,request:Request){const token=randomToken();await run('INSERT INTO sessions (token_hash,user_id,expires_at) VALUES (?,?,?)',await hash(token),userId,now()+7*86400000);return `studio_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800${new URL(request.url).protocol==='https:'?'; Secure':''}`;}
+/** `admin` opens the admin area to staff (admins and support); adminAPI narrows what support may do (V10). */
+export async function requireUser(h:Headers,admin=false){const u=await getUser(h);must(u,'Please sign in to continue.',401);must(!admin||u.role==='admin'||u.role==='support','Administrator access is required.',403);return u;}
+export async function sessionCookie(userId:string,request:Request){const token=randomToken();await run('INSERT INTO sessions (token_hash,user_id,expires_at) VALUES (?,?,?)',await hash(token),userId,now()+SESSION_MS);return `studio_session=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=604800${new URL(request.url).protocol==='https:'?'; Secure':''}`;}
+/** Sessions last a fixed 7 days from sign-in (they are never extended), so the sign-in time is expires_at minus this. */
+export const SESSION_MS=7*86400000;
+/** How recent a Google/Apple sign-in must be to stand in for a password on a sensitive change (V49). */
+export const RECENT_SIGN_IN_MS=10*60000;
+export const REAUTH_MESSAGE='For your security, sign in again with Google or Apple, then try again within 10 minutes.';
+/** When this browser signed in, or 0 without a live session. */
+export async function signedInAt(h:Headers){const token=h.get('cookie')?.match(/(?:^|;\s*)studio_session=([^;]+)/)?.[1];if(!token)return 0;const s=await one('SELECT expires_at FROM sessions WHERE token_hash=? AND expires_at>?',await hash(token),now());return s?Number(s.expires_at)-SESSION_MS:0;}
+/** Proves the account owner is present before a sensitive change: the password, or, for an account without one
+ *  (Google/Apple only), a sign-in through the provider in the last 10 minutes (V49). */
+export async function confirmOwner(h:Headers,userId:string,password:unknown,wrong='Your password is incorrect.'){
+ const u=await one('SELECT password_hash FROM users WHERE id=?',userId);must(u,'Account not found.',404);
+ if(u.password_hash){must(typeof password==='string'&&password.length>0&&password.length<=128&&await checkPassword(password,u.password_hash),wrong,403);return;}
+ must(await signedInAt(h)>now()-RECENT_SIGN_IN_MS,REAUTH_MESSAGE,403);
+}
 export function clearCookie(request:Request){return `studio_session=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${new URL(request.url).protocol==='https:'?'; Secure':''}`;}
 export async function rateLimit(key:string,max=30,windowMs=60000){const n=now();const r=await one('INSERT INTO rate_limits (key,count,reset_at) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=CASE WHEN reset_at<? THEN 1 ELSE count+1 END,reset_at=CASE WHEN reset_at<? THEN ? ELSE reset_at END RETURNING count',key,n+windowMs,n,n,n+windowMs);must(r&&r.count<=max,'Too many requests. Please try again shortly.',429);}
-export function protectOrigin(req:Request){if(['GET','HEAD','OPTIONS'].includes(req.method))return;const origin=req.headers.get('origin');if(origin){const allowed=[new URL(req.url).origin,config().origin];must(allowed.includes(origin),'This request came from an untrusted origin.',403);}const site=req.headers.get('sec-fetch-site');must(site!=='cross-site','Cross-site requests are not allowed.',403);if(req.headers.has('cookie'))must(origin||site==='same-origin','An origin is required for a signed-in action.',403);}
-export async function sendAuthMail(email:string,token:string,type:'verify'|'reset'){const c=await serviceConfig();const url=`${c.origin}/${type==='verify'?'verify':'reset-password'}?token=${token}`;if(c.demo&&!c.mailKey)return null;must(c.mailKey&&c.mailFrom,'Email delivery is not configured. Contact the studio owner.',503);const result=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${c.mailKey}`,'Content-Type':'application/json','Idempotency-Key':'auth-'+await hash(token)},signal:AbortSignal.timeout(12000),body:JSON.stringify({from:c.mailFrom,to:email,subject:type==='verify'?'Verify your PROJECT STUDIO email':'Reset your PROJECT STUDIO password',text:`${type==='verify'?'Verify your email':'Reset your password'} by opening this link within 30 minutes:\n${url}\n\nIf you did not request this, ignore this email.`})});must(result.ok,'We could not send the email. Please try again.',503);return null;}
+export function protectOrigin(req:Request){if(['GET','HEAD','OPTIONS'].includes(req.method))return;const origin=req.headers.get('origin');if(origin){const allowed=[new URL(req.url).origin,config().origin];must(allowed.includes(origin),'This request came from an untrusted origin.',403);}const site=req.headers.get('sec-fetch-site');must(site!=='cross-site','Cross-site requests are not allowed.',403);// Only a session cookie makes this a signed-in action; the language cookie alone does not.
+ if(/(?:^|;\s*)studio_session=/.test(req.headers.get('cookie')||''))must(origin||site==='same-origin','An origin is required for a signed-in action.',403);}
+export async function sendAuthMail(email:string,token:string,type:'verify'|'reset'|'email',lang:'sq'|'en'='sq',code?:string){const c=await serviceConfig();const url=`${c.origin}/${type==='verify'?'verify':type==='email'?'confirm-email':'reset-password'}?token=${token}`;if(c.demo&&!c.mailKey)return null;must(c.mailKey&&c.mailFrom,'Email delivery is not configured. Contact the studio owner.',503);const mail=authMailContent(type,{brand:c.brandName,url,supportEmail:c.mailFrom,lang,code});const result=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${c.mailKey}`,'Content-Type':'application/json','Idempotency-Key':'auth-'+await hash(token)},signal:AbortSignal.timeout(12000),body:JSON.stringify({from:c.mailFrom,to:email,subject:mail.subject,html:mail.html,text:mail.text})});must(result.ok,'We could not send the email. Please try again.',503);return null;}
+// Sign-up email verification by a 6-digit code (an alternative to the link in the same email). The code is stored
+// hashed and scoped to the user; a single code is live at a time, it expires in 30 minutes, and sign-in attempts are
+// rate-limited, so the small code space cannot be brute-forced.
+export async function makeVerifyCode(userId:string){const code=String(crypto.getRandomValues(new Uint32Array(1))[0]%1000000).padStart(6,'0');await batch([stmt("DELETE FROM auth_tokens WHERE user_id=? AND type='verify-code'",userId),stmt('INSERT INTO auth_tokens (token_hash,user_id,type,expires_at) VALUES (?,?,?,?)',await hash('verify-code:'+userId+':'+code),userId,'verify-code',now()+1800000)]);return code;}
+/** True (and clears the user's verify tokens) when the code matches a live one; false otherwise. */
+export async function checkVerifyCode(userId:string,code:string){if(!/^\d{6}$/.test(code))return false;const t=await one("SELECT token_hash FROM auth_tokens WHERE token_hash=? AND type='verify-code' AND expires_at>?",await hash('verify-code:'+userId+':'+code),now());if(!t)return false;await run("DELETE FROM auth_tokens WHERE user_id=? AND type IN ('verify-code','verify')",userId);return true;}
+/** Best-effort transactional email (e.g. report decisions). Returns false when mail is not configured; never throws on a send failure. */
+export async function sendMail(to:string,mail:{subject:string;html:string;text:string;headers?:Record<string,string>},idempotencyKey?:string){
+ const c=await serviceConfig();
+ if(!c.mailKey||!c.mailFrom)return false;
+ try{
+  const result=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${c.mailKey}`,'Content-Type':'application/json',...(idempotencyKey?{'Idempotency-Key':idempotencyKey}:{})},signal:AbortSignal.timeout(12000),body:JSON.stringify({from:c.mailFrom,to,subject:mail.subject,html:mail.html,text:mail.text,...(mail.headers?{headers:mail.headers}:{})})});
+  if(!result.ok)await reportError('email','Email provider rejected a message',{context:{status:result.status,idempotencyKey}});
+  // V53: a failed send marks email as failing and alerts the owner once; a good send clears it.
+  await (await import('./alerts')).noteMailResult(result.ok,'status '+result.status).catch(()=>{});
+  return result.ok;
+ }catch(e){await reportError('email','Transactional email failed',{error:e,context:{idempotencyKey}});await (await import('./alerts')).noteMailResult(false,'no response').catch(()=>{});return false;}
+}
 export async function makeAuthToken(userId:string,type:string){const token=randomToken();await batch([stmt('DELETE FROM auth_tokens WHERE user_id=? AND type=?',userId,type),stmt('INSERT INTO auth_tokens (token_hash,user_id,type,expires_at) VALUES (?,?,?,?)',await hash(token),userId,type,now()+1800000)]);return token;}

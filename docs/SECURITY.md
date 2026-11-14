@@ -28,26 +28,23 @@ This is a source review, dependency audit, and executable regression record for 
 - Public template projections exclude database prompts, provider/model settings and internal cost. Template/workflow changes do not change existing order snapshots.
 - Uploaded and generated files use random object keys and require the owner, administrator, or a valid limited-life signature. Deletion removes the object bytes. Completed downloads support byte ranges.
 - Database queries bind user values. Sort/filter SQL fragments come only from explicit allowlists. Error responses avoid provider credentials and private workflow contents.
-- Stripe webhook verification uses the original bounded body, constant-time signature comparison, a five-minute timestamp window, amount/currency/session matching, and persisted event IDs.
+- POK webhooks are never trusted on their own: the webhook URL carries an HMAC of the purchase ID (constant-time comparison), and credits are granted only after the server reads the order from the POK API and the captured amount, currency, order ID and reference match. Granting is idempotent through the credit ledger.
 - Payment confirmation is required before queue selection. Leases, deterministic step IDs, and cautious handling of ambiguous submissions reduce duplicate work.
 - Provider outputs use HTTPS on explicit provider delivery domains; redirects and private-host output URLs are refused. Signing/bootstrap/dispatcher secrets stay in environment bindings. Payment, AI and email credentials can additionally be stored as authenticated ciphertext through the protected Connections API. Environment-managed values take precedence.
 - Response headers restrict embedding, base URLs and object content; disable unused device permissions; apply HSTS over HTTPS. CSP is a limited set of directives, not a nonce-based script policy.
 
 ## Dependency audit
 
-The initial full audit reported 2 critical, 36 high, 19 moderate and 4 low advisories. Next.js, React/RSC, Vite and affected transitive packages were updated with the existing package manager. The final full audit reports **0 critical, 2 high, 0 moderate, 0 low**. Both remaining advisories concern `image-size@2.0.2`, a Vinext development dependency:
+The initial full audit reported 2 critical, 36 high, 19 moderate and 4 low advisories. Next.js, React/RSC, Vite and affected transitive packages were updated with the existing package manager.
 
-- [ICNS parser infinite loop](https://github.com/advisories/GHSA-w3rx-r6r6-pgpr)
-- [JXL/HEIF parser infinite loops](https://github.com/advisories/GHSA-5p2g-fcmc-qvqq)
-
-The package manager identified `image-size@2.0.3` as published 14 September 2026, inside this project's seven-day minimum release-age window. No release-age exception was retained. The update can be retried after 21 September 2026 15:57 UTC. The source import in the installed Vinext version is `server/metadata-route-build-data.js`, which reads build-time metadata assets. Application upload validation accepts JPG, PNG and WEBP, not the affected ICNS/JXL/HEIF formats; user uploads never enter the build pipeline. Do not build this project with untrusted metadata assets. These findings remain recorded, not suppressed or described as fixed.
+Re-run on 12 October 2026 (C4.4, F12): Next.js and `eslint-config-next` moved to 16.3.8, and overrides in `pnpm-workspace.yaml` lift `image-size` (≥2.0.3, fixing the ICNS/JXL/HEIF parser loops), `brace-expansion`, `fast-uri`, `sharp` and `source-map-js` to patched releases, all older than the seven-day release-age window. The audit now reports **0 critical, 1 high, 0 moderate, 0 low**. The one remaining advisory is `braces@3.0.3`, reached only through build/lint tooling (`eslint-config-next` and Vinext's `fast-glob`); no patched release of `braces` has been published yet. It never runs in the deployed Worker and never sees user input. Re-run the audit when a fix is released.
 
 The checked-in dependency report records the audit result and package paths. An audit is a time-specific advisory check; rerun it before public launch and on dependency changes. Dependency fixes were tested with the compiled Worker and actual local D1/R2 bindings.
 
 ## Remaining production work
 
 1. Enable publicly reachable authorized webhook/provider endpoints, configure real Stripe/AI/mail accounts, and run account-specific checkout, refund, delivery and inference tests. Stubbed adapter tests are not live service verification.
-2. Operate an independently scheduled queue dispatcher with monitoring; the included best-effort background window and browser polling do not guarantee unattended long-running work.
+2. Confirm the every-minute cron trigger is active after deploying (or run the external dispatcher) and monitor its heartbeat; the best-effort background window and browser polling do not guarantee unattended long-running work.
 3. Add edge-level abuse controls and load tests. File signature/size checks are not antivirus scanning or full image decoding; add normalization/scanning and provider moderation appropriate to public volume.
 4. Define backup retention, abuse reporting, support, business identity, tax/refund policies, and region-specific legal requirements. The included legal text is for a private development preview.
 5. Add administrator MFA / a managed identity provider before broader operational access. Google OAuth is not part of this MVP.

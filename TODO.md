@@ -1,0 +1,120 @@
+# NgaZero — Feature audit & TODO
+
+For the step-by-step launch plan, see [docs/LAUNCH-CHECKLIST.md](docs/LAUNCH-CHECKLIST.md).
+
+Audit date: 6 October 2026. This audit covers the source code under `app/`, `components/`, `lib/`, `db/`, `worker.ts` and the docs, plus a run of the project's own checks.
+
+## 1. Check results
+
+| Check | Result |
+|---|---|
+| `pnpm typecheck` | ✅ passes |
+| `pnpm build` | ✅ passes |
+| `pnpm test:integration` | ✅ 72/72 |
+| `pnpm test:security` | ✅ 45/45 |
+| `pnpm test:providers` | ✅ 9/9 (local fixtures only) |
+| `pnpm test:production` | ✅ 30/30 (local fixtures only) |
+| `pnpm lint` | ✅ passes (was 93 errors, 49 warnings; fixed in F4) |
+
+The tests mock Stripe, fal, Replicate and Resend, so **no live payment, AI generation or email has ever been verified**.
+
+## 2. Feature status
+
+| Area | Status | Notes |
+|---|---|---|
+| Template catalog (18 templates), search, categories, tags, sorting | ✅ Works | Filtering happens in the browser. The server API supports pagination, but the UI doesn't use it. |
+| Template detail, preview video, favorites | ✅ Works | Previews are bundled "concept" clips, not real outputs |
+| Email/password accounts, verify email, reset password | ✅ Works | Live mode needs Resend configured, or signup stays closed |
+| Password change, session revoke, account export, account delete | ✅ Works | The export holds metadata only, not the photo/video files |
+| Photo uploads (JPG/PNG/WEBP, 8 MB, private R2) | ✅ Works | Uploads require credits; unused photos are deleted after 24 h |
+| Checkout: demo mock payment | ✅ Works | |
+| Credit packs: POK | ⚠️ Built, **never tested live** | Payments confirmed by reading the order from POK. Refunds are recorded by the admin with Reverse (POK does not report them). ALL and EUR only |
+| Generation queue (multi-step workflows, leases, retries, 30-min deadline) | ✅ Works in demo | Production needs an external dispatcher (see L2) |
+| AI providers: fal.ai (Nano Banana → Kling 2.6) | ⚠️ Built, **never tested live** | |
+| AI providers: Replicate | ⚠️ Partial | Only `owner/model` official models; versioned community models aren't supported |
+| Demo mode output | ⚠️ By design | Returns a sample clip and does **not** transform the user's photo |
+| My Creations: play, download, share link (23 h), delete | ✅ Works | |
+| Credits page (balance, packs, history) | ✅ Works | No receipts/invoices |
+| Admin: dashboard, templates editor, workflows, pricing, users, credit packs, credit purchases, credit ledger, providers, settings, operations, activity log, encrypted connections | ✅ Works | No MFA, no role management. Media library added |
+| Image-only templates | ❌ Can't be published | The validator only allows video-ending workflows |
+| Upscale / post-process steps | ❌ No built-in processor | Needs a real model endpoint |
+| Google / social login | ❌ Not implemented | The `accounts` table is ready for it |
+| Albanian / multi-language UI | ❌ Not implemented | English only, though the `ALL` currency is supported |
+| PostgreSQL | ❌ Not implemented | D1 (SQLite) only |
+| CI pipeline | ✅ Added (F5) | GitHub Actions on every push |
+
+## 3. Fixes (bugs and code problems)
+
+### High priority
+- [x] **F1 — My Creations polls forever.** ✅ *Fixed: polls only while a creation is processing, pauses in hidden tabs, backs off 2 s → 15 s, and the list refresh no longer depends on the tick.* `components/account-pages.tsx:21` calls `queue/tick` and then refetches the list every 2.2 s for as long as the page is open, even when nothing is processing. That's about 55 requests a minute per tab. Several open tabs can hit the 240 requests/min limit (`lib/server/api.ts:61`) and show "Too many requests". Fix: poll only while some creation is `queued/preparing/generating/finalizing`, back off over time, and pause when the tab is hidden.
+- [x] **F2 — Abandoned uploads and unpaid orders are never cleaned up.** ✅ *Fixed in the credits work: uploads and generation require credits, orders no longer exist, and the hourly maintenance deletes photos unused for 24 h.* A user who uploads a photo and leaves the template page keeps that file forever. After 250 files or 512 MB, uploads are blocked (`lib/server/api.ts:64`). Unpaid `awaiting_payment` generations and orders also stay forever. Fix: add a cleanup to the hourly maintenance in `lib/server/queue.ts:66-67`: delete unreferenced uploads older than about 24 h and expire unpaid orders older than about 48 h.
+- [x] **F3 — Admin preview media uses the admin's personal photo quota.** ✅ *Fixed: previews moved to their own `template_media` table (migration 0002) with a 5 GB / 1000-file studio limit; previews a template stops using are deleted, never-saved uploads are swept after 24 h, and Admin → Media library lists and deletes files.* Both share the same 512 MB / 250-file limit, so about 17 uploads of 30 MB preview videos fills the admin quota (`lib/server/api.ts:64`). Fix: exclude `public=1` rows from the quota, or give admins a separate limit.
+- [x] **F4 — Lint fails (93 errors).** ✅ *Fixed: `pnpm lint` passes with 0 errors and 0 warnings. API responses are typed (`lib/api-types.ts`), the React hook issues are fixed, and unused code is removed. The `<a>`/`<img>` rules are turned off with a documented reason (full-page navigation by design; private media needs the session cookie).* Mostly `no-explicit-any` (43) and `<a>` used instead of `<Link>` (about 30). There are also 4 real `react-hooks/set-state-in-effect` issues (`components/shared.tsx`, `components/auth.tsx`, `components/admin.tsx`) and unused imports. Fix the real hook issues, then either fix or deliberately relax the style rules so `pnpm lint` passes.
+- [x] **F5 — Add CI.** ✅ *Added `.github/workflows/ci.yml`: typecheck, lint, build and all four test suites on every push and fork PR.* Add a GitHub Actions workflow that runs `typecheck`, `lint`, `build` and the four test suites on every push and PR.
+
+### Medium priority
+- [x] **F6 — Discovery sorting/filters.** ✅ *Fixed: Recommended = featured → trending → newest; both price sorts, within each currency; filters kept in the link; home hero shows featured templates; search also matches the category. Shared rules in `lib/discovery.ts`.* In `components/discovery.tsx:16`, "Recommended" sorts only by `trending` and ignores `featured`. "Price: high to low" is missing even though the API supports it. Filter, search and sort are not kept in the URL, so filtered views can't be shared or bookmarked.
+- [x] **F7** — ✅ Done (C9): the storefront renders one page of 24 and loads more from `/api/templates`.
+- [x] **F8** — ✅ Done (C12): version IDs for community models, output picked from any shape, validated model references.
+- [x] **F9 — Anonymous analytics.** ✅ *Done. The server records `homepage_view`/`template_view` for signed-out viewers with a null `user_id`, IP-rate-limited to 180/min (`lib/server/api.ts` analytics route, C8); `components/studio.tsx` already fires both events for every visitor. Removed the duplicate `template_view` in `components/template-detail.tsx` that fired only for signed-in users and double-counted their views (and skewed the experiment conversion stats).*
+- [x] **F10 — No cron trigger configured.** ✅ Fixed (C3): `triggers.crons` set in `vite.config.ts`; Operations shows the heartbeat and its source. `worker.ts` has a `scheduled()` handler, but no `triggers.crons` is set, so nothing calls it. Production checkout stays closed until the dispatcher heartbeat is fresh (`lib/server/connections.ts:55`). Add a cron trigger or document the external scheduler clearly (see L2).
+- [x] **F11 — Remove leftovers.** ✅ *Done — all three were already gone in the current tree:*
+  - *The dev middleware `/__qa/responsive` is no longer in `vite.config.ts` (no `__qa`/`responsive` references anywhere).*
+  - *`app/chatgpt-auth.ts` no longer exists.*
+  - *`worker.ts` CSP is now `frame-ancestors 'self'` — `chatgpt.com` is removed. The only remaining `chatgpt` references are the two `/signin|signout-with-chatgpt` paths in the vendored dev-only mock-auth plugin (`build/sites-vite-plugin.ts`, `configureServer` under `mockAuth`), which is legitimate local tooling, not shipped.*
+- [x] **F12** — ✅ Done (C4.4, 12 Oct 2026): image-size 2.0.3+ via override, next 16.3.8; only `braces` (build tooling, no fix released) remains.
+
+### Low priority
+- [x] **F13** — ✅ Fixed (C6.5): `/api/auth/resend` returns "already verified" without sending when the email is already verified.
+- [x] **F14** — ✅ Fixed (C6.5/C15): `/reset-password` and `/verify` without a token show a clear "incomplete link" message with a way to request a new one.
+- [x] **F15** — ✅ Fixed earlier: generated assets use the MIME-mapped extension (webp/jpg/png).
+- [x] **F16** — ✅ Fixed (C4.2): passwordHash embeds the iteration count; checkPassword reads it from the stored hash.
+- [x] **F17** — ✅ Fixed earlier: account deletion deletes DB rows first, then R2 files with a retry-logged loop.
+- [x] **F18** — ✅ Fixed earlier: dashboard user count is a plain COUNT(*), no phantom status filter.
+- [x] **F19** — ✅ Fixed earlier: the "Studio admin" footer and mobile links are admin-only.
+- [~] **F20** — (Display fixed in C13.1; POK minimums still to confirm.) Prices in `ALL` display with 0 decimals (`lib/contracts.ts:20`), so e.g. 299.50 shows as 300. Confirm the minimum Stripe amounts for ALL/EUR/GBP, since the validator only enforces `price >= 50`.
+
+## 4. Not implemented, needed before a public launch
+
+- [ ] **L1 — Live service testing.** Run real POK staging payments (success, cancel, expiry, webhook, refund + Reverse), real fal.ai generations, and real Resend emails.
+- [x] **L2 — Queue dispatcher in production.** ✅ Cron trigger every minute (C3); external scheduler documented as fallback. Alerting is I10.2. Schedule `/api/queue/dispatch` every minute (cron trigger or `pnpm queue:worker`) and add alerting when it stops.
+- [ ] **L3 — Content safety.** Add moderation of uploaded photos and outputs (NSFW, minors, celebrity/impersonation). Add antivirus scanning or image re-encoding. Add a face/quality check before payment.
+- [ ] **L4 — Refunds and partial refunds.** ✅ The admin records a refund or chargeback made in POK with Reverse, which removes the pack's credits. Still open: decide what a partial refund should do (Reverse removes all of the pack's credits).
+- [x] **L5 — Admin MFA.** ✅ *Done. TOTP two-step sign-in (authenticator app + 8 recovery codes) was already built (`lib/server/mfa.ts`, C4.1) and available to every account. Now **enforced for staff in production**: `adminAPI` (`lib/server/api.ts`) returns 403 to any admin/support account without two-step sign-in, and the admin UI (`components/admin.tsx`) shows a hard "Turn on two-step sign-in" gate instead of the dashboard until it's enabled. Demo mode is exempt so the sample studio stays open; setup lives under `/api/account/mfa` (Account → Security), which is never gated. See DECISIONS.md.*
+- [ ] **L6 — Edge rate limiting and load tests.** The current limits are per-user/IP rows in D1.
+- [ ] **L7 — Backups.** Set up D1 backups, R2 lifecycle/retention rules, and a separate backup of `APP_SECRET`, which encrypts the saved connections.
+- [ ] **L8 — Legal pages.** Replace the draft Privacy/Terms with your real business identity, contact, refund policy, tax and retention terms.
+- [ ] **L9 — Real template examples.** Replace the concept previews with real generated examples.
+- [ ] **L10 — Monitoring.** Add error tracking and log alerts (stalled jobs, failed refunds, provider errors).
+
+## 5. Possible new features
+
+### Customer side
+- [ ] **Albanian (sq) translation**, plus a language switcher (i18n for all UI text, emails and legal pages).
+- [ ] Email notification when a video is ready or has failed, plus emailed payment receipts.
+- [ ] A watermarked low-res preview before paying, to build trust and raise conversion.
+- [ ] Google / Apple sign-in (the `accounts` table already exists).
+- [ ] A proper share page (`/v/<id>`) with an Open Graph preview and revocable links, instead of a raw 23-hour media URL.
+- [ ] Promo codes and coupons, bundles, and a referral program.
+- [ ] Regional pricing (a different price per currency for each template).
+- [ ] Progress estimate and ETA on creations. Provider webhooks (fal supports them) instead of polling.
+- [ ] Ratings/reviews and a "made with this template" gallery (opt-in).
+- [ ] PWA / installable mobile app.
+- [ ] Image-only templates (portraits/photoshoots) as a cheaper product.
+
+### Admin side
+- [ ] Role management: promote other admins and add a support role.
+- [ ] Admin-triggered password reset for a user.
+- [ ] CSV export for credit purchases, the ledger and users.
+- [ ] Drag-and-drop template ordering, bulk publish/unpublish, and scheduled publishing.
+- [ ] Template archive (soft delete) instead of hard delete.
+- [ ] Real provider cost reconciliation (actual model cost vs. estimate).
+- [ ] A/B test prices or previews per template.
+
+## 6. Credits system
+- [x] Implement the credits system — design: `docs/CREDITS-ARCHITECTURE.md` (owner decisions in §15).
+  - [x] Step 1: database, credits ledger service, balance/history API, admin adjustments, welcome-credits setting, reconciliation (`pnpm test:credits`)
+  - [x] Step 2: credit packs and pack checkout (test checkout in demo, Stripe adapter), chargebacks
+  - [x] Step 3: generation spends credits (holds), all customer and admin screens; the per-video purchase system was removed (migration 0004)
+  - [x] Payment provider: POK (replaces Stripe)
+  - [ ] Decide pack contents and prices

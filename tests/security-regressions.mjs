@@ -2,39 +2,27 @@ import {createRequire} from 'node:module';
 import {readFile,readdir,writeFile,mkdir} from 'node:fs/promises';
 import path from 'node:path';
 import {randomBytes,pbkdf2Sync,createHash,createHmac,randomUUID} from 'node:crypto';
+import {fakePok} from './fake-pok.mjs';
 import assert from 'node:assert/strict';
 const require=createRequire(import.meta.resolve('wrangler/package.json'));
 const {Miniflare,Response:MFResponse}=require('miniflare');
 const server=path.resolve('dist/server');
 const modules=(await readdir(server,{recursive:true})).filter(f=>f.endsWith('.js')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:a.localeCompare(b)).map(f=>({type:'ESModule',path:path.join(server,f)}));
 const adminPassword=randomBytes(18).toString('hex'),salt=randomBytes(32).toString('hex');
-const config={DEMO_MODE:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(adminPassword,salt,100000,32,'sha256').toString('hex'),STRIPE_WEBHOOK_SECRET:'whsec_disposable',STRIPE_SECRET_KEY:'sk_test_fixture_only',AUTO_REFUND:'true'};
-const sessions=new Map(),idempotency=new Map();let stripeSessions=0;
+const config={DEMO_MODE:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(adminPassword,salt,100000,32,'sha256').toString('hex'),POK_KEY_ID:'pok_key_fixture',POK_KEY_SECRET:'pok_secret_fixture',POK_MERCHANT_ID:'merchant_fixture'};
+const pok=fakePok({keyId:config.POK_KEY_ID,keySecret:config.POK_KEY_SECRET,merchantId:config.POK_MERCHANT_ID,Response:MFResponse});
 const mf=new Miniflare({modules,modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:config,d1Databases:{DB:'security-tests'},r2Buckets:['BUCKET'],cf:false,
- outboundService:async req=>{
-  const url=new URL(req.url);
-  assert.equal(url.hostname,'api.stripe.com','External network is blocked in this suite');
-  if(url.pathname==='/v1/checkout/sessions'&&req.method==='POST'){
-   const key=req.headers.get('idempotency-key');if(idempotency.has(key))return MFResponse.json(idempotency.get(key));
-   const form=new URLSearchParams(await req.text());const id='cs_fixture_'+(++stripeSessions);
-   const session={id,url:'https://checkout.stripe.com/c/test/'+id,status:'open',payment_status:'unpaid',amount_total:Number(form.get('line_items[0][price_data][unit_amount]')),currency:form.get('line_items[0][price_data][currency]')};
-   sessions.set(id,session);idempotency.set(key,session);return MFResponse.json(session);
-  }
-  if(url.pathname.startsWith('/v1/checkout/sessions/')&&req.method==='GET'){
-   const s=sessions.get(url.pathname.split('/').at(-1));assert(s,'Unknown fixture checkout');return MFResponse.json(s);
-  }
-  throw new Error('Unexpected provider call: '+url.pathname);
- }
+ outboundService:async req=>{const url=new URL(req.url);assert(pok.matches(url),'External network is blocked in this suite');return pok.handle(req);}
 });
 const checks=[];const hash=s=>createHash('sha256').update(s).digest('hex');
 const ok=(name,value=true)=>{assert(value,name);checks.push({name,passed:true});console.log('PASS',name)};
-async function request(route,{method='GET',data,cookie,headers={},expected=200,origin=true}={}){
- const h={...(origin?{origin:config.APP_ORIGIN}:{}),...(cookie?{cookie}:{}),...(data!==undefined?{'content-type':'application/json'}:{}),...headers};
+async function request(route,{method='GET',data,cookie,lang,headers={},expected=200,origin=true}={}){
+ const h={...(origin?{origin:config.APP_ORIGIN}:{}),cookie:[cookie,lang===undefined?'studio_lang=en':lang&&'studio_lang='+lang].filter(Boolean).join('; '),...(data!==undefined?{'content-type':'application/json'}:{}),...headers};
  const r=await mf.dispatchFetch(config.APP_ORIGIN+route,{method,headers:h,body:data===undefined?undefined:JSON.stringify(data)});const text=await r.text();let body;try{body=JSON.parse(text)}catch{body=text}
  if(expected!==null)assert.equal(r.status,expected,method+' '+route+': '+text.slice(0,250));
  return {body,text,response:r,cookie:r.headers.get('set-cookie')?.split(';')[0]};
 }
-async function webhook(event,expected=200){const t=Math.floor(Date.now()/1000);return request('/api/webhooks/stripe',{method:'POST',data:event,headers:{'stripe-signature':'t='+t+',v1='+createHmac('sha256',config.STRIPE_WEBHOOK_SECRET).update(t+'.'+JSON.stringify(event)).digest('hex')},expected});}
+const notify=(id,o)=>pok.notify(id,(u,i)=>mf.dispatchFetch(u,i),o);
 try{
  const db=await mf.getD1Database('DB'),bucket=await mf.getR2Bucket('BUCKET');
  for(const file of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort())for(const s of (await readFile('drizzle/'+file,'utf8')).split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await db.prepare(s).run();
@@ -44,7 +32,7 @@ try{
  const unknown=await request('/api/auth/forgot',{method:'POST',data:{email:'unknown@studio.test'}});
  ok('Demo recovery never exposes a reset link or reveals account existence',forgot.text===unknown.text&&!forgot.text.includes('testLink')&&!forgot.text.includes('token='));
  ok('Demo reset request does not mint a usable token',(await db.prepare('SELECT COUNT(*) AS n FROM auth_tokens').first()).n===0);
- const user=await request('/api/auth/register',{method:'POST',data:{name:'Security QA',email:'qa@studio.test',password:'Initial-password-123'},expected:201});let cookie=user.cookie;
+ const user=await request('/api/auth/register',{method:'POST',data:{name:'Security QA',email:'qa@studio.test',password:'Initial-password-123',acceptTerms:true,confirmAge:true},expected:201});let cookie=user.cookie;
  const other=(await request('/api/auth/login',{method:'POST',data:{email:'qa@studio.test',password:'Initial-password-123'}})).cookie;
  const active=await request('/api/account/sessions',{cookie});ok('Session list identifies the current browser without token hashes',active.body.sessions.length===2&&active.body.sessions.filter(s=>s.current).length===1&&!active.text.includes('token_hash'));
  await request('/api/account/sessions',{method:'DELETE',cookie});ok('Revoke other sessions preserves this session',(await request('/api/me',{cookie})).body.user.id===user.body.user.id&&(await request('/api/me',{cookie:other})).body.user===null);
@@ -61,7 +49,7 @@ try{
  await request('/api/account',{method:'PATCH',cookie,origin:false,data:{name:'Cross-site'},expected:403});ok('Authenticated mutation without an Origin is rejected');
  await request('/api/account',{method:'PATCH',cookie,data:{name:'X'.repeat(1_000_001)},expected:413});ok('Large JSON requests are rejected before parsing');
  await request('/api/admin/operations',{cookie,expected:403});await request('/api/admin/activity',{expected:401});ok('Operations and audit endpoints enforce the admin role');
- const ops=await request('/api/admin/operations',{cookie:admin});ok('Readiness shows absent live services without exposing secrets',ops.body.checks.length===7&&!ops.text.includes(config.APP_SECRET)&&!ops.text.includes(config.STRIPE_SECRET_KEY));
+ const ops=await request('/api/admin/operations',{cookie:admin});ok('Readiness shows absent live services without exposing secrets',ops.body.checks.length===9&&ops.body.checks.some(c=>c.name==='Credit ledger')&&!ops.text.includes(config.APP_SECRET)&&!ops.text.includes(config.POK_KEY_SECRET));
  const page=await request('/api/admin/users?limit=1&page=2',{cookie:admin});ok('Admin records support server pagination',page.body.users.length===1&&page.body.pagination.total===2&&page.body.pagination.page===2);
  const search=await request('/api/admin/users?search=qa%40studio.test',{cookie:admin});ok('Admin search filters on the server',search.body.users.length===1&&search.body.users[0].email==='qa@studio.test');
  await request('/api/admin/users?page=-1',{cookie:admin,expected:400});ok('Pagination parameters are validated');
@@ -74,43 +62,94 @@ try{
  await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:admin,data:{...formula,workflow:[{...formula.workflow[0],output:'__proto__'}]},expected:400});ok('Reserved workflow variable names are rejected');
  await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:admin,data:{...formula,thumbnail:'/media/not-a-real-preview.webp'},expected:400});ok('Templates cannot publish broken bundled preview paths');
  const uploadId='up_security_fixture',storageKey='uploads/security-test/photo';const bytes=await readFile('public/media/formula-driver.webp');await bucket.put(storageKey,bytes);
- await db.prepare('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,public,created_at) VALUES (?,?,?,?,?,?,?,?)').bind(uploadId,user.body.user.id,storageKey,'image/webp',bytes.length,'photo.webp',0,Date.now()).run();
+ await db.prepare('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,created_at) VALUES (?,?,?,?,?,?,?)').bind(uploadId,user.body.user.id,storageKey,'image/webp',bytes.length,'photo.webp',Date.now()).run();
  await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:admin,data:{...formula,thumbnail:'/api/media/'+uploadId},expected:400});ok('Admin preview fields cannot expose private user uploads');
- const key=randomUUID();const checkout=await request('/api/checkout',{method:'POST',cookie,data:{templateId:formula.id,expectedPrice:299,uploadIds:[uploadId],consent:true,idempotencyKey:key},expected:201});
- const {orderId,generationId}=checkout.body;const pay=await db.prepare('SELECT * FROM payments WHERE order_id=?').bind(orderId).first();
- await request('/api/orders/'+orderId+'/pay',{method:'POST',cookie,data:{result:'unexpected'},expected:400});ok('Test payment only accepts explicit success or failure');
- sessions.set('cs_expired',{id:'cs_expired',status:'expired',payment_status:'unpaid'});await db.prepare("UPDATE payments SET provider='stripe',provider_session_id='cs_expired',checkout_url='https://checkout.stripe.com/c/expired' WHERE id=?").bind(pay.id).run();
- const retries=await Promise.all([request('/api/orders/'+orderId+'/retry',{method:'POST',cookie,data:{}}),request('/api/orders/'+orderId+'/retry',{method:'POST',cookie,data:{}})]);
- const fresh=await db.prepare('SELECT * FROM payments WHERE id=?').bind(pay.id).first();
- ok('Expired checkout renews once even under concurrent retries',stripeSessions===1&&fresh.checkout_attempt===1&&retries[0].body.id===retries[1].body.id);
- await webhook({id:'evt_expired_old',type:'checkout.session.expired',data:{object:{id:'cs_expired',metadata:{order_id:orderId}}}});
- ok('Delayed expiry event cannot fail a newer checkout',(await request('/api/orders/'+orderId,{cookie})).body.order.status==='pending');
- const waiting=sessions.get(fresh.provider_session_id);waiting.status='complete';
- await request('/api/orders/'+orderId+'/retry',{method:'POST',cookie,data:{},expected:409});ok('A pending asynchronous payment cannot open a second checkout',stripeSessions===1);
- const paid={id:'evt_paid_fixture',type:'checkout.session.completed',data:{object:{id:fresh.provider_session_id,payment_status:'paid',payment_intent:'pi_security_fixture',amount_total:299,currency:'usd',metadata:{order_id:orderId}}}};
- await webhook({...paid,id:'evt_bad_amount',data:{object:{...paid.data.object,amount_total:1}}},400);ok('Stripe webhook rejects amount tampering');
- await webhook(paid);await webhook(paid);ok('Signed confirmation is idempotent',(await db.prepare("SELECT COUNT(*) AS n FROM webhook_events WHERE id=?").bind(paid.id).first()).n===1);
- await webhook({id:'evt_refunded',type:'charge.refunded',data:{object:{payment_intent:'pi_security_fixture',refunded:true,refunds:{data:[{id:'re_external'}]}}}});
- const stopped=await db.prepare('SELECT status,lease_token FROM generations WHERE id=?').bind(generationId).first();
- ok('External refund stops active work and invalidates its lease',stopped.status==='failed'&&stopped.lease_token===null);
- ok('External refund is retained for financial reconciliation',(await db.prepare('SELECT status FROM refunds WHERE payment_id=?').bind(pay.id).first()).status==='succeeded');
- await webhook({...paid,id:'evt_paid_late'});ok('Late payment event cannot restart a refunded generation',(await db.prepare('SELECT status FROM generations WHERE id=?').bind(generationId).first()).status==='failed');
- await request('/api/admin/settings',{method:'PATCH',cookie:admin,data:{autoRefund:false}});
- const timeoutOrder=await request('/api/checkout',{method:'POST',cookie,data:{templateId:formula.id,expectedPrice:299,uploadIds:[uploadId],consent:true,idempotencyKey:randomUUID()},expected:201});
- await db.prepare("UPDATE orders SET status='paid' WHERE id=?").bind(timeoutOrder.body.orderId).run();await db.prepare("UPDATE payments SET status='paid',provider_transaction_id='test_timeout' WHERE order_id=?").bind(timeoutOrder.body.orderId).run();await db.prepare("UPDATE generations SET status='generating',started_at=? WHERE id=?").bind(Date.now()-31*60000,timeoutOrder.body.generationId).run();
+ // Credit pack purchases: test payments, expired POK orders, webhook ordering, tampering and reversals.
+ const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:admin,data:{name:'Security pack',credits:600,prices:{EUR:299},active:true},expected:201})).body.package;
+ const purchase=(await request('/api/credits/checkout',{method:'POST',cookie,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;const purchaseId=purchase.purchaseId;
+ await request('/api/credits/purchases/'+purchaseId+'/pay',{method:'POST',cookie,data:{result:'unexpected'},expected:400});ok('Test payment only accepts explicit success or failure');
+ const expiredWebhook=new URL(config.APP_ORIGIN+'/api/webhooks/pok');expiredWebhook.searchParams.set('purchase',purchaseId);expiredWebhook.searchParams.set('sig',createHmac('sha256',config.APP_SECRET).update('pok-webhook:'+purchaseId).digest('hex'));
+ pok.orders.set('ord_expired',{id:'ord_expired',amount:2.99,capturedAmount:0,currencyCode:'EUR',merchantCustomReference:purchaseId,expiresAt:new Date(Date.now()-60000).toISOString(),self:{confirmUrl:'https://pay.pokpay.io/confirm/ord_expired'},webhookUrl:expiredWebhook.toString()});
+ await db.prepare("UPDATE credit_purchases SET provider='pok',provider_session_id='ord_expired',checkout_url='https://pay.pokpay.io/confirm/ord_expired' WHERE id=?").bind(purchaseId).run();
+ const retries=await Promise.all([request('/api/credits/purchases/'+purchaseId+'/retry',{method:'POST',cookie,data:{}}),request('/api/credits/purchases/'+purchaseId+'/retry',{method:'POST',cookie,data:{}})]);
+ const fresh=await db.prepare('SELECT * FROM credit_purchases WHERE id=?').bind(purchaseId).first();
+ ok('Expired order renews once even under concurrent retries',fresh.checkout_attempt===1&&fresh.provider_session_id!=='ord_expired'&&retries[0].body.url===retries[1].body.url&&retries[0].body.url===fresh.checkout_url);
+ await notify('ord_expired');
+ ok('A delayed webhook for the expired order cannot fail the newer one',(await request('/api/credits/purchases/'+purchaseId,{cookie})).body.purchase.status==='pending');
+ const created=pok.created.length;
+ ok('Retrying an open order reuses it',(await request('/api/credits/purchases/'+purchaseId+'/retry',{method:'POST',cookie,data:{}})).body.url===fresh.checkout_url&&pok.created.length===created);
+ const order=pok.orders.get(fresh.provider_session_id);
+ Object.assign(order,{amount:0.01,capturedAmount:0.01});await notify(order.id);
+ ok('An order with a different amount grants nothing',(await request('/api/credits',{cookie})).body.available===0);
+ Object.assign(order,{amount:2.99,capturedAmount:0});pok.pay(order.id);
+ await notify(order.id);await notify(order.id);ok('Payment confirmation is idempotent',(await request('/api/credits',{cookie})).body.available===600);
+ await request(`/api/admin/credits/purchases/${purchaseId}/reverse`,{method:'POST',cookie:admin,data:{reason:'Payment refunded',currentPassword:adminPassword}});
+ ok('A refund recorded by the admin reverses the purchase and removes its credits',(await request('/api/credits',{cookie})).body.available===0&&(await db.prepare('SELECT status FROM credit_purchases WHERE id=?').bind(purchaseId).first()).status==='reversed');
+ ok('The reversal is retained in the ledger for reconciliation',!!await db.prepare("SELECT id FROM credit_transactions WHERE kind='reversal' AND reference_id=? AND actor_id IS NOT NULL").bind(purchaseId).first());
+ await notify(order.id);ok('A late payment webhook cannot grant a reversed purchase again',(await request('/api/credits',{cookie})).body.available===0);
+ // Generation deadline: a job running past 30 minutes fails and returns its credits.
+ await request('/api/admin/users/'+user.body.user.id+'/credits',{method:'POST',cookie:admin,data:{amount:500,reason:'Security fixture',currentPassword:adminPassword,idempotencyKey:randomUUID()}});
+ const timeout=await request('/api/generations',{method:'POST',cookie,data:{templateId:formula.id,expectedCost:formula.creditCost,uploadIds:[uploadId],consent:true,idempotencyKey:randomUUID()},expected:201});
+ ok('A generation reserves credits before any work starts',(await request('/api/credits',{cookie})).body.held===formula.creditCost);
+ await db.prepare("UPDATE generations SET status='generating',started_at=?,lease_until=0,next_run_at=0 WHERE id=?").bind(Date.now()-31*60000,timeout.body.generationId).run();
  await request('/api/queue/dispatch',{method:'POST',data:{},expected:401});
  await request('/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+config.QUEUE_SECRET},data:{}});
- ok('Queue enforces the deadline',(await db.prepare('SELECT status FROM generations WHERE id=?').bind(timeoutOrder.body.generationId).first()).status==='failed');
- ok('Admin can disable automatic refunds even if the environment default is on',(await request('/api/orders/'+timeoutOrder.body.orderId,{cookie})).body.order.status==='paid');
- const currentOps=await request('/api/admin/operations',{cookie:admin});ok('External queue dispatch records an observable heartbeat',currentOps.body.dispatchHeartbeat>0&&currentOps.body.checks.find(c=>c.name==='External queue dispatcher').ready);
- await request('/api/admin/orders/'+timeoutOrder.body.orderId+'/refund',{method:'POST',cookie:admin,data:{}});ok('Admin refund remains available with automatic refunds disabled',(await request('/api/orders/'+timeoutOrder.body.orderId,{cookie})).body.order.status==='refunded');
- const dashboard=await request('/api/admin/dashboard',{cookie:admin});ok('Estimated cost of refunded jobs remains in financial reports',dashboard.body.financials[0].estimated_cost>=85&&dashboard.body.financials[0].refunded_amount===598);
- const exported=await request('/api/account/export',{cookie});ok('Account export includes owned records without internal workflow or password data',exported.body.orders.length===2&&!exported.text.includes('password_hash')&&!exported.text.includes('workflow_snapshot')&&!exported.text.includes('storage_key'));
+ ok('Queue enforces the deadline',(await db.prepare('SELECT status FROM generations WHERE id=?').bind(timeout.body.generationId).first()).status==='failed');
+ ok('A timed-out generation returns its credits',JSON.stringify((await request('/api/credits',{cookie})).body)===JSON.stringify({available:500,held:0}));
+ const currentOps=await request('/api/admin/operations',{cookie:admin});ok('External queue dispatch records an observable heartbeat',currentOps.body.dispatchHeartbeat>0&&currentOps.body.checks.find(c=>c.name==='Background dispatcher').ready);
+ ok('Operations lists the reversed purchase for review',currentOps.body.reversals.some(r=>r.id===purchaseId));
+ const dashboard=await request('/api/admin/dashboard',{cookie:admin});const fin=c=>dashboard.body.financials.find(f=>f.currency===c)||{};ok('Financial reports separate reversed payments and convert AI cost into the selling currency (C19)',fin('EUR').reversed_amount===299&&fin('EUR').revenue===0&&fin('EUR').estimated_cost>0&&!dashboard.body.financials.some(f=>f.currency==='USD'));
+ const exported=await request('/api/account/export',{cookie});ok('Account export includes owned records without internal workflow or password data',exported.body.creditPurchases.length===1&&exported.body.credits.available===500&&!exported.text.includes('password_hash')&&!exported.text.includes('workflow_snapshot')&&!exported.text.includes('storage_key'));
  const activity=await request('/api/admin/activity?search=account.password-changed',{cookie:admin});ok('Security actions are recorded in the searchable audit log',activity.body.activity.length===1);
  await request('/api/account',{method:'DELETE',cookie,data:{password:'wrong'},expected:403});ok('Deleting an account requires reauthentication');
  await request('/api/account',{method:'DELETE',cookie,data:{password:winningPassword}});ok('Account deletion removes storage and identity',await bucket.get(storageKey)===null&&!await db.prepare('SELECT id FROM users WHERE id=?').bind(user.body.user.id).first());
  await request('/api/admin/users/'+(await request('/api/me',{cookie:admin})).body.user.id,{method:'PATCH',cookie:admin,data:{status:'suspended'},expected:409});ok('Admin cannot accidentally suspend the administrator account');
  const html=await request('/admin/operations',{cookie:admin});ok('Authenticated admin operations page renders',html.text.includes('Keep everything moving')||html.text.includes('Workspace'));
+ // C4.1: two-step sign-in. TOTP per RFC 6238 is computed here independently of the app.
+ const b32=t=>{const A='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';let bits=0,v=0;const out=[];for(const c of t.replace(/\s/g,'')){v=(v<<5)|A.indexOf(c);bits+=5;if(bits>=8){out.push((v>>>(bits-8))&255);bits-=8;}}return Buffer.from(out);};
+ const totp=(secret,step)=>{const c=Buffer.alloc(8);c.writeBigUInt64BE(BigInt(step));const m=createHmac('sha1',b32(secret)).update(c).digest();const o=m[19]&15;return String((((m[o]&127)<<24)|(m[o+1]<<16)|(m[o+2]<<8)|m[o+3])%1000000).padStart(6,'0');};
+ const mfaUser=await request('/api/auth/register',{method:'POST',data:{name:'Two Step',email:'twostep@studio.test',password:'Two-step-password-1',acceptTerms:true,confirmAge:true},expected:201});const mc=mfaUser.cookie;
+ await request('/api/account/mfa/setup',{method:'POST',cookie:mc,data:{password:'wrong-password-1'},expected:403});
+ const setup=(await request('/api/account/mfa/setup',{method:'POST',cookie:mc,data:{password:'Two-step-password-1'}})).body;const step=Math.floor(Date.now()/30000);
+ ok('Setup returns a base32 key and an otpauth link',/^[A-Z2-7 ]+$/.test(setup.secret)&&setup.uri.startsWith('otpauth://totp/')&&setup.uri.includes('secret='));
+ await request('/api/account/mfa/enable',{method:'POST',cookie:mc,data:{code:totp(setup.secret,step+5)},expected:400});
+ const enabled=(await request('/api/account/mfa/enable',{method:'POST',cookie:mc,data:{code:totp(setup.secret,step)}})).body;
+ const stored=await db.prepare("SELECT totp_secret,totp_recovery FROM users WHERE email='twostep@studio.test'").first();
+ ok('Two-step sign-in turns on with 8 recovery codes and an encrypted secret',enabled.recoveryCodes.length===8&&stored.totp_secret&&!stored.totp_secret.includes(setup.secret.replace(/ /g,''))&&!stored.totp_recovery.includes(enabled.recoveryCodes[0]));
+ const first=await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}});
+ ok('A correct password alone no longer signs in',first.body.mfaRequired===true&&first.body.ticket&&!first.cookie);
+ await request('/api/auth/mfa',{method:'POST',data:{ticket:first.body.ticket,code:totp(setup.secret,step)},expected:401});
+ ok('A code that was already used is refused',true);
+ const second=await request('/api/auth/mfa',{method:'POST',data:{ticket:first.body.ticket,code:totp(setup.secret,step+1)}});
+ ok('The ticket plus a fresh code signs in',!!second.cookie&&second.body.user.twoFactor===true);
+ await request('/api/auth/mfa',{method:'POST',data:{ticket:first.body.ticket,code:totp(setup.secret,step+1)},expected:400});ok('A sign-in ticket works only once',true);
+ const again=(await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}})).body;
+ for(let i=0;i<5;i++)await request('/api/auth/mfa',{method:'POST',data:{ticket:again.ticket,code:'000000'},expected:401});
+ await request('/api/auth/mfa',{method:'POST',data:{ticket:again.ticket,code:enabled.recoveryCodes[0]},expected:429});ok('Guessing codes is rate limited per sign-in attempt',true);
+ const third=(await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}})).body;
+ const viaRecovery=await request('/api/auth/mfa',{method:'POST',data:{ticket:third.ticket,code:enabled.recoveryCodes[0].toLowerCase()}});
+ const fourth=(await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}})).body;
+ await request('/api/auth/mfa',{method:'POST',data:{ticket:fourth.ticket,code:enabled.recoveryCodes[0]},expected:401});
+ ok('A recovery code signs in once',!!viaRecovery.cookie);
+ await request('/api/account/mfa/disable',{method:'POST',cookie:viaRecovery.cookie,data:{password:'Two-step-password-1',code:enabled.recoveryCodes[1]}});
+ const plain=await request('/api/auth/login',{method:'POST',data:{email:'twostep@studio.test',password:'Two-step-password-1'}});
+ ok('Turning it off (password + recovery code) restores password sign-in',!!plain.cookie&&!plain.body.mfaRequired);
+ // V10: roles. Support helps customers but cannot touch money, keys, settings or templates; only an admin changes roles, with a password.
+ const supportUser=await request('/api/auth/register',{method:'POST',data:{name:'Support Person',email:'support@studio.test',password:'Support-password-1',acceptTerms:true,confirmAge:true},expected:201});const supportId=supportUser.body.user.id;
+ await request('/api/admin/users/'+supportId,{method:'PATCH',cookie:admin,data:{role:'support'},expected:403});
+ await request('/api/admin/users/'+supportId,{method:'PATCH',cookie:admin,data:{role:'support',currentPassword:adminPassword}});
+ const sc=(await request('/api/auth/login',{method:'POST',data:{email:'support@studio.test',password:'Support-password-1'}})).cookie;
+ const supportCan=[await request('/api/admin/users',{cookie:sc}),await request('/api/admin/generations',{cookie:sc}),await request('/api/admin/reports',{cookie:sc}),await request('/api/admin/operations',{cookie:sc})].every(r=>r.response.status===200);
+ const supportCannot=[await request('/api/admin/connections',{cookie:sc,expected:403}),await request('/api/admin/settings',{cookie:sc,expected:403}),await request('/api/admin/dashboard',{cookie:sc,expected:403}),await request('/api/admin/templates',{cookie:sc,expected:403}),await request('/api/admin/export/users',{cookie:sc,expected:403}),await request('/api/admin/credits/ledger',{cookie:sc,expected:403})].every(r=>r.response.status===403);
+ const someone=(await db.prepare("SELECT id FROM users WHERE role='user' LIMIT 1").first()).id;
+ await request('/api/admin/users/'+someone,{method:'PATCH',cookie:sc,data:{status:'suspended'},expected:403});await request('/api/admin/users/'+someone,{method:'PATCH',cookie:sc,data:{role:'admin'},expected:403});
+ await request('/api/admin/users/'+someone+'/credits',{method:'POST',cookie:sc,data:{amount:5,reason:'support try',currentPassword:'x',idempotencyKey:randomUUID()},expected:403});
+ ok('Support can help customers but not reach money, keys, settings, templates or roles',supportCan&&supportCannot);
+ const adminId=(await request('/api/me',{cookie:admin})).body.user.id;
+ await request('/api/admin/users/'+adminId,{method:'PATCH',cookie:admin,data:{role:'user',currentPassword:adminPassword},expected:409});
+ ok('An admin cannot change their own role, so the studio keeps an administrator',(await db.prepare('SELECT role FROM users WHERE id=?').bind(adminId).first()).role==='admin');
+ await request('/api/admin/users/'+supportId,{method:'PATCH',cookie:admin,data:{role:'user',currentPassword:adminPassword}});
+ await request('/api/admin/users',{cookie:sc,expected:401});ok('Changing a role signs that account out',true);
  const headers=(await request('/')).response.headers;ok('Security response headers are present',headers.get('content-security-policy')?.includes("object-src 'none'")&&headers.get('x-content-type-options')==='nosniff');
- await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,network:'Stripe responses simulated locally; no external payments or messages sent',checks},null,2));console.log('\n'+checks.length+' security and operational checks passed.');
+ await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,network:'POK responses simulated locally; no external payments or messages sent',checks},null,2));console.log('\n'+checks.length+' security and operational checks passed.');
 }catch(e){console.error('FAIL',e);await mkdir('test-results',{recursive:true});await writeFile('test-results/security-regressions.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,error:String(e),checks},null,2));process.exitCode=1}finally{await mf.dispose()}

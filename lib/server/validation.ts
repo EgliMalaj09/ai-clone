@@ -1,10 +1,21 @@
 import {z} from 'zod';
 import {must,one} from './data';
 import {seedTemplates} from '../catalog';
+import {TRIAL_MAX_SECONDS} from '../contracts';
 const media=z.string().max(1000).refine(v=>v===''||/^\/media\/[a-z0-9-]+\.(webp|png|jpg|jpeg|mp4|webm)$/.test(v)||/^\/api\/media\/[a-zA-Z0-9_]+$/.test(v),'Upload media or use a local studio media path.');
-export const stepSchema=z.object({id:z.string().max(100),type:z.enum(['image','transform','video','upscale','process']),provider:z.enum(['mock','fal','replicate']),model:z.string().min(1).max(200),prompt:z.string().max(20000),negativePrompt:z.string().max(5000),inputs:z.record(z.string().max(2000)),output:z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/),settings:z.record(z.unknown()),duration:z.number().int().min(1).max(120),resolution:z.string().max(30),aspectRatio:z.enum(['9:16','16:9','1:1','4:5']),cost:z.number().int().min(0).max(1000000)});
-export const templateSchema=z.object({id:z.string().optional(),name:z.string().trim().min(2).max(100),slug:z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/).max(120),description:z.string().min(10).max(2000),category:z.string().min(2).max(50),thumbnail:media,previewVideo:media,previewImages:z.array(media).max(6),active:z.boolean(),featured:z.boolean(),trending:z.boolean(),isNew:z.boolean(),popular:z.boolean(),price:z.number().int().min(50).max(1000000),estimatedCost:z.number().int().min(0).max(1000000),currency:z.enum(['USD','EUR','GBP','ALL']),requiredImageCount:z.number().int().min(1).max(4),aspectRatio:z.enum(['9:16','16:9','1:1','4:5']),duration:z.number().int().min(1).max(120),resolution:z.string().max(30),generationType:z.enum(['video','image']),provider:z.enum(['mock','fal','replicate']),model:z.string().min(1).max(200),hiddenPrompt:z.string().max(20000),negativePrompt:z.string().max(5000),settings:z.record(z.unknown()),workflow:z.array(stepSchema).min(1).max(8),createdAt:z.number().optional()}).superRefine((t,c)=>{if(t.active&&!t.thumbnail)c.addIssue({code:'custom',message:'Add a thumbnail before publishing.',path:['thumbnail']});if(t.active&&t.generationType!=='video')c.addIssue({code:'custom',message:'The storefront currently publishes video templates only. Save image templates as drafts.',path:['generationType']});
- if(t.active&&(!t.workflow.some(s=>s.type==='video')||['image','transform'].includes(t.workflow.at(-1)?.type||'')))c.addIssue({code:'custom',message:'A published workflow must finish with video output.',path:['workflow']});
+/** Replicate model references accepted by the adapter (C12): owner/model, owner/model:version, or a bare version ID. */
+const REPLICATE_MODEL=/^(?:[\w.-]+\/[\w.-]+(?::[a-f0-9]{64})?|[a-f0-9]{64})$/;
+const slugId=z.string().trim().regex(/^[a-z0-9][a-z0-9-]{0,30}$/,'Use lowercase letters, numbers and dashes for option IDs.');
+/** Template options (V22/V23/V37): 2–6 choices per group; format choices set an aspect ratio, quality choices may switch the main model. */
+const optionGroupSchema=z.object({id:slugId,kind:z.enum(['style','format','quality']),label:z.string().trim().min(1).max(40),labelSq:z.string().trim().max(40).optional(),
+ choices:z.array(z.object({id:slugId,label:z.string().trim().min(1).max(40),labelSq:z.string().trim().max(40).optional(),credits:z.number().int().min(0).max(100000).default(0),aspectRatio:z.enum(['9:16','16:9','1:1','4:5']).optional(),prompt:z.string().max(2000).default(''),model:z.string().trim().max(200).optional()})).min(2).max(6)})
+ .refine(g=>new Set(g.choices.map(c=>c.id)).size===g.choices.length,'Each choice needs its own ID.')
+ .refine(g=>g.kind!=='format'||g.choices.every(c=>c.aspectRatio),'Every format choice needs an aspect ratio.');
+export const stepSchema=z.object({id:z.string().max(100),type:z.enum(['image','transform','video','upscale','process']),provider:z.enum(['mock','higgsfield','fal','replicate']),model:z.string().min(1).max(200),prompt:z.string().max(20000),negativePrompt:z.string().max(5000),inputs:z.record(z.string().max(2000)),output:z.string().regex(/^[a-zA-Z_][a-zA-Z0-9_]*$/),settings:z.record(z.unknown()),duration:z.number().int().min(1).max(120),resolution:z.string().max(30),aspectRatio:z.enum(['9:16','16:9','1:1','4:5']),cost:z.number().int().min(0).max(1000000),fallback:z.object({provider:z.enum(['mock','higgsfield','fal','replicate']),model:z.string().trim().min(1).max(200)}).nullable().optional()});
+export const templateSchema=z.object({id:z.string().optional(),name:z.string().trim().min(2).max(100),slug:z.string().regex(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/).max(120),description:z.string().min(10).max(2000),category:z.string().min(2).max(50),thumbnail:media,previewVideo:media,previewImages:z.array(media).max(6),active:z.boolean(),featured:z.boolean(),trending:z.boolean(),isNew:z.boolean(),popular:z.boolean(),creditCost:z.number().int().min(0).max(1000000),estimatedCost:z.number().int().min(0).max(1000000),currency:z.enum(['USD','EUR','GBP','ALL']),requiredImageCount:z.number().int().min(1).max(4),aspectRatio:z.enum(['9:16','16:9','1:1','4:5']),duration:z.number().int().min(1).max(120),resolution:z.string().max(30),generationType:z.enum(['video','image']),provider:z.enum(['mock','higgsfield','fal','replicate']),model:z.string().min(1).max(200),hiddenPrompt:z.string().max(20000),negativePrompt:z.string().max(5000),settings:z.record(z.unknown()),workflow:z.array(stepSchema).min(1).max(8),photoTips:z.string().max(800).default(''),optionGroups:z.array(optionGroupSchema).max(4).default([]),subject:z.enum(['person','product']).default('person'),autoPrice:z.boolean().default(false),clipSeconds:z.number().int().min(0).max(120).default(0),freeTrial:z.boolean().default(false),publishAt:z.number().int().positive().nullable().optional(),createdAt:z.number().optional()}).superRefine((t,c)=>{const live=t.active||!!t.publishAt;if(!t.active&&t.publishAt&&t.publishAt<Date.now()-60000)c.addIssue({code:'custom',message:'Choose a publishing time in the future.',path:['publishAt']});t.workflow.forEach((s,i)=>{if(s.provider==='replicate'&&!REPLICATE_MODEL.test(s.model.trim()))c.addIssue({code:'custom',message:'Use a Replicate model as owner/model, owner/model:version or a 64-character version ID.',path:['workflow',i,'model']});if(s.fallback?.provider==='replicate'&&!REPLICATE_MODEL.test(s.fallback.model))c.addIssue({code:'custom',message:'Use a Replicate model as owner/model, owner/model:version or a 64-character version ID.',path:['workflow',i,'fallback','model']});if(s.fallback&&s.fallback.provider===s.provider&&s.fallback.model===s.model)c.addIssue({code:'custom',message:'The backup model must differ from the main model.',path:['workflow',i,'fallback']});});if(live&&!t.thumbnail)c.addIssue({code:'custom',message:'Add a thumbnail before publishing.',path:['thumbnail']});if(t.freeTrial&&(t.generationType!=='video'||t.duration>TRIAL_MAX_SECONDS))c.addIssue({code:'custom',message:'Only videos of '+TRIAL_MAX_SECONDS+' seconds or less can be a free trial.',path:['freeTrial']});if(live&&t.creditCost<1&&!t.autoPrice)c.addIssue({code:'custom',message:'Set a credit cost before publishing.',path:['creditCost']});
+ // V8: video templates must finish with a video step; image templates (photo results) must not contain one.
+ if(live&&t.generationType==='video'&&(!t.workflow.some(s=>s.type==='video')||['image','transform'].includes(t.workflow.at(-1)?.type||'')))c.addIssue({code:'custom',message:'A published workflow must finish with video output.',path:['workflow']});
+ if(live&&t.generationType==='image'&&t.workflow.some(s=>s.type==='video'))c.addIssue({code:'custom',message:'A photo template can’t contain a video step. Use image, transform or upscale steps.',path:['workflow']});
  const vars=new Set(['aspect_ratio','duration','template_name',...Array.from({length:t.requiredImageCount},(_,i)=>'user_image_'+(i+1))]);
  const ids=new Set<string>();const reserved=new Set(['__proto__','constructor','prototype','toString','valueOf','aspect_ratio','duration','template_name',...Array.from({length:4},(_,i)=>'user_image_'+(i+1))]);
  t.workflow.forEach((step,index)=>{
@@ -19,9 +30,20 @@ export const templateSchema=z.object({id:z.string().optional(),name:z.string().t
   vars.add(step.output);vars.add('previous_output');
  });});
 export const authSchema=z.object({email:z.string().trim().email().max(254).transform(s=>s.toLowerCase()),password:z.string().min(10,'Use at least 10 characters.').max(128),name:z.string().trim().min(2).max(80).optional()});
-export const checkoutSchema=z.object({templateId:z.string().max(150),uploadIds:z.array(z.string().max(100)).min(1).max(4),idempotencyKey:z.string().uuid(),expectedPrice:z.number().int(),consent:z.literal(true)});
+// Sign-up requires a name and explicit, recorded consent (C20): accepting the Terms/Privacy, confirming the minimum age,
+// and an optional marketing-email opt-in.
+export const registerSchema=z.object({
+ email:z.string().trim().email().max(254).transform(s=>s.toLowerCase()),
+ password:z.string().min(10,'Use at least 10 characters.').max(128),
+ name:z.string().trim().min(2,'Please enter your name.').max(80),
+ acceptTerms:z.literal(true,{errorMap:()=>({message:'Please accept the Terms and Privacy Policy to continue.'})}),
+ confirmAge:z.literal(true,{errorMap:()=>({message:'Please confirm you meet the minimum age to continue.'})}),
+ marketingOptIn:z.boolean().optional().default(false),
+ ref:z.string().max(20).optional(),
+});
+export const generationSchema=z.object({templateId:z.string().max(150),uploadIds:z.array(z.string().max(100)).min(1).max(4),idempotencyKey:z.string().uuid(),expectedCost:z.number().int(),consent:z.literal(true),options:z.record(z.string().max(40)).default({}),trial:z.boolean().optional()});
 
-/** Preview assets are deliberately public. Personal uploads cannot be published by path. */
+/** Preview assets are deliberately public. Only studio media can be published; personal uploads are never reachable here. */
 export async function validateTemplateMedia(t:{thumbnail:string;previewVideo:string;previewImages:string[]}){
  const bundled=new Set(seedTemplates().flatMap(x=>[x.thumbnail,x.previewVideo,...x.previewImages]));
  for(const [url,kind] of [[t.thumbnail,'image'],[t.previewVideo,'video'],...t.previewImages.map(u=>[u,'image'])]){
@@ -30,8 +52,8 @@ export async function validateTemplateMedia(t:{thumbnail:string;previewVideo:str
    must(bundled.has(url),'This bundled preview does not exist. Upload a preview file.');
    must(kind==='video'?url.endsWith('.mp4'):!url.endsWith('.mp4'),'Choose the correct preview media type.');
   }else{
-   const asset=await one('SELECT mime,public FROM user_uploads WHERE id=?',url.split('/').at(-1));
-   must(asset?.public===1,'Only publicly uploaded admin preview media can be used.');
+   const asset=await one('SELECT mime FROM template_media WHERE id=?',url.split('/').at(-1));
+   must(asset,'Only media uploaded for templates can be used. Upload a preview file.');
    must(asset.mime.startsWith(kind+'/'),'Choose the correct preview media type.');
   }
  }

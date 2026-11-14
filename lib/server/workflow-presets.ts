@@ -21,8 +21,8 @@ const scenes:Record<string,string>={
   'travel-cinematic':'a traveler in relaxed stylish clothing overlooking a sunlit Mediterranean coastline, sea breeze and warm cinematic color',
 };
 
-/** Built from published Fal schemas. No remote request or paid generation occurs here. */
-export function liveWorkflow(t:Pick<AdminTemplate,'name'|'slug'|'description'|'requiredImageCount'|'aspectRatio'|'duration'|'estimatedCost'>){
+/** Built from published Fal schemas. No remote request or paid generation occurs here. Kept for studios that use fal.ai. */
+export function falWorkflow(t:Pick<AdminTemplate,'name'|'slug'|'description'|'requiredImageCount'|'aspectRatio'|'duration'|'estimatedCost'>){
   const scene=scenes[t.slug]||`${t.name}. ${t.description}`;
   const hiddenPrompt=`Use the uploaded reference photo${t.requiredImageCount>1?'s':''} to create one polished cinematic image: ${scene}. Preserve each reference person's recognizable identity, facial structure and natural skin tone. Keep faces visible and anatomically natural. Match the requested framing. No added text, logos or watermarks. Do not impersonate an existing branded character.`;
   const base={provider:'fal',aspectRatio:t.aspectRatio,resolution:'1080p',duration:t.duration,negativePrompt:''};
@@ -31,4 +31,17 @@ export function liveWorkflow(t:Pick<AdminTemplate,'name'|'slug'|'description'|'r
     {...base,id:crypto.randomUUID(),type:'video',model:'fal-ai/kling-video/v2.6/pro/image-to-video',prompt:'Animate this cinematic image into a refined {{duration}}-second shot. A gentle camera push-in, subtle natural movement and atmospheric background motion. Keep faces, identities and clothing consistent with the starting image. One continuous shot. No cuts, added text, logos or dialogue.',negativePrompt:'distorted face, extra limbs, flicker, identity change, text, watermark',inputs:{start_image_url:'{{prepared_image}}'},output:'final_video',settings:{duration:'{{duration}}',generate_audio:false},cost:t.estimatedCost-Math.round(t.estimatedCost*.2)},
   ];
   return {workflow,hiddenPrompt,negativePrompt:'',provider:'fal',model:workflow[0].model,resolution:'1080p',settings:{}};
+}
+
+/** The default production workflow on Higgsfield: Seedream edits the photo into the scene, then Kling 3.0 Turbo animates it.
+ * Endpoints and field names follow Higgsfield's API (image_urls for edits, image_url for image-to-video); confirm them in the
+ * first real generation and adjust per template in the editor if Higgsfield names a field differently. */
+export function liveWorkflow(t:Pick<AdminTemplate,'name'|'slug'|'description'|'requiredImageCount'|'aspectRatio'|'duration'|'estimatedCost'>){
+  const fal=falWorkflow(t);
+  const base={provider:'higgsfield',aspectRatio:t.aspectRatio,resolution:'1080p',duration:t.duration,negativePrompt:''};
+  const workflow:WorkflowStep[]=[
+    {...base,id:crypto.randomUUID(),type:'transform',model:'bytedance/seedream/v4/edit',prompt:'',inputs:{},output:'prepared_image',settings:{image_urls:Array.from({length:t.requiredImageCount},(_,i)=>'{{user_image_'+(i+1)+'}}'),aspect_ratio:'{{aspect_ratio}}'},cost:Math.round(t.estimatedCost*.2)},
+    {...base,id:crypto.randomUUID(),type:'video',model:'kling-video/v3.0-turbo/image-to-video',prompt:fal.workflow[1].prompt,negativePrompt:fal.workflow[1].negativePrompt,inputs:{image_url:'{{prepared_image}}'},output:'final_video',settings:{duration:'{{duration}}'},cost:t.estimatedCost-Math.round(t.estimatedCost*.2)},
+  ];
+  return {workflow,hiddenPrompt:fal.hiddenPrompt,negativePrompt:'',provider:'higgsfield',model:workflow[0].model,resolution:'1080p',settings:{}};
 }

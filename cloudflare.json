@@ -1,0 +1,11 @@
+{
+  "accountId": "90d9618247c19f91521e6dda5072b54a",
+  "workerName": "ngazero",
+  "d1": {
+    "name": "ngazero-db",
+    "id": "9d642a9a-3dcd-432c-bdb9-baee4e72aa1e"
+  },
+  "r2": {
+    "bucket": "ngazero-media"
+  }
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `templates` ADD `photo_tips` text DEFAULT '' NOT NULL;

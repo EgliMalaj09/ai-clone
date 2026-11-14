@@ -1,13 +1,17 @@
+import {balancePaused} from './provider-balance';
 import {z} from 'zod';
-import {all,audit,batch,config,HttpError,must,now,one,runtime,stmt} from './data';
+import {all,audit,batch,config,HttpError,must,one,runtime,stmt} from './data';
 import {jsonBody} from './http';
+import {dispatcherStatus} from './dispatcher';
 import {checkPassword,rateLimit} from './security';
 import type {AdminTemplate,StudioUser} from '../contracts';
 
 const fields={
-  STRIPE_SECRET_KEY:'stripeKey',STRIPE_WEBHOOK_SECRET:'webhookSecret',
-  FAL_KEY:'falKey',REPLICATE_API_TOKEN:'replicateKey',
-  RESEND_API_KEY:'mailKey',MAIL_FROM:'mailFrom',
+  POK_KEY_ID:'pokKeyId',POK_KEY_SECRET:'pokKeySecret',POK_MERCHANT_ID:'pokMerchantId',POK_ENVIRONMENT:'pokEnvironment',
+  HIGGSFIELD_API_KEY:'higgsfieldKey',HIGGSFIELD_API_SECRET:'higgsfieldSecret',FAL_KEY:'falKey',REPLICATE_API_TOKEN:'replicateKey',
+  RESEND_API_KEY:'mailKey',MAIL_FROM:'mailFrom',SENTRY_DSN:'sentryDsn',
+  GOOGLE_CLIENT_ID:'googleClientId',GOOGLE_CLIENT_SECRET:'googleClientSecret',
+  APPLE_CLIENT_ID:'appleClientId',APPLE_TEAM_ID:'appleTeamId',APPLE_KEY_ID:'appleKeyId',APPLE_PRIVATE_KEY:'applePrivateKey',
 } as const;
 type Field=keyof typeof fields;
 const names=Object.keys(fields) as Field[];
@@ -18,7 +22,7 @@ const decode=(value:string)=>Uint8Array.from(atob(value),c=>c.charCodeAt(0));
 async function encryptionKey(){
   must(config().secret.length>=32,'Configure the application signing key before storing connections.',503);
   const source=await crypto.subtle.importKey('raw',encoder.encode(config().secret),'HKDF',false,['deriveKey']);
-  return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:encoder.encode('project-studio/connections/v1'),info:encoder.encode('AES-256-GCM')},source,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+  return crypto.subtle.deriveKey({name:'HKDF',hash:'SHA-256',salt:encoder.encode('project-studio/connections/v1') /* internal label from before the rename; changing it would make saved keys unreadable */,info:encoder.encode('AES-256-GCM')},source,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
 }
 async function seal(name:Field,value:string){
   const iv=crypto.getRandomValues(new Uint8Array(12));
@@ -43,46 +47,82 @@ export async function serviceConfig(tolerant=false){
   return c;
 }
 
+/** Whether an AI provider has the keys it needs. */
+export function providerConfigured(id:string,c:ReturnType<typeof config>){return id==='higgsfield'?!!c.higgsfieldKey&&!!c.higgsfieldSecret:id==='fal'?!!c.falKey:id==='replicate'?!!c.replicateKey:id==='mock'?c.demo:false;}
+/** Which social sign-ins are ready (V1): Google needs its client id+secret; Apple needs the services id, team, key id and .p8. */
+export function oauthConfigured(c:ReturnType<typeof config>){return {google:!!c.googleClientId&&!!c.googleClientSecret,apple:!!c.appleClientId&&!!c.appleTeamId&&!!c.appleKeyId&&!!c.applePrivateKey};}
 export async function purchaseReadiness(){
   const c=await serviceConfig(true);
   const [heartbeat,enabled]=await Promise.all([
-    one("SELECT value FROM app_settings WHERE key='queue_dispatch_heartbeat'"),
+    dispatcherStatus(),
     all('SELECT id FROM provider_configurations WHERE enabled=1'),
   ]);
-  const payments=!!c.stripeKey&&!!c.webhookSecret;
+  const payments=!!c.pokKeyId&&!!c.pokKeySecret&&!!c.pokMerchantId;
   const email=!!c.mailKey&&!!c.mailFrom;
-  const ai=enabled.some(p=>p.id==='fal'?!!c.falKey:p.id==='replicate'?!!c.replicateKey:false);
-  const dispatcher=!!c.cronSecret&&Number(heartbeat?.value)>now()-180000;
+  const ai=enabled.some(p=>p.id!=='mock'&&providerConfigured(p.id as string,c));
+  // The cron trigger needs no QUEUE_SECRET; an external scheduler can only record a run with it.
+  const dispatcher=heartbeat.fresh;
   const publicAccess=runtime().PUBLIC_SERVICE_ACCESS==='true';
   return {demo:c.demo,ready:c.demo||payments&&email&&ai&&dispatcher&&publicAccess,
     registrationAvailable:c.demo||email,payments,email,ai,dispatcher,publicAccess,
-    paymentMode:c.stripeKey.startsWith('sk_live_')||c.stripeKey.startsWith('rk_live_')?'live':c.stripeKey?'test':'missing',
-    enabledProviders:enabled.filter(p=>p.id==='fal'?!!c.falKey:p.id==='replicate'?!!c.replicateKey:c.demo).map(p=>p.id as string),
+    paymentMode:!payments?'missing':c.pokEnvironment==='production'?'live':'test',
+    enabledProviders:enabled.filter(p=>p.id==='mock'?c.demo:providerConfigured(p.id as string,c)).map(p=>p.id as string),
+    oauthProviders:(['google','apple'] as const).filter(p=>oauthConfigured(c)[p]),
   };
 }
-export async function assertPurchasable(template:AdminTemplate){
-  const r=await purchaseReadiness();
-  must(template.workflow.length>0,'This template is currently unavailable.',409);
-  must(template.workflow.every(s=>r.demo?s.provider==='mock':s.provider!=='mock'),'This template is not available for purchase yet.',409);
-  must(r.ready,'Video creation is not open yet. Please check back soon.',503);
-  must(template.workflow.every(s=>r.enabledProviders.includes(s.provider)),'This template is temporarily unavailable.',503);
+/** Admin-controlled maintenance pause (C22): stop new purchases and/or new creations without a deploy. */
+export async function maintenanceStatus(){
+  const rows=await all("SELECT key,value FROM app_settings WHERE key IN ('maintenance_purchases','maintenance_creations','maintenance_message')");
+  const get=(k:string)=>rows.find(r=>r.key===k)?.value;
+  return {purchasesPaused:get('maintenance_purchases')==='1',creationsPaused:get('maintenance_creations')==='1',message:(get('maintenance_message') as string)||''};
 }
+export const BALANCE_PAUSE_MESSAGE='Video creation is paused for a short while. Please check back soon.';
+export const DEFAULT_MAINTENANCE_MESSAGE='We’re doing some maintenance. Please check back shortly.';
+/** Generation needs an AI provider, the background dispatcher and public access; it does not need payments. */
+function generationReady(r:Awaited<ReturnType<typeof purchaseReadiness>>){return r.demo||r.ai&&r.dispatcher&&r.publicAccess;}
+function templateRunnable(template:AdminTemplate,r:Awaited<ReturnType<typeof purchaseReadiness>>){
+  return template.workflow.length>0&&template.workflow.every(s=>r.enabledProviders.includes(s.provider)&&(r.demo?s.provider==='mock':s.provider!=='mock'));
+}
+export async function assertGeneratable(template:AdminTemplate){
+  const r=await purchaseReadiness();
+  const m=await maintenanceStatus();
+  must(!m.creationsPaused,m.message||DEFAULT_MAINTENANCE_MESSAGE,503);
+  // The Higgsfield balance safeguard: customers only see that creation is paused for a while.
+  must(!await balancePaused(),m.message||BALANCE_PAUSE_MESSAGE,503);
+  must(template.workflow.length>0&&template.workflow.every(s=>r.demo?s.provider==='mock':s.provider!=='mock'),'This template is not available yet.',409);
+  must(generationReady(r),'Video creation is not open yet. Please check back soon.',503);
+  must(templateRunnable(template,r),'This template is temporarily unavailable.',503);
+}
+/** Admin test runs (V32): may call a real, connected AI provider even in demo mode, so the owner can try Higgsfield
+ * while customers still only get sample videos. The balance safeguard still applies; the maintenance pause does not. */
+export async function assertTestRunnable(template:AdminTemplate){
+  const r=await purchaseReadiness();
+  must(template.workflow.length>0,'Add a workflow step first.',409);
+  for(const s of template.workflow){
+    must(r.demo||s.provider!=='mock','A development workflow cannot run in production.',409);
+    must(r.enabledProviders.includes(s.provider),s.provider==='mock'?'The sample video simulator is off.':`Connect ${s.provider==='higgsfield'?'Higgsfield (key ID and key secret)':s.provider} in Admin → Connections first.`,409);
+  }
+  must(generationReady(r),'Video creation is not open yet. Please check back soon.',503);
+  must(!await balancePaused(),'The Higgsfield balance is below your pause level. Add your top-up on the dashboard first.',503);
+}
+/** What the storefront may offer: registration, buying credits (needs payments) and generating a template. */
 export async function publicAvailability(template?:AdminTemplate|null){
   const r=await purchaseReadiness();
-  return {registrationAvailable:r.registrationAvailable,purchasingAvailable:r.ready&&(!template||template.workflow.length>0&&template.workflow.every(s=>r.enabledProviders.includes(s.provider)&&(r.demo?s.provider==='mock':s.provider!=='mock')))};
+  const m0=await maintenanceStatus(),paused=!m0.creationsPaused&&await balancePaused().catch(()=>false);
+  const m=paused?{...m0,creationsPaused:true,message:m0.message||BALANCE_PAUSE_MESSAGE}:m0;
+  return {registrationAvailable:r.registrationAvailable,purchasingAvailable:r.ready&&!m.purchasesPaused,generationAvailable:generationReady(r)&&!m.creationsPaused&&(!template||templateRunnable(template,r)),maintenance:m,oauthProviders:r.oauthProviders};
 }
-
 export async function connectionStatus(){
   const c=await serviceConfig(true),readiness=await purchaseReadiness();
   const saved=await all("SELECT key FROM app_settings WHERE key LIKE 'connection.%'");
-  return {readiness,webhookUrl:config().origin+'/api/webhooks/stripe',
-    fields:Object.fromEntries(names.map(name=>[name,{configured:!!c[fields[name]],source:runtime()[name]?'environment':saved.some(r=>r.key==='connection.'+name)?'encrypted':'missing',...(name==='MAIL_FROM'?{value:c.mailFrom}:{})}])),
+  return {readiness,webhookUrl:config().origin+'/api/webhooks/pok',
+    fields:Object.fromEntries(names.map(name=>[name,{configured:!!c[fields[name]],source:runtime()[name]?'environment':saved.some(r=>r.key==='connection.'+name)?'encrypted':'missing',...(name==='MAIL_FROM'?{value:c.mailFrom}:name==='POK_ENVIRONMENT'?{value:c.pokEnvironment||'staging'}:name==='POK_MERCHANT_ID'?{value:c.pokMerchantId}:{})}])),
   };
 }
-const keySchema=z.enum(['STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','FAL_KEY','REPLICATE_API_TOKEN','RESEND_API_KEY','MAIL_FROM']);
+const keySchema=z.enum(['POK_KEY_ID','POK_KEY_SECRET','POK_MERCHANT_ID','POK_ENVIRONMENT','HIGGSFIELD_API_KEY','HIGGSFIELD_API_SECRET','FAL_KEY','REPLICATE_API_TOKEN','RESEND_API_KEY','MAIL_FROM','SENTRY_DSN','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET','APPLE_CLIENT_ID','APPLE_TEAM_ID','APPLE_KEY_ID','APPLE_PRIVATE_KEY']);
 export async function updateConnections(req:Request,user:StudioUser){
   await rateLimit('connections:'+user.id,8,900000);
-  const body=z.object({currentPassword:z.string().min(1).max(128),values:z.record(keySchema,z.string().trim().min(1).max(1024)).default({}),remove:z.array(keySchema).max(6).default([])}).strict().parse(await jsonBody(req));
+  const body=z.object({currentPassword:z.string().min(1).max(128),values:z.record(keySchema,z.string().trim().min(1).max(2048)).default({}),remove:z.array(keySchema).max(18).default([])}).strict().parse(await jsonBody(req));
   const account=await one('SELECT password_hash FROM users WHERE id=?',user.id);
   must(account&&await checkPassword(body.currentPassword,account.password_hash),'Your administrator password is incorrect.',403);
   const entries=Object.entries(body.values) as [Field,string][];
@@ -90,11 +130,21 @@ export async function updateConnections(req:Request,user:StudioUser){
   must(changed.length>0&&new Set(changed).size===changed.length,'Choose distinct connections to save or remove.');
   for(const name of changed)must(!runtime()[name],'This connection is managed in the hosting environment: '+name,409);
   for(const [name,value] of entries){
-    must(!/[\r\n\u0000]/.test(value),'Connection values cannot contain control characters.');
-    if(name==='STRIPE_SECRET_KEY')must(/^(sk|rk)_(test|live)_[A-Za-z0-9]{12,}$/.test(value),'Use a Stripe server API key. A publishable key cannot accept payments.');
-    if(name==='STRIPE_WEBHOOK_SECRET')must(/^whsec_[A-Za-z0-9]{12,}$/.test(value),'Use the signing secret from your Stripe webhook endpoint.');
+    // The Apple sign-in key is a multi-line PEM (.p8); every other value is a single line.
+    must(name==='APPLE_PRIVATE_KEY'?!/\u0000/.test(value):!/[\r\n\u0000]/.test(value),'Connection values cannot contain control characters.');
+    if(name==='POK_KEY_ID'||name==='POK_KEY_SECRET'||name==='POK_MERCHANT_ID')must(value.length>=6&&!/\s/.test(value),'Use the complete value from your POK merchant dashboard.');
+    // POK merchant IDs are GUIDs (8-4-4-4-12); POK refuses anything else only at checkout, so check it when saving.
+    if(name==='POK_MERCHANT_ID')must(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value),'The POK merchant ID looks like 584ff372-be98-4e11-aa2e-720a7a9174ec (8-4-4-4-12 letters and digits with dashes). Copy it from your POK merchant dashboard without quotes or spaces.');
+    if(name==='GOOGLE_CLIENT_ID')must(/\.apps\.googleusercontent\.com$/.test(value),'Use the OAuth client ID from Google Cloud (ends in .apps.googleusercontent.com).');
+    if(name==='GOOGLE_CLIENT_SECRET')must(value.length>=16&&!/\s/.test(value),'Paste the client secret from the same Google OAuth client.');
+    if(name==='APPLE_CLIENT_ID')must(/^[A-Za-z0-9.\-]{3,}$/.test(value),'Use your Apple Services ID (e.g. com.yourbrand.signin).');
+    if(name==='APPLE_TEAM_ID'||name==='APPLE_KEY_ID')must(/^[A-Z0-9]{10}$/.test(value),'Use the 10-character Team ID and Key ID from your Apple developer account.');
+    if(name==='APPLE_PRIVATE_KEY')must(value.includes('BEGIN PRIVATE KEY'),'Paste the contents of the .p8 key file downloaded from Apple.');
+    if(name==='POK_ENVIRONMENT')must(value==='staging'||value==='production','Choose staging (test payments) or production (real payments).');
     if(name==='RESEND_API_KEY')must(/^re_[A-Za-z0-9_-]{12,}$/.test(value),'Use a valid Resend API key.');
     if(name==='FAL_KEY'||name==='REPLICATE_API_TOKEN')must(value.length>=16&&!/\s/.test(value),'Use the complete provider API key.');
+    if(name==='HIGGSFIELD_API_KEY'||name==='HIGGSFIELD_API_SECRET')must(value.length>=8&&!/[\s:]/.test(value),'Paste the key ID and the key secret separately, from the Higgsfield console.');
+    if(name==='SENTRY_DSN')must(/^https:\/\/[0-9a-f]{16,64}@[\w.-]+(?::\d+)?\/\d+$/i.test(value),'Paste the full DSN from Sentry → Project settings → Client keys (https://…@…/123).');
     if(name==='MAIL_FROM')must(z.string().email().safeParse(value).success,'Use an email address on your verified sending domain.');
   }
   const writes=[];

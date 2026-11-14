@@ -1,0 +1,1 @@
+ALTER TABLE `templates` ADD `subject` text DEFAULT 'person' NOT NULL;

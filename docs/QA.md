@@ -1,5 +1,54 @@
 # Verification record
 
+## T8 — Security test (pre-release)
+
+11 November 2026: `/security-review` was re-run on the latest branch — clean, no high/medium findings (one low defence-in-depth note: JSON-LD is `JSON.stringify`'d into a script tag without `<`-escaping; safe today as the data is admin-only). The two manual T8 scenarios below are each covered by the automated suites (all green: 286 integration, 76 credit, 58 security). **The live-only steps still have to be run by the owner against a real staging deployment with real POK staging keys** — a static review and a fake-POK test runtime cannot prove the real deployment behaves the same.
+
+### A. Cross-user IDOR (one customer must never reach another's objects)
+Run signed in as User A against User B's IDs. Correct result: 403/404, no data, no file, no state change.
+
+| Case | Try (as User A) | Expected | Automated cover |
+|---|---|---|---|
+| a | `GET /api/generations/{B id}` | 403/404 | integration: ownership checks |
+| b | `GET /api/credits/purchases/{B id}` | 403/404 | `purchaseFor` scopes by `user_id` |
+| c | `GET /api/media/{B asset}` with no `signature` | 403 | "Other users and anonymous visitors cannot read uploads" |
+| d | `DELETE /api/generations/{B id}` | 403/404, video intact | ownership checks |
+| e | report / share / make-again / removal on B's id | denied | ownership checks |
+| f | non-admin → `GET /api/admin/*` (users, creator-links, export) | 403 | "Admin API rejects anonymous access" |
+| g | guess a share/media URL by changing the id (no signed token) | denied | "Tampered share link is rejected" |
+| h | reuse a valid signed media URL after its `expires` time | denied | signature is time-bounded ≤24h |
+
+### B. POK amount tampering (pay less, never get full credits)
+Run in POK **staging** (test money). Correct result: credits granted only when POK reports the full captured amount for the matching order.
+
+| Case | Try | Expected | Automated cover |
+|---|---|---|---|
+| a | change the **amount** in the checkout request (€5 → €0.50) | not granted; server trusts POK's captured amount | "A partly captured order grants nothing" |
+| b | change the **currency** (EUR → ALL) | mismatch, not granted | `pokOrderState` currency check |
+| c | reference an expensive purchase id but pay a cheaper price | mismatch | "POK order does not match the purchase" |
+| d | replay the POK webhook for an already-paid purchase | granted once only | "Duplicate and concurrent webhooks grant the pack once" |
+| e | forge a webhook with wrong/absent `sig` | 400, nothing granted | "A webhook without the studio signature is rejected" |
+| f | approve then underpay/cancel (capturedAmount < price) | not paid, no credits | "A webhook for an unpaid order grants nothing" |
+
+**Owner action before launch:** deploy to staging, then run every case in A and B against the real URLs and real POK staging. Tick T8 in the launch checklist only once the live cases pass.
+
+
+6 October 2026 (POK): POK replaced Stripe as the payment provider. TypeScript, lint and the build passed, and all suites passed against the compiled Worker: 93 integration, 46 security, 11 provider, 34 production and 59 credit checks (243). POK responses came from a local fake built from the models in POK's PHP SDK; no real POK payment was made. To confirm against the real POK staging API: the Authorization header format, the webhook body, and that `capturedAmount` reaches the order amount once a payment completes.
+
+6 October 2026 (credits): credits replaced the per-video purchase system. TypeScript, lint and the production Worker build passed. All 237 executable checks passed against the compiled Worker with disposable D1/R2 bindings and the checked-in migrations, including 0003 (credit ledger) and 0004 (removal of orders, payments and refunds).
+
+| Suite | Checks | Coverage |
+|---|---:|---|
+| `pnpm test:integration` | 93 | Catalog/routes, authentication, uploads requiring credits, ownership, credit holds on generation, capture on delivery, return on failure, admin retry re-holding, signed pack webhook, hold sweep, downloads, favorites, admin templates/workflows, deletion |
+| `pnpm test:security` | 46 | Session/CSRF/body limits, protected operational APIs, pack checkout expiry and renewal races, asynchronous payments, amount tampering, idempotent and late webhooks, refund reversal, deadline returning credits, exports |
+| `pnpm test:providers` | 11 | Live-mode guards, Fal and Replicate contracts with credits reserved, charged and returned |
+| `pnpm test:production` | 34 | Encrypted credentials, readiness, production preset, pack bought through a simulated Stripe and spent on a video |
+| `pnpm test:credits` | 53 | Double-entry ledger, concurrency and idempotency, holds, adjustments, welcome credits, packs, reversals and reconciliation |
+
+Browser verification against the production build: an admin created a pack, a customer with 0 credits was asked to buy credits before uploading, bought the pack with the test checkout, generated a video (credits reserved, then charged once on delivery), and the admin adjusted credits and reviewed the ledger, purchases, dashboard and welcome-credits setting (17/17 checks). The old `/orders` and `/checkout` pages return 404. No real payment, email or paid inference occurred.
+
+## Earlier record
+
 20 September 2026: production Worker build and TypeScript checks passed. All 156 executable checks passed against the compiled Worker with disposable D1/R2 bindings and the checked-in migrations.
 
 | Suite | Checks | Coverage |

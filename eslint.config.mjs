@@ -23,6 +23,18 @@ const eslintConfig = defineConfig([
       "react-hooks/set-state-in-effect": "off",
     },
   },
+  {
+    rules: {
+      // Every route is rendered by one catch-all server page that loads its data per request
+      // (app/[[...path]]/page.tsx), so links deliberately use full document navigation. Many are
+      // also API downloads (/api/media, /api/account/export) that must not become client routes.
+      "@next/next/no-html-link-for-pages": "off",
+      "@next/next/no-location-assign-relative-destination": "off",
+      // Images are pre-sized WEBP previews or private /api/media files that need the visitor's
+      // session cookie; the Next image optimizer is not part of this Worker deployment.
+      "@next/next/no-img-element": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;

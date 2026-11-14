@@ -1,4 +1,4 @@
-# Hape PROJECT STUDIO në VS Code
+# Hape NgaZero në VS Code
 
 ## 1. Hap projektin
 
@@ -30,9 +30,40 @@ Herët e tjera mjafton:
 pnpm dev
 ```
 
+## 2b. Publikimi në llogarinë tënde Cloudflare (provë në modalitetin demo)
+
+Kjo e vendos aplikacionin online, falas, në një adresë `ngazero.<emri-yt>.workers.dev`. Pagesat janë të simuluara dhe videot janë shembuj, kështu që nuk paguan për AI, POK apo email.
+
+1. Në panelin e Cloudflare, me llogarinë që zotëron ngazero.com, hap **R2** dhe kliko **Enable**. Kërkon një kartë, por deri në 10 GB në muaj është falas.
+2. Në terminal, një herë:
+
+   ```sh
+   pnpm wrangler login
+   ```
+
+   Hapet shfletuesi; hyr me emailin tënd dhe kliko **Allow**. Nëse sheh disa llogari, zgjidh atë të ngazero.com.
+3. Publiko:
+
+   ```sh
+   pnpm cloudflare:deploy
+   ```
+
+   Skripti krijon databazën dhe hapësirën për skedarët, aplikon migrimet, publikon dhe në fund shfaq adresën. Nëse thotë që sheh më shumë se një llogari, kopjo ID-në e llogarisë së ngazero.com te `cloudflare.json` → `accountId` dhe nise përsëri.
+4. Fjalëkalimi i administratorit (`admin@ngazero.com`) ruhet te skedari `.env.cloudflare` (rreshti ADMIN_PASSWORD_PLAIN). Ky skedar nuk shkon në Git. Ruaj një kopje të APP_SECRET në një menaxher fjalëkalimesh dhe ndrysho fjalëkalimin pas hyrjes së parë.
+
+Për çdo ndryshim në kod mjafton `pnpm cloudflare:deploy` përsëri.
+
+**Domeni ngazero.com:** në Cloudflare hap Workers & Pages → ngazero → Settings → Domains & Routes → Add → Custom domain dhe shkruaj `ngazero.com`. Pastaj:
+
+```sh
+pnpm cloudflare:deploy -- --origin https://ngazero.com
+```
+
+Plani falas i Workers ka një kufi 10 ms për kërkesë dhe hyrja me fjalëkalim mund të dështojë herë pas here. Nëse ndodh, kalo te plani Workers Paid (5 $ në muaj).
+
 ## 3. Puna me AI dhe pagesa reale
 
-Në .env vendos DEMO_MODE=false. Lidh llogaritë e tua te /admin/connections, aktivizo ofruesin AI te /admin/providers dhe lexo docs/OPERATIONS.md për Stripe webhooks, adresat publike dhe punët në sfond. localhost nuk arrihet drejtpërdrejt nga Stripe ose ofruesi AI. Mos aktivizo PUBLIC_SERVICE_ACCESS=true pa adresat dhe shërbimet realisht të arritshme.
+Në .env vendos DEMO_MODE=false. Lidh llogaritë e tua te /admin/connections, aktivizo ofruesin AI te /admin/providers dhe lexo docs/OPERATIONS.md për pagesat me POK, adresat publike dhe punët në sfond. localhost nuk arrihet drejtpërdrejt nga POK ose ofruesi AI. Mos aktivizo PUBLIC_SERVICE_ACCESS=true pa adresat dhe shërbimet realisht të arritshme.
 
 Skripti setup:demo nevojitet vetëm për konfigurimin fillestar lokal; mund të ndryshosh modalitetin pas tij. Çelësat e shërbimeve online nuk përfshihen në këtë arkiv.
 

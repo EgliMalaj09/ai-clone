@@ -8,74 +8,776 @@ const {Miniflare}=require('miniflare');
 const server=path.resolve('dist/server');
 const moduleFiles=(await readdir(server,{recursive:true})).filter(f=>f.endsWith('.js')).sort((a,b)=>a==='index.js'?-1:b==='index.js'?1:a.localeCompare(b));
 const adminPassword=randomBytes(20).toString('hex');const salt=randomBytes(32).toString('hex');
-const config={DEMO_MODE:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(adminPassword,salt,100000,32,'sha256').toString('hex'),STRIPE_WEBHOOK_SECRET:'whsec_disposable_fixture'};
+const config={DEMO_MODE:'true',APP_ORIGIN:'http://studio.test',APP_SECRET:randomBytes(32).toString('hex'),QUEUE_SECRET:randomBytes(32).toString('hex'),ADMIN_EMAIL:'admin@studio.test',ADMIN_PASSWORD_HASH:'pbkdf2$100000$'+salt+'$'+pbkdf2Sync(adminPassword,salt,100000,32,'sha256').toString('hex')};
 const options={modules:moduleFiles.map(f=>({type:'ESModule',path:path.join(server,f)})),modulesRoot:server,compatibilityDate:'2026-05-15',compatibilityFlags:['nodejs_compat'],bindings:config,d1Databases:{DB:'studio-integration'},r2Buckets:['BUCKET'],cf:false};
-const mf=new Miniflare(options);const checks=[];let fixture=0;
+const mf=new Miniflare(options);const checks=[];
 function ok(name,value){assert(value,name);checks.push({name,passed:true});console.log('PASS',name)}
-async function request(route,{method='GET',data,cookie,headers={},expected=200}={}){const h={origin:config.APP_ORIGIN,...(cookie?{cookie}:{}),...(data&&!(data instanceof FormData)?{'content-type':'application/json'}:{}),...headers};let payload=data!==undefined?JSON.stringify(data):undefined;if(data instanceof FormData){const encoded=new Request(config.APP_ORIGIN+route,{method:'POST',body:data});h['content-type']=encoded.headers.get('content-type');payload=await encoded.arrayBuffer();}const response=await mf.dispatchFetch(config.APP_ORIGIN+route,{method,headers:h,body:payload});const text=await response.text();let body;try{body=JSON.parse(text)}catch{body=text}if(expected!==null)assert.equal(response.status,expected,`${method} ${route}: ${text.slice(0,350)}`);return {response,body,text,cookie:response.headers.get('set-cookie')?.split(';')[0]};}
+async function request(route,{method='GET',data,cookie,lang,headers={},expected=200}={}){const h={origin:config.APP_ORIGIN,cookie:[cookie,lang===undefined?'studio_lang=en':lang&&'studio_lang='+lang].filter(Boolean).join('; '),...(data&&!(data instanceof FormData)?{'content-type':'application/json'}:{}),...headers};let payload=data!==undefined?JSON.stringify(data):undefined;if(data instanceof FormData){const encoded=new Request(config.APP_ORIGIN+route,{method:'POST',body:data});h['content-type']=encoded.headers.get('content-type');payload=await encoded.arrayBuffer();}const response=await mf.dispatchFetch(config.APP_ORIGIN+route,{method,headers:h,body:payload});const text=await response.text();let body;try{body=JSON.parse(text)}catch{body=text}if(expected!==null)assert.equal(response.status,expected,`${method} ${route}: ${text.slice(0,350)}`);return {response,body,text,cookie:response.headers.get('set-cookie')?.split(';')[0]};}
 async function upload(cookie,name='photo.webp',bytes){const form=new FormData();form.append('file',new File([bytes||await readFile('public/media/formula-driver.webp')],name,{type:name.endsWith('.txt')?'text/plain':'image/webp'}));return request('/api/uploads',{method:'POST',data:form,cookie,expected:name.endsWith('.txt')?415:201})}
-async function checkout(cookie,template,uploadIds,price=template.price,key=randomUUID()){const payload={templateId:template.id,uploadIds,idempotencyKey:key,expectedPrice:price,consent:true};const r=await request('/api/checkout',{method:'POST',cookie,data:payload,expected:201});return {...r,payload};}
-async function waitDone(cookie,id){const until=Date.now()+26000;const statuses=[];while(Date.now()<until){await request('/api/queue/tick',{method:'POST',cookie,data:{}});const r=await request('/api/generations/'+id,{cookie});const g=r.body.generations[0];statuses.push(g.status);if(['completed','failed'].includes(g.status))return {g,statuses};await new Promise(r=>setTimeout(r,1100));}throw new Error('Generation did not finish within 26s');}
+async function generate(cookie,template,uploadIds,{cost=template.creditCost,key=randomUUID(),expected=201}={}){const payload={templateId:template.id,uploadIds,idempotencyKey:key,expectedCost:cost,consent:true};const r=await request('/api/generations',{method:'POST',cookie,data:payload,expected});return {...r,payload};}
+const balance=async cookie=>(await request('/api/credits',{cookie})).body;
+async function waitDone(cookie,id){const until=Date.now()+26000;const statuses=[];while(Date.now()<until){await request('/api/queue/tick',{method:'POST',cookie,data:{},expected:null});const r=await request('/api/generations/'+id,{cookie});const g=r.body.generations[0];statuses.push(g.status);if(['completed','failed','refused'].includes(g.status))return {g,statuses};await new Promise(r=>setTimeout(r,1100));}throw new Error('Generation did not finish within 26s');}
 try{
  const db=await mf.getD1Database('DB');const bucket=await mf.getR2Bucket('BUCKET');
  for(const f of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort()){for(const s of (await readFile('drizzle/'+f,'utf8')).split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await db.prepare(s).run();}
- const list=await request('/api/templates');const templates=list.body.templates;const formula=templates.find(t=>t.slug==='formula-driver');ok('18 seeded templates with fixed prices',templates.length===18&&formula.price===299&&new Set(templates.map(t=>t.price)).size>=5);
+ const list=await request('/api/templates');const templates=list.body.templates;const formula=templates.find(t=>t.slug==='formula-driver');ok('18 seeded templates with credit costs',templates.length===18&&formula.creditCost===299&&new Set(templates.map(t=>t.creditCost)).size>=5);
  ok('Public API hides prompts, providers, and costs',!list.text.includes('hiddenPrompt')&&!list.text.includes('estimatedCost')&&!list.text.includes('provider')&&!list.text.includes('workflow'));
- for(const route of ['/','/explore','/template/formula-driver','/template/wedding-cinematic','/privacy','/terms','/login','/register','/creations','/favorites','/orders','/account','/admin']){const r=await request(route);ok('Route loads: '+route,typeof r.body==='string'&&r.body.includes('PROJECT'));}
+ for(const route of ['/','/explore','/template/formula-driver','/template/wedding-cinematic','/privacy','/terms','/faq','/contact','/login','/register','/creations','/favorites','/credits','/pricing','/account','/admin']){const r=await request(route);ok('Route loads: '+route,typeof r.body==='string'&&r.body.includes('NGA'));}
+ // C9: the storefront is paged on the server; pages don't overlap and filters apply before paging.
+ const p1=(await request('/api/templates?limit=5&page=1')).body,p4=(await request('/api/templates?limit=5&page=4')).body;ok('Catalog pages: 5 per page, 4 pages, last page holds the rest',p1.templates.length===5&&p1.pagination.pages===4&&p1.pagination.total===18&&p4.templates.length===3&&!p4.templates.some(t=>p1.templates.some(x=>x.id===t.id)));
+ const cat=formula.category;const byText=(await request('/api/templates?q='+encodeURIComponent(cat.toLowerCase()))).body;ok('Catalog search matches the category name too',byText.templates.length>0&&byText.templates.some(t=>t.category===cat));
+ // X1.6: the template poster is requested first, and customer pages don't ship the admin screens.
+ const detailHtml=(await request('/template/formula-driver')).text,homeHtml=(await request('/')).text;
+ ok('Template pages preload their poster; the storefront does not load the admin code',/<link rel="preload" href="[^"]*formula-driver[^"]*" as="image"/.test(detailHtml)&&/chunks\/studio-/.test(homeHtml)&&!/chunks\/admin-/.test(homeHtml));
+ const filtered=(await request('/explore?q=formula')).text;ok('Explore renders the filtered first page on the server',filtered.includes('/template/formula-driver')&&!filtered.includes('/template/astronaut'));
  await request('/template/does-not-exist',{expected:404});await request('/missing-route',{expected:404});ok('Missing templates and routes return 404',true);
  await request('/api/admin/templates',{expected:401});ok('Admin API rejects anonymous access',true);
- const reg=await request('/api/auth/register',{method:'POST',data:{name:'Disposable QA User',email:'qa@studio.test',password:'Test-password-123'},expected:201});const userCookie=reg.cookie;ok('Registration creates a secure session',!!userCookie&&reg.response.headers.get('set-cookie').includes('HttpOnly')&&reg.response.headers.get('set-cookie').includes('SameSite=Lax'));
- const userId=reg.body.user.id;await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regular user cannot access admin API',true);
+ const reg=await request('/api/auth/register',{method:'POST',data:{name:'Disposable QA User',email:'qa@studio.test',password:'Test-password-123',acceptTerms:true,confirmAge:true},expected:201});const userCookie=reg.cookie;
+ const consentRow=await db.prepare('SELECT terms_version,terms_accepted_at,age_confirmed_at,marketing_opt_in,marketing_opt_in_at FROM users WHERE id=?').bind(reg.body.user.id).first();
+ ok('Sign-up records Terms acceptance, age confirmation and no marketing consent by default',!!consentRow.terms_version&&consentRow.terms_accepted_at>0&&consentRow.age_confirmed_at>0&&consentRow.marketing_opt_in===0&&consentRow.marketing_opt_in_at===null);
+ const noTerms=await request('/api/auth/register',{method:'POST',data:{name:'No Consent',email:'noterms@studio.test',password:'Test-password-123',confirmAge:true},expected:400});
+ ok('Sign-up is rejected without accepting the Terms',noTerms.body?.error&&!(await db.prepare("SELECT id FROM users WHERE email='noterms@studio.test'").first()));
+ const noAge=await request('/api/auth/register',{method:'POST',data:{name:'No Age',email:'noage@studio.test',password:'Test-password-123',acceptTerms:true},expected:400});
+ ok('Sign-up is rejected without confirming the minimum age',noAge.body?.error&&!(await db.prepare("SELECT id FROM users WHERE email='noage@studio.test'").first()));
+ const optIn=await request('/api/auth/register',{method:'POST',data:{name:'Opt In',email:'optin@studio.test',password:'Test-password-123',acceptTerms:true,confirmAge:true,marketingOptIn:true},expected:201});
+ const optRow=await db.prepare('SELECT marketing_opt_in,marketing_opt_in_at FROM users WHERE id=?').bind(optIn.body.user.id).first();
+ ok('Marketing opt-in is recorded with its timestamp when chosen',optRow.marketing_opt_in===1&&optRow.marketing_opt_in_at>0);
+ await db.prepare('DELETE FROM users WHERE id=?').bind(optIn.body.user.id).run();// keep later user-count assertions unaffected
+ ok('Registration creates a secure session',!!userCookie&&reg.response.headers.get('set-cookie').includes('HttpOnly')&&reg.response.headers.get('set-cookie').includes('SameSite=Lax'));
+await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regular user cannot access admin API',true);
  await request('/api/auth/login',{method:'POST',data:{email:'qa@studio.test',password:'Incorrect-123'},expected:401});ok('Wrong password is rejected',true);
  const login=await request('/api/auth/login',{method:'POST',data:{email:'qa@studio.test',password:'Test-password-123'}});ok('Email login works',!!login.cookie);
- const second=await request('/api/auth/register',{method:'POST',data:{name:'Other User',email:'other@studio.test',password:'Other-password-123'},expected:201});
+ const second=await request('/api/auth/register',{method:'POST',data:{name:'Other User',email:'other@studio.test',password:'Other-password-123',acceptTerms:true,confirmAge:true},expected:201});
+ const adm=await request('/api/auth/login',{method:'POST',data:{email:'admin@studio.test',password:adminPassword}});const adminCookie=adm.cookie;ok('Administrator login succeeds',adm.body.user.role==='admin');
+ const grant=(userId,amount)=>request(`/api/admin/users/${userId}/credits`,{method:'POST',cookie:adminCookie,data:{amount,reason:'QA credits',currentPassword:adminPassword,idempotencyKey:randomUUID()}});
+ const noCredit=new FormData();noCredit.append('file',new File([await readFile('public/media/formula-driver.webp')],'photo.webp',{type:'image/webp'}));await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{freeTrial:false}});await request('/api/uploads',{method:'POST',cookie:userCookie,data:noCredit,expected:402});await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{freeTrial:true}});ok('Uploading requires credits (or the free video, V47)',true);
+ await grant(reg.body.user.id,2000);await grant(second.body.user.id,100);ok('Admin grants credits',(await balance(userCookie)).available===2000);
  await upload(userCookie,'fake.txt',new Uint8Array(40));ok('Unsupported file format rejected',true);
  const fake=new FormData();fake.append('file',new File([new Uint8Array(64)],'fake.webp',{type:'image/webp'}));await request('/api/uploads',{method:'POST',cookie:userCookie,data:fake,expected:415});ok('Forged image MIME rejected',true);
  const huge=new FormData();huge.append('file',new File([new Uint8Array(8*1024*1024+1)],'large.webp',{type:'image/webp'}));await request('/api/uploads',{method:'POST',cookie:userCookie,data:huge,expected:413});ok('Oversized upload rejected',true);
+ // Uploaded photos are stored cleaned: no metadata (GPS), nothing hidden after the image, and at least 512 × 512.
+ const sendPhoto=async(name,type,bytes,expected=201)=>{const f=new FormData();f.append('file',new File([bytes],name,{type}));return request('/api/uploads',{method:'POST',cookie:userCookie,data:f,expected});};
+ const stored=async id=>new Uint8Array(await (await bucket.get((await db.prepare('SELECT storage_key FROM user_uploads WHERE id=?').bind(id).first()).storage_key)).arrayBuffer());
+ const has=(bytes,text)=>Buffer.from(bytes).includes(Buffer.from(text));
+ const jpeg=await readFile('tests/fixtures/photo-600.jpg'),exif=Buffer.from('Exif\0\0GPSInfo 41.3275N 19.8187E'),app1=Buffer.concat([Buffer.from([0xff,0xe1,(exif.length+2)>>8,(exif.length+2)&255]),exif]);
+ const dirtyJpeg=Buffer.concat([jpeg.subarray(0,2),app1,jpeg.subarray(2),Buffer.from('HIDDEN-PAYLOAD')]);
+ const cj=await stored((await sendPhoto('photo.jpg','image/jpeg',dirtyJpeg)).body.id);
+ ok('JPEG uploads lose GPS metadata and hidden trailing data',!has(cj,'GPSInfo')&&!has(cj,'HIDDEN-PAYLOAD')&&cj[0]===0xff&&cj[1]===0xd8&&cj.at(-2)===0xff&&cj.at(-1)===0xd9&&cj.length<dirtyJpeg.length);
+ const png=await readFile('tests/fixtures/photo-600.png'),text=Buffer.from('Location\0Tirana'),textChunk=Buffer.concat([Buffer.from([0,0,0,text.length]),Buffer.from('tEXt'),text,Buffer.alloc(4)]);
+ const cp=await stored((await sendPhoto('photo.png','image/png',Buffer.concat([png.subarray(0,33),textChunk,png.subarray(33),Buffer.from('HIDDEN-PAYLOAD')]))).body.id);
+ ok('PNG uploads lose text metadata and hidden trailing data',!has(cp,'Tirana')&&!has(cp,'HIDDEN-PAYLOAD')&&Buffer.from(cp.subarray(-8,-4)).toString()==='IEND');
+ const webpPhoto=await readFile('public/media/formula-driver.webp'),exifChunk=Buffer.concat([Buffer.from('EXIF'),Buffer.from([8,0,0,0]),Buffer.from('GPS-WEBP')]),body=Buffer.concat([webpPhoto.subarray(12),exifChunk]);
+ const riff=Buffer.alloc(12);webpPhoto.copy(riff,0,0,12);riff.writeUInt32LE(4+body.length,4);
+ const cw=await stored((await sendPhoto('photo.webp','image/webp',Buffer.concat([riff,body,Buffer.from('HIDDEN-PAYLOAD')]))).body.id);
+ ok('WebP uploads lose EXIF chunks and hidden trailing data',!has(cw,'GPS-WEBP')&&!has(cw,'HIDDEN-PAYLOAD')&&Buffer.from(cw).readUInt32LE(4)===cw.length-8);
+ const small=await sendPhoto('small.jpg','image/jpeg',await readFile('tests/fixtures/photo-small.jpg'),422);
+ ok('Photos under 512 × 512 are refused with a clear message',small.body.error.includes('400 × 300')&&small.body.error.includes('512 × 512'));
+ await sendPhoto('broken.jpg','image/jpeg',Buffer.concat([jpeg.subarray(0,200)]),415);ok('Broken image files are refused',true);
  const u=await upload(userCookie);ok('Valid upload is stored',u.body.id&&u.body.url.startsWith('/api/media/'));
  const media=await mf.dispatchFetch(config.APP_ORIGIN+u.body.url,{headers:{cookie:userCookie}});ok('Owner can view uploaded image',media.status===200&&media.headers.get('content-type')==='image/webp');await media.arrayBuffer();
  await request(u.body.url,{cookie:second.cookie,expected:403});await request(u.body.url,{expected:403});ok('Other users and anonymous visitors cannot read uploads',true);
  await request('/api/favorites',{method:'POST',cookie:userCookie,data:{templateId:formula.id}});const f=await request('/api/favorites',{cookie:userCookie});ok('Favorite persists server-side',f.body.ids.includes(formula.id));await request('/api/favorites',{method:'POST',cookie:userCookie,data:{templateId:formula.id}});ok('Favorite can be removed',(await request('/api/favorites',{cookie:userCookie})).body.ids.length===0);
- await request('/api/checkout',{method:'POST',cookie:second.cookie,data:{templateId:formula.id,uploadIds:[u.body.id],idempotencyKey:randomUUID(),expectedPrice:299,consent:true},expected:403});ok('Checkout rejects someone else’s image',true);
- await request('/api/checkout',{method:'POST',cookie:userCookie,data:{templateId:formula.id,uploadIds:[u.body.id],idempotencyKey:randomUUID(),expectedPrice:1,consent:true},expected:409});ok('Client cannot tamper with the price',true);
- const co=await checkout(userCookie,formula,[u.body.id]);const orderId=co.body.orderId,generationId=co.body.generationId;
- const duplicate=await request('/api/checkout',{method:'POST',cookie:userCookie,data:co.payload});ok('Checkout idempotency returns the same generation',duplicate.body.generationId===generationId);
- const pending=(await request('/api/generations/'+generationId,{cookie:userCookie})).body.generations[0];ok('Generation waits for payment',pending.status==='awaiting_payment');await request('/api/queue/tick',{method:'POST',cookie:userCookie,data:{}});ok('Queue cannot start unpaid work',(await request('/api/generations/'+generationId,{cookie:userCookie})).body.generations[0].status==='awaiting_payment');
- await request('/api/orders/'+orderId+'/pay',{method:'POST',cookie:second.cookie,data:{result:'success'},expected:404});ok('Payment confirmation enforces order ownership',true);
- await request('/api/orders/'+orderId+'/pay',{method:'POST',cookie:userCookie,data:{result:'fail'},expected:402});ok('Declined payment does not start generation',(await request('/api/generations/'+generationId,{cookie:userCookie})).body.generations[0].status==='awaiting_payment');
- await request('/api/orders/'+orderId+'/retry',{method:'POST',cookie:userCookie,data:{}});await request('/api/orders/'+orderId+'/pay',{method:'POST',cookie:userCookie,data:{result:'success'}});await request('/api/orders/'+orderId+'/pay',{method:'POST',cookie:userCookie,data:{result:'success'}});ok('Payment retry and duplicate confirmation are safe',true);
- const result=await waitDone(userCookie,generationId);ok('Mock workflow completes asynchronously',result.g.status==='completed'&&!!result.g.assetId);ok('Generations retain their paid price',result.g.price===299);
- const outputs=await db.prepare('SELECT * FROM generated_assets WHERE generation_id=?').bind(generationId).all();ok('Duplicate payment created one output only',outputs.results.length===1);
+ await generate(second.cookie,formula,[u.body.id],{expected:403});ok('Generation rejects someone else’s image',true);
+ await generate(userCookie,formula,[u.body.id],{cost:1,expected:409});ok('Client cannot tamper with the credit cost',(await balance(userCookie)).available===2000);
+ const poor=await upload(second.cookie);const short=await generate(second.cookie,formula,[poor.body.id],{expected:402});
+ ok('Generation needs enough credits and says how many',short.body.error.includes('299')&&(await balance(second.cookie)).available===100);
+ const co=await generate(userCookie,formula,[u.body.id]);const generationId=co.body.generationId;
+ ok('Starting a generation reserves its credits',co.body.balance.available===1701&&co.body.balance.held===299);
+ const duplicate=await generate(userCookie,formula,[u.body.id],{key:co.payload.idempotencyKey});
+ ok('Repeating a generation request returns the same creation without charging again',duplicate.body.generationId===generationId&&(await balance(userCookie)).available===1701);
+ await generate(userCookie,{...formula,id:(templates.find(t=>t.slug==='astronaut')).id},[u.body.id],{cost:299,key:co.payload.idempotencyKey,expected:409});ok('A request key cannot be reused for another template',true);
+ const running=(await request('/api/generations/'+generationId,{cookie:userCookie})).body.generations[0];ok('A new creation is in progress with its credits reserved',['queued','preparing','generating','finalizing'].includes(running.status)&&running.creditStatus==='pending'&&running.creditCost===299);
+ const busy=await request('/api/generations?status=completed',{cookie:userCookie});ok('Active creations are counted regardless of the status filter',busy.body.activeCount===1&&busy.body.generations.every(g=>g.status==='completed'));
+ const result=await waitDone(userCookie,generationId);ok('Mock workflow completes asynchronously',result.g.status==='completed'&&!!result.g.assetId);const idle=await request('/api/generations',{cookie:userCookie});ok('No active creations remain after completion, so polling can stop',idle.body.activeCount===0);
+ ok('Delivery charges the reserved credits',result.g.creditStatus==='captured'&&JSON.stringify(await balance(userCookie))===JSON.stringify({available:1701,held:0}));
+ const spent=(await request('/api/credits/history',{cookie:userCookie})).body.transactions.map(t=>t.kind);ok('Credit history shows the reservation and the charge',spent[0]==='capture'&&spent[1]==='hold');
+ const outputs=await db.prepare('SELECT * FROM generated_assets WHERE generation_id=?').bind(generationId).all();ok('A repeated request created one output only',outputs.results.length===1);
  const video=await mf.dispatchFetch(config.APP_ORIGIN+'/api/media/'+result.g.assetId+'?download=1',{headers:{cookie:userCookie}});const bytes=new Uint8Array(await video.arrayBuffer());ok('Download returns a real MP4 attachment',video.status===200&&video.headers.get('content-disposition').includes('attachment')&&new TextDecoder().decode(bytes.slice(4,8))==='ftyp');await mkdir('test-results',{recursive:true});await writeFile('test-results/download.mp4',bytes);
  const ranged=await mf.dispatchFetch(config.APP_ORIGIN+'/api/media/'+result.g.assetId,{headers:{cookie:userCookie,range:'bytes=0-99'}});ok('Video byte ranges are supported',ranged.status===206&&(await ranged.arrayBuffer()).byteLength===100);
  await request('/api/media/'+result.g.assetId,{cookie:second.cookie,expected:403});ok('Completed videos stay private',true);
- const share=await request('/api/generations/'+generationId+'/share',{method:'POST',cookie:userCookie,data:{}});const shared=await mf.dispatchFetch(share.body.url);ok('Signed share link works without account login',shared.status===200);await shared.arrayBuffer();const broken=new URL(share.body.url);broken.searchParams.set('signature','bad');await request(broken.pathname+broken.search,{expected:403});ok('Tampered share link is rejected',true);
- const adm=await request('/api/auth/login',{method:'POST',data:{email:'admin@studio.test',password:adminPassword}});const adminCookie=adm.cookie;ok('Administrator login succeeds',adm.body.user.role==='admin');
+ const share=await request('/api/generations/'+generationId+'/share',{method:'POST',cookie:userCookie,data:{}});const signedUrl=(await mf.dispatchFetch(config.APP_ORIGIN+'/api/share/'+share.body.id+'/video',{redirect:'manual'})).headers.get('location');const shared=await mf.dispatchFetch(signedUrl);ok('Signed share link works without account login',shared.status===200);await shared.arrayBuffer();const broken=new URL(signedUrl);broken.searchParams.set('signature','bad');await request(broken.pathname+broken.search,{expected:403});ok('Tampered share link is rejected',true);
+ const defaultGuides=(await request('/api/admin/settings',{cookie:adminCookie})).body.photoGuidelines;ok('Photo guidelines default to the built-in lists',defaultGuides.do.length>0&&defaultGuides.dont.length>0);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{photoGuidelines:{do:['Face the camera','',' Good light '],dont:['No sunglasses']}}});
+ const savedGuides=(await request('/api/admin/settings',{cookie:adminCookie})).body.photoGuidelines;ok('Admin-edited photo guidelines are saved and trimmed',JSON.stringify(savedGuides)===JSON.stringify({do:['Face the camera','Good light'],dont:['No sunglasses']}));
+ ok('Edited photo guidelines appear on the public template page',(await request('/template/formula-driver')).body.includes('Face the camera'));
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{photoGuidelines:{do:[],dont:[]}},expected:400});ok('Photo guidelines cannot be emptied',true);
  const privateTemplate=(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template;ok('Admin can read hidden workflow',privateTemplate.workflow.length===1&&privateTemplate.hiddenPrompt.length>0);
- const clone={...privateTemplate,id:undefined,name:'QA Studio Test',slug:'qa-studio-test',active:false,price:449,estimatedCost:125,createdAt:undefined};const created=await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:clone,expected:201});let testTemplate=created.body.template;ok('Admin creates a template draft',!!testTemplate.id&&!testTemplate.active);
+ const clone={...privateTemplate,id:undefined,name:'QA Studio Test',slug:'qa-studio-test',active:false,creditCost:449,estimatedCost:125,createdAt:undefined};const created=await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:clone,expected:201});let testTemplate=created.body.template;ok('Admin creates a template draft',!!testTemplate.id&&!testTemplate.active);
  ok('Draft is hidden from catalog',!(await request('/api/templates')).body.templates.some(t=>t.id===testTemplate.id));
- testTemplate={...testTemplate,active:true};await request('/api/admin/templates/'+testTemplate.id,{method:'PATCH',cookie:adminCookie,data:testTemplate});const publicNew=(await request('/api/templates')).body.templates.find(t=>t.id===testTemplate.id);ok('Published template appears immediately with chosen price',publicNew?.price===449);
- await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...privateTemplate,price:449}});ok('Admin price update reaches the public catalog',(await request('/api/templates')).body.templates.find(t=>t.id===formula.id).price===449);ok('Price update does not rewrite paid orders',(await request('/api/orders/'+orderId,{cookie:userCookie})).body.order.amount===299);
- const another=await upload(userCookie);const unpaid=await checkout(userCookie,testTemplate,[another.body.id]);
+ testTemplate={...testTemplate,active:true};await request('/api/admin/templates/'+testTemplate.id,{method:'PATCH',cookie:adminCookie,data:testTemplate});const publicNew=(await request('/api/templates')).body.templates.find(t=>t.id===testTemplate.id);ok('Published template appears immediately with its credit cost',publicNew?.creditCost===449);
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...privateTemplate,creditCost:449}});ok('Admin credit cost update reaches the public catalog',(await request('/api/templates')).body.templates.find(t=>t.id===formula.id).creditCost===449);ok('A cost change does not touch existing creations',(await db.prepare('SELECT credit_cost FROM generations WHERE id=?').bind(generationId).first()).credit_cost===299);
+ const another=await upload(userCookie);const early=await generate(userCookie,testTemplate,[another.body.id]);
  const imageStep={...testTemplate.workflow[0],id:randomUUID(),type:'image',output:'prepared_image'};const videoStep={...testTemplate.workflow[0],id:randomUUID(),inputs:{image:'{{previous_output}}'},output:'final_video'};
  testTemplate={...testTemplate,workflow:[imageStep,videoStep]};await request('/api/admin/templates/'+testTemplate.id,{method:'PATCH',cookie:adminCookie,data:testTemplate});ok('Admin saves ordered multi-step workflow',(await request('/api/admin/templates/'+testTemplate.id,{cookie:adminCookie})).body.template.workflow.length===2);
- const snap=await db.prepare('SELECT workflow_snapshot FROM generations WHERE id=?').bind(unpaid.body.generationId).first();ok('Existing checkout keeps the original workflow',JSON.parse(snap.workflow_snapshot).steps.length===1);
- const multi=await checkout(userCookie,testTemplate,[another.body.id]);await request('/api/orders/'+multi.body.orderId+'/pay',{method:'POST',cookie:userCookie,data:{result:'success'}});const mr=await waitDone(userCookie,multi.body.generationId);ok('Image-to-video workflow completes',mr.g.status==='completed');const logs=await db.prepare('SELECT * FROM generation_steps WHERE generation_id=? ORDER BY step_order').bind(multi.body.generationId).all();ok('Workflow steps execute in order',logs.results.length===2&&logs.results.every(s=>s.status==='completed'));
- const failedTemplate={...testTemplate,workflow:[{...videoStep,inputs:{image:'{{user_image_1}}'},settings:{simulateFailure:true}}]};await request('/api/admin/templates/'+testTemplate.id,{method:'PATCH',cookie:adminCookie,data:failedTemplate});const failure=await checkout(userCookie,failedTemplate,[another.body.id]);await request('/api/orders/'+failure.body.orderId+'/pay',{method:'POST',cookie:userCookie,data:{result:'success'}});const fr=await waitDone(userCookie,failure.body.generationId);ok('Provider failure is recorded',fr.g.status==='failed');ok('Failed generation is automatically refunded',(await request('/api/orders/'+failure.body.orderId,{cookie:userCookie})).body.order.status==='refunded');
- const dashboard=(await request('/api/admin/dashboard',{cookie:adminCookie})).body;ok('Admin metrics reflect real database activity',dashboard.users===3&&dashboard.metrics.total>=4&&dashboard.metrics.failed>=1);
+ const snap=await db.prepare('SELECT workflow_snapshot FROM generations WHERE id=?').bind(early.body.generationId).first();ok('An existing creation keeps the original workflow',JSON.parse(snap.workflow_snapshot).steps.length===1);await waitDone(userCookie,early.body.generationId);
+ const multi=await generate(userCookie,testTemplate,[another.body.id]);const mr=await waitDone(userCookie,multi.body.generationId);ok('Image-to-video workflow completes',mr.g.status==='completed');const logs=await db.prepare('SELECT * FROM generation_steps WHERE generation_id=? ORDER BY step_order').bind(multi.body.generationId).all();ok('Workflow steps execute in order',logs.results.length===2&&logs.results.every(s=>s.status==='completed'));
+ const failedTemplate={...testTemplate,workflow:[{...videoStep,inputs:{image:'{{user_image_1}}'},settings:{simulateFailure:true}}]};await request('/api/admin/templates/'+testTemplate.id,{method:'PATCH',cookie:adminCookie,data:failedTemplate});const before=(await balance(userCookie)).available;const failure=await generate(userCookie,failedTemplate,[another.body.id]);const fr=await waitDone(userCookie,failure.body.generationId);ok('Provider failure is recorded',fr.g.status==='failed');
+ ok('A failed generation returns its credits',fr.g.creditStatus==='released'&&JSON.stringify(await balance(userCookie))===JSON.stringify({available:before,held:0}));
+ await request('/api/admin/generations/'+failure.body.generationId+'/retry',{method:'POST',cookie:adminCookie,data:{}});
+ ok('An admin retry reserves the credits again',(await balance(userCookie)).available===before-449&&(await request('/api/generations/'+failure.body.generationId,{cookie:userCookie})).body.generations[0].creditStatus==='pending');
+ const retried=await waitDone(userCookie,failure.body.generationId);ok('A failed retry returns the credits again',retried.g.status==='failed'&&(await balance(userCookie)).available===before);
+ // V48: a photo that made the AI fail twice can't be used again; only provider-reported failures count.
+ ok('A provider failure warns that the same photo may be blocked next time',fr.g.error.includes('If it fails again with the same photo'));
+ const secondFail=await waitDone(userCookie,(await generate(userCookie,failedTemplate,[another.body.id])).body.generationId);
+ const blockedPhoto=await generate(userCookie,failedTemplate,[another.body.id],{expected:409});
+ ok('After two provider failures the same photo is refused before any credits are reserved',secondFail.g.status==='failed'&&blockedPhoto.body.error.includes('failed twice')&&(await balance(userCookie)).available===before);
+ await db.prepare("UPDATE generations SET failure_kind='system' WHERE user_id=? AND status='failed'").bind(reg.body.user.id).run();
+ const systemOnly=await generate(userCookie,failedTemplate,[another.body.id]);await waitDone(userCookie,systemOnly.body.generationId);
+ ok('Failures that were not the photo’s fault (timeouts, our own errors) never block it',systemOnly.response.status===201);
+
+ await request('/api/admin/generations/'+failure.body.generationId+'/retry',{method:'POST',cookie:userCookie,data:{},expected:403});ok('Customers cannot retry through the admin API',true);
+ const dashboard=(await request('/api/admin/dashboard',{cookie:adminCookie})).body;ok('Admin metrics reflect real database activity',dashboard.users===3&&dashboard.metrics.total>=4&&dashboard.metrics.failed>=1&&dashboard.credits.consumed>=299+449*2&&dashboard.credits.granted===2100);
+ // C21 — report a problem and the free redo
+ const rep=await request('/api/generations/'+generationId+'/report',{method:'POST',cookie:userCookie,data:{reason:'wrong_face',comment:'The face is not mine'},expected:201});ok('Customer can report a finished video',rep.body.report.status==='open');
+ await request('/api/generations/'+generationId+'/report',{method:'POST',cookie:userCookie,data:{reason:'glitches'},expected:409});ok('Only one open report per video',true);
+ await request('/api/generations/'+generationId+'/report',{method:'POST',cookie:second.cookie,data:{reason:'other'},expected:404});ok('A customer cannot report someone else’s video',true);
+ await request('/api/generations/'+generationId,{method:'DELETE',cookie:userCookie,expected:409});ok('A reported video cannot be deleted while under review',true);
+ await request('/api/uploads/'+u.body.id,{method:'DELETE',cookie:userCookie,expected:409});ok('A photo in a reported video cannot be deleted while under review',true);
+ const queue=await request('/api/admin/reports',{cookie:adminCookie});const myReport=queue.body.reports.find(r=>r.generationId===generationId);ok('The report appears in the admin queue as open',myReport&&myReport.status==='open');
+ const caseDetail=await request('/api/admin/reports/'+myReport.id,{cookie:adminCookie});ok('Report detail shows the video and the uploaded photo',!!caseDetail.body.video&&caseDetail.body.photos.length===1);
+ const balBefore=(await balance(userCookie)).available;
+ const resolve=await request('/api/admin/reports/'+myReport.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'approve'}});const redoId=resolve.body.redoGenerationId;ok('Approving the report starts a free redo',!!redoId);
+ const redo=await waitDone(userCookie,redoId);ok('The free redo completes and is marked as a redo',redo.g.status==='completed'&&redo.g.isRedo===true);
+ ok('The free redo costs the customer nothing',(await balance(userCookie)).available===balBefore);
+ ok('A goodwill credit is recorded in the ledger',(await request('/api/credits/history',{cookie:userCookie})).body.transactions.some(t=>t.kind==='goodwill'));
+ ok('The resolved report is approved with the redo linked',(await request('/api/admin/reports/'+myReport.id,{cookie:adminCookie})).body.report.redoGenerationId===redoId);
+ const rep2=await request('/api/generations/'+redoId+'/report',{method:'POST',cookie:userCookie,data:{reason:'mismatch'},expected:201});ok('A free redo can itself be reported',rep2.body.report.status==='open');
+ const report2=(await request('/api/admin/reports',{cookie:adminCookie})).body.reports.find(r=>r.generationId===redoId);
+ await request('/api/admin/reports/'+report2.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'reject_photo'},expected:400});ok('Rejecting as photo-not-suitable needs a guideline',true);
+ await request('/api/admin/reports/'+report2.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'reject_photo',guideline:'Face clearly visible and facing the camera'}});
+ const redoCard=(await request('/api/generations?status=completed',{cookie:userCookie})).body.generations.find(g=>g.id===redoId);
+ ok('A rejected report shows photo-not-suitable to the customer',redoCard.report.status==='rejected'&&redoCard.report.resolution==='photo_unsuitable'&&redoCard.report.guideline==='Face clearly visible and facing the camera');
+
+ // C22 — maintenance switch
+ const curFormula=(await request('/api/templates')).body.templates.find(t=>t.slug==='formula-driver');
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{maintenance:{creationsPaused:true,purchasesPaused:false,message:'Paused for maintenance'}}});
+ ok('Maintenance settings are saved and returned',(await request('/api/admin/settings',{cookie:adminCookie})).body.maintenance.creationsPaused===true);
+ const mUp=await upload(userCookie);
+ await generate(userCookie,curFormula,[mUp.body.id],{expected:503});ok('Maintenance pauses new video creation',true);
+ ok('The template page shows the maintenance message',(await request('/template/formula-driver')).body.includes('Paused for maintenance'));
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{maintenance:{creationsPaused:false,purchasesPaused:true,message:''}}});
+ const maintPack=(await request('/api/admin/credit-packages',{method:'POST',cookie:adminCookie,data:{name:'Maint pack',credits:100,prices:{EUR:499},active:true},expected:201})).body.package;
+ await request('/api/credits/checkout',{method:'POST',cookie:userCookie,data:{packageId:maintPack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:503});ok('Maintenance pauses new credit purchases',true);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{maintenance:{creationsPaused:false,purchasesPaused:false,message:''}}});
+ const resumed=await generate(userCookie,curFormula,[(await upload(userCookie)).body.id]);await waitDone(userCookie,resumed.body.generationId);ok('Creation works again after maintenance is lifted',true);
+ // Higgsfield balance safeguard: the studio's own estimate pauses new videos when it gets too low, until a top-up.
+ ok('The Higgsfield balance is not tracked until the admin enters it',(await request('/api/admin/provider-balance',{cookie:adminCookie})).body.tracking===false);
+ await request('/api/admin/provider-balance',{cookie:userCookie,expected:403});
+ const low=(await request('/api/admin/provider-balance',{method:'POST',cookie:adminCookie,data:{kind:'set',amount:0.5}})).body;
+ ok('A balance below the pause level ($1) pauses creation',low.tracking&&low.available===50&&low.low&&low.paused);
+ const bpUp=await upload(userCookie);const bp=await generate(userCookie,curFormula,[bpUp.body.id],{expected:503});
+ ok('Customers only see that creation is paused for a while',/paused for a short while/.test(bp.body.error)&&(await request('/template/formula-driver')).body.includes('paused for a short while'));
+ const topped=(await request('/api/admin/provider-balance',{method:'POST',cookie:adminCookie,data:{kind:'topup',amount:20,note:'Test top-up'}})).body;
+ ok('A top-up adds to the balance and opens creation again',topped.available===2050&&!topped.paused&&!topped.low);
+ await db.prepare("INSERT INTO generation_steps (id,generation_id,step_order,type,provider,model,status,started_at,completed_at,cost,cost_source) VALUES ('stp_balance_test',?,90,'video','higgsfield','test','completed',?,?,300,'listed')").bind(resumed.body.generationId,Date.now(),Date.now()).run();
+ const after=(await request('/api/admin/provider-balance',{cookie:adminCookie})).body;
+ ok('Recorded Higgsfield costs lower the estimated balance',after.spent===300&&after.available===1750);
+ await request('/api/admin/provider-balance',{method:'PATCH',cookie:adminCookie,data:{alertBelow:1,pauseBelow:5,autoPause:true},expected:400});
+ ok('The warning level cannot be below the pause level',true);
+ await db.prepare("DELETE FROM generation_steps WHERE id='stp_balance_test'").run();await db.prepare("DELETE FROM app_settings WHERE key IN ('provider_balance','provider_balance_notified')").run();
+ ok('Without tracking, creation is never paused by the balance',(await request('/api/admin/provider-balance',{cookie:adminCookie})).body.paused===false);
+ async function clearFailures(){await db.prepare("DELETE FROM app_settings WHERE key='alert_sent:failures'").run();}
+ // V53 owner alerts: each problem is claimed once (alert_sent:<key>) and sent to the alert recipients.
+ const dispatch=()=>request('/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+config.QUEUE_SECRET},data:{}});
+ const sent=async key=>!!(await db.prepare('SELECT key FROM app_settings WHERE key=?').bind('alert_sent:'+key).first());
+ ok('Alerts go to the two owner addresses by default',(await request('/api/admin/settings',{cookie:adminCookie})).body.alerts.emails.join()==='Vasoxhaja04@gmail.com,eglimalaj999@gmail.com');
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{alerts:{emails:['not-an-email'],trialDaily:20}},expected:400});
+ await grant(reg.body.user.id,1000);
+ const stuckGen=(await generate(userCookie,curFormula,[(await upload(userCookie)).body.id])).body.generationId;
+ await db.prepare("UPDATE generations SET status='generating',started_at=?,created_at=?,lease_until=? WHERE id=?").bind(Date.now()-25*60000,Date.now()-25*60000,Date.now()+3600000,stuckGen).run();
+ await dispatch();ok('A video stuck over 20 minutes raises one alert',await sent('stuck:'+stuckGen));
+ const beforeCancel=(await balance(userCookie)).available;
+ await request('/api/admin/generations/'+stuckGen+'/cancel',{method:'POST',cookie:adminCookie,data:{}});
+ const cancelled=await db.prepare('SELECT status FROM generations WHERE id=?').bind(stuckGen).first();
+ ok('Cancel and refund ends the stuck video and returns its credits',cancelled.status==='failed'&&(await balance(userCookie)).available===beforeCancel+curFormula.creditCost&&!(await sent('stuck:'+stuckGen)));
+ await request('/api/admin/generations/'+stuckGen+'/cancel',{method:'POST',cookie:adminCookie,data:{},expected:409});
+ await request('/api/admin/generations/'+stuckGen+'/cancel',{method:'POST',cookie:userCookie,data:{},expected:403});
+ // Failures: NSFW refusals never count; 3 real failures from 2 customers in 30 minutes do.
+ const failRows=(await db.prepare("SELECT id,user_id,completed_at FROM generations WHERE status='completed' ORDER BY created_at DESC LIMIT 3").all()).results,failIds=failRows.map(r=>r.id);
+ await db.prepare(`UPDATE generations SET status='refused',completed_at=? WHERE id IN (${failIds.map(()=>'?').join(',')})`).bind(Date.now(),...failIds).run();
+ await clearFailures();await dispatch();ok('NSFW refusals never raise the failure alarm',!(await sent('failures')));
+ const otherUser=(await db.prepare("SELECT id FROM users WHERE role='user' AND id NOT IN (SELECT user_id FROM generations WHERE id=?) LIMIT 1").bind(failIds[0]).first()).id;
+ await db.prepare(`UPDATE generations SET status='failed',completed_at=? WHERE id IN (${failIds.map(()=>'?').join(',')})`).bind(Date.now(),...failIds).run();
+ await db.prepare('UPDATE generations SET user_id=? WHERE id=?').bind(otherUser,failIds[0]).run();
+ await dispatch();ok('Three real failures from two customers in 30 minutes raise the failure alarm',await sent('failures'));
+ await db.prepare(`UPDATE generations SET completed_at=? WHERE id IN (${failIds.map(()=>'?').join(',')})`).bind(Date.now()-3600000,...failIds).run();
+ await dispatch();ok('The failure alarm resets once failures stop, so it can email again next time',!(await sent('failures')));
+ for(const r of failRows)await db.prepare("UPDATE generations SET status='completed',user_id=?,completed_at=? WHERE id=?").bind(r.user_id,r.completed_at,r.id).run();
+ // A real POK payment pending over an hour raises one alert; abandoned demo checkouts never do.
+ await db.prepare("INSERT INTO credit_purchases (id,user_id,package_id,package_name,credits,amount,currency,status,provider,idempotency_key,created_at,provider_session_id) VALUES ('cp_alert_test',?,'pack_x','Test pack',100,1499,'EUR','pending','pok',?,?,'pok_order_test')").bind(reg.body.user.id,randomUUID(),Date.now()-2*3600000).run();
+ await dispatch();ok('A POK payment pending over an hour raises one alert',await sent('pending:cp_alert_test'));
+ await db.prepare("DELETE FROM credit_purchases WHERE id='cp_alert_test'").run();
+ // Worker health for an outside monitor.
+ ok('The health check reports the background worker as running',(await request('/api/health')).body.worker==='running');
+ await db.prepare("UPDATE app_settings SET value=? WHERE key='queue_heartbeat'").bind(String(Date.now()-15*60000)).run();
+ const down=await request('/api/health',{expected:503});ok('The health check answers 503 when the background worker stopped',down.body.status==='worker-stopped');
+ await dispatch();
+ ok('Free videos are limited to 3 per network per 30 days and counted for the dashboard',typeof (await request('/api/admin/alerts',{cookie:adminCookie})).body.trial.month==='number');
+
+ // C23 — spending safety limits
+ await grant(reg.body.user.id,10000);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{limits:{concurrent:1,daily:0,studioDailyCost:0}}});
+ ok('Spending limits are saved and returned',(await request('/api/admin/settings',{cookie:adminCookie})).body.limits.concurrent===1);
+ const lim1=await generate(userCookie,curFormula,[(await upload(userCookie)).body.id]);
+ await generate(userCookie,curFormula,[(await upload(userCookie)).body.id],{expected:429});ok('A second concurrent video is blocked per customer',true);
+ await waitDone(userCookie,lim1.body.generationId);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{limits:{concurrent:0,daily:1,studioDailyCost:0}}});
+ await generate(userCookie,curFormula,[(await upload(userCookie)).body.id],{expected:429});ok('The per-customer daily limit blocks further videos',true);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{limits:{concurrent:0,daily:0,studioDailyCost:1}}});
+ await generate(userCookie,curFormula,[(await upload(userCookie)).body.id],{expected:503});ok('The studio-wide daily AI cost cap pauses creation',true);
+ ok('The spend cap records an alert event',!!(await db.prepare("SELECT id FROM analytics_events WHERE name='spend_cap_reached'").first()));
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{limits:{concurrent:3,daily:20,studioDailyCost:0}}});
+
+ // C19 — exchange rates + margins in the selling currency
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{exchangeRates:{EUR:0.92,ALL:85}}});
+ ok('Exchange rates are saved and returned',(await request('/api/admin/settings',{cookie:adminCookie})).body.exchangeRates.ALL===85);
+ const dash19=(await request('/api/admin/dashboard',{cookie:adminCookie})).body;
+ ok('Dashboard financials use selling currencies, not USD',dash19.financials.some(f=>f.currency==='EUR')&&!dash19.financials.some(f=>f.currency==='USD'));
+ ok('Profitable templates are computed in a selling currency',dash19.profitable.length>0&&dash19.profitable.every(x=>x.currency!=='USD')&&dash19.profitable.some(x=>x.currency==='EUR'));
+ const adminTpls19=(await request('/api/admin/templates',{cookie:adminCookie})).body.templates;
+ ok('Template margins show in the accounting currency, not blank USD',adminTpls19.every(t=>t.costCurrency==='EUR')&&adminTpls19.some(t=>t.creditValue!==null));
+
+ // C4.2 / F16 — the PBKDF2 iteration count is read from the stored hash
+ await request('/api/auth/register',{method:'POST',data:{name:'Hash User',email:'hash@studio.test',password:'Hash-password-123',acceptTerms:true,confirmAge:true},expected:201});
+ const storedHash=(await db.prepare("SELECT password_hash FROM users WHERE email='hash@studio.test'").first()).password_hash;
+ ok('New password hashes embed the iteration count',typeof storedHash==='string'&&storedHash.startsWith('pbkdf2$100000$'));
+ const salt2=randomBytes(32).toString('hex');const customHash='pbkdf2$150000$'+salt2+'$'+pbkdf2Sync('Rehashed-pass-456',salt2,150000,32,'sha256').toString('hex');
+ await db.prepare("UPDATE users SET password_hash=? WHERE email='hash@studio.test'").bind(customHash).run();
+ const relog=await request('/api/auth/login',{method:'POST',data:{email:'hash@studio.test',password:'Rehashed-pass-456'}});
+ ok('Login verifies a hash with a non-default iteration count',relog.body.user?.email==='hash@studio.test');
+ await request('/api/auth/login',{method:'POST',data:{email:'hash@studio.test',password:'wrong-password-000'},expected:401});ok('A wrong password still fails against a non-default-iteration hash',true);
+
+ // C8 — anonymous page/template views are recorded (dashboard funnel)
+ await request('/api/analytics',{method:'POST',data:{name:'template_view',templateId:formula.id}});
+ ok('Anonymous template views are recorded with no user',!!(await db.prepare("SELECT id FROM analytics_events WHERE name='template_view' AND user_id IS NULL").first()));
+
+ // X1 — robots.txt, sitemap.xml and canonical URLs (SEO)
+ const robots=await request('/robots.txt');ok('robots.txt blocks admin and points to the sitemap',typeof robots.body==='string'&&robots.body.includes('Disallow: /admin')&&robots.body.includes('Sitemap:'));
+ const sitemap=await request('/sitemap.xml');ok('sitemap.xml lists public pages and published templates',typeof sitemap.body==='string'&&sitemap.body.includes('<urlset')&&sitemap.body.includes('/template/formula-driver')&&sitemap.body.includes('/pricing'));
+ // X1.7: landing pages for the main searches and one page per category.
+ ok('sitemap.xml lists the landing pages and every category page',sitemap.body.includes('/ai-video-nga-foto')&&sitemap.body.includes('/video-per-dasem')&&sitemap.body.includes('/category/couples')&&sitemap.body.includes('/category/sports'));
+ const wedding=(await request('/video-per-dasem')).text;
+ ok('The wedding landing page shows wedding templates only, with its own title, heading and canonical',wedding.includes('/template/wedding-cinematic')&&!wedding.includes('/template/formula-driver')&&/<title>AI wedding video from your photos \| NgaZero<\/title>/.test(wedding)&&wedding.includes('A cinematic wedding video from your photos')&&/<link rel="canonical" href="[^"]*\/video-per-dasem"/.test(wedding)&&wedding.includes('"@type":"CollectionPage"'));
+ const birthday=(await request('/video-per-ditelindje')).text;
+ ok('A landing page with no templates in its categories yet shows every template',birthday.includes('/template/formula-driver')&&birthday.includes('/template/wedding-cinematic'));
+ const couples=(await request('/category/couples',{lang:'sq'})).text;
+ ok('A category page lists its templates, links to other categories and is translated',couples.includes('/template/wedding-cinematic')&&!couples.includes('/template/astronaut')&&couples.includes('href="/category/sports"')&&couples.includes('Video me AI nga një foto: Çifte'));
+ await request('/category/no-such-category',{expected:404});ok('An unknown category page returns 404',true);
+ const footerLinks=(await request('/')).text;ok('Every page links to the landing pages from the footer',footerLinks.includes('href="/ai-video-nga-foto"')&&footerLinks.includes('href="/video-per-ditelindje"'));
+ const pricingHtml=await request('/pricing');ok('Indexable pages declare a canonical URL',typeof pricingHtml.body==='string'&&pricingHtml.body.includes('rel="canonical"'));
+ const homeLd=await request('/');ok('Homepage has Organization/WebSite structured data',typeof homeLd.body==='string'&&homeLd.body.includes('application/ld+json')&&homeLd.body.includes('"Organization"')&&homeLd.body.includes('"WebSite"'));
+ const tplLd=await request('/template/formula-driver');ok('Template pages have VideoObject structured data',typeof tplLd.body==='string'&&tplLd.body.includes('application/ld+json')&&tplLd.body.includes('"VideoObject"'));
+ // X1 (enhanced SEO): media crawlable, video sitemap, one description per page, social cards, crawlable categories, one host.
+ ok('robots.txt lets search engines fetch studio preview media but keeps the rest of the API private',robots.body.indexOf('Allow: /api/media/med_')>-1&&robots.body.indexOf('Allow: /api/media/med_')<robots.body.indexOf('Disallow: /api/'));
+ const tplEntry=sitemap.body.match(/<url><loc>[^<]*\/template\/formula-driver<\/loc>.*?<\/url>/)?.[0]||'';
+ ok('sitemap.xml has a video and an image entry for every template',sitemap.body.includes('xmlns:video=')&&tplEntry.includes('<video:content_loc>http://studio.test/media/formula-driver.mp4</video:content_loc>')&&tplEntry.includes('<video:thumbnail_loc>')&&tplEntry.includes('<image:loc>')&&(sitemap.body.match(/<video:video>/g)||[]).length===(sitemap.body.match(/\/template\//g)||[]).length);
+ ok('Static pages in the sitemap carry no made-up lastmod',/<url><loc>http:\/\/studio\.test\/faq<\/loc><changefreq>/.test(sitemap.body));
+ const metaOf=html=>({desc:html.match(/<meta name="description" content="([^"]*)"/)?.[1],og:html.includes('property="og:title"')&&html.includes('property="og:image"')&&html.includes('property="og:site_name"')&&html.includes('name="twitter:card"'),robots:html.match(/<meta name="robots" content="([^"]*)"/)?.[1]||''});
+ const pages={};for(const r of ['/','/explore','/pricing','/faq','/contact','/feed','/terms','/privacy'])pages[r]=metaOf((await request(r,{lang:'sq'})).text);
+ ok('Every public page has its own meta description',new Set(Object.values(pages).map(m=>m.desc)).size===Object.keys(pages).length&&Object.values(pages).every(m=>m.desc&&m.desc.length>=60&&m.desc.length<=160));
+ ok('Every public page has Open Graph and Twitter card tags',Object.values(pages).every(m=>m.og)&&Object.values(pages).every(m=>!m.robots.includes('noindex')));
+ const homeSq=(await request('/',{lang:'sq'})).text;ok('The homepage title leads with what people search for',/<title>Krijo video me AI nga një foto \| NgaZero<\/title>/.test(homeSq));
+ ok('Sign-in pages are kept out of the index but their links are followed',metaOf((await request('/login')).text).robots==='noindex, follow'&&metaOf((await request('/register')).text).robots==='noindex, follow');
+ const exploreSq=(await request('/explore',{lang:'sq'})).text;ok('/explore has one H1',(exploreSq.match(/<h1[\s>]/g)||[]).length===1);
+ ok('Category chips are links to the category pages, never to empty categories',homeSq.includes('href="/category/couples"')&&exploreSq.includes('href="/category/sports"')&&!exploreSq.includes('href="/category/funny"'));
+ const tplSq=(await request('/template/formula-driver',{lang:'sq'})).text;
+ ok('A template page has a keyword title, breadcrumbs, a video duration and a video social card',/<title>Formula Driver — AI video nga një foto \| NgaZero<\/title>/.test(tplSq)&&tplSq.includes('"@type":"BreadcrumbList"')&&/"duration":"PT\d+S"/.test(tplSq)&&tplSq.includes('property="og:video"'));
+ ok('FAQ structured data is in the language the page shows',(await request('/faq',{lang:'sq'})).text.includes('"name":"Si bëj një video?"'));
+ const couplesDesc=metaOf((await request('/category/couples',{lang:'sq'})).text).desc||'';ok('A category description names its own templates',couplesDesc.includes('Wedding Cinematic'));
+ const hostMove=await mf.dispatchFetch('https://ngazero.ngazero.workers.dev/explore?category=Couples',{redirect:'manual'});
+ ok('Pages opened on the workers.dev address move permanently to the real domain',hostMove.status===301&&hostMove.headers.get('location')==='http://studio.test/explore?category=Couples');await hostMove.arrayBuffer();
+ const apiStays=await mf.dispatchFetch('https://ngazero.ngazero.workers.dev/api/templates',{redirect:'manual'});ok('API calls on the workers.dev address are never redirected',apiStays.status!==301);await apiStays.arrayBuffer();
+ ok('Pricing page has Product/Offer structured data',pricingHtml.body.includes('"Product"')&&pricingHtml.body.includes('"Offer"'));
+
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);
+ const detail=(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body;
+ ok('Customer page returns profile, credits, creations and activity',detail.user.email===second.body.user.email&&typeof detail.balance.available==='number'&&Array.isArray(detail.creations.recent)&&detail.activity.some(a=>a.action==='user.suspended'));
+ await request('/api/admin/users/'+second.body.user.id,{cookie:userCookie,expected:403});ok('Customers cannot open the customer page API',true);
+ await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{name:'Renamed Customer'}});
+ ok('Admin renames a customer',(await request('/api/admin/users/'+second.body.user.id,{cookie:adminCookie})).body.user.name==='Renamed Customer');
+ await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{role:'admin'},expected:403});await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{credits:5},expected:400});ok('A role change needs the admin password, and unknown fields are rejected',true);
+ ok('Customer purchases are listed per customer',Array.isArray((await request('/api/admin/users/'+second.body.user.id+'/purchases',{cookie:adminCookie})).body.purchases));
+ // Content refusals (C2): each refusal returns the credits and adds a strike; the third blocks the account until an admin unblocks it.
+ const refuser=await request('/api/auth/register',{method:'POST',data:{name:'Refusal Tester',email:'refusals@studio.test',password:'Test-password-123',acceptTerms:true,confirmAge:true},expected:201});const rc=refuser.cookie;
+ await grant(refuser.body.user.id,3000);
+ const traveler=templates.find(t=>t.slug==='time-traveler');
+ const travelerAdmin=(await request('/api/admin/templates/'+traveler.id,{cookie:adminCookie})).body.template;
+ await request('/api/admin/templates/'+traveler.id,{method:'PATCH',cookie:adminCookie,data:{...travelerAdmin,workflow:travelerAdmin.workflow.map(st=>({...st,settings:{...st.settings,simulateRefusal:true}}))}});
+ const refPhoto=new FormData();refPhoto.append('file',new File([await readFile('public/media/formula-driver.webp')],'me.webp',{type:'image/webp'}));
+ const refUpload=(await request('/api/uploads',{method:'POST',cookie:rc,data:refPhoto,expected:201})).body.id;
+ const refuserMe=async()=>(await request('/api/me',{cookie:rc})).body.user;
+ for(let n=1;n<=3;n++){
+  const started=await generate(rc,traveler,[refUpload]);const done=await waitDone(rc,started.body.generationId);
+  ok(`Refusal ${n}: the video is marked refused and its credits are returned`,done.g.status==='refused'&&done.g.creditStatus==='released'&&(await balance(rc)).available===3000);
+  const u=await refuserMe();ok(`Refusal ${n}: the account has ${n} of 3 strikes`,u.contentStrikes===n&&u.blocked===(n===3));
+ }
+ const blockedUpload=new FormData();blockedUpload.append('file',new File([await readFile('public/media/formula-driver.webp')],'me.webp',{type:'image/webp'}));
+ await request('/api/uploads',{method:'POST',cookie:rc,data:blockedUpload,expected:403});
+ await generate(rc,formula,[refUpload],{expected:403});
+ await request('/api/credits/checkout',{method:'POST',cookie:rc,data:{packageId:'pack_any',currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:403});
+ ok('A blocked account cannot upload, create videos or buy credits',true);
+ const refDetail=(await request('/api/admin/users/'+refuser.body.user.id,{cookie:adminCookie})).body;
+ ok('The customer page shows the block, the refused videos and their photos',refDetail.user.blocked_at&&refDetail.user.content_strikes===3&&refDetail.refusals.length===3&&refDetail.refusals[0].photos[0]==='/api/media/'+refUpload&&refDetail.activity.some(a=>a.action==='user.blocked'));
+ await request('/api/admin/users/'+refuser.body.user.id,{method:'PATCH',cookie:adminCookie,data:{unblock:true}});
+ const unblocked=await refuserMe();const again=new FormData();again.append('file',new File([await readFile('public/media/formula-driver.webp')],'me.webp',{type:'image/webp'}));
+ ok('Unblocking resets the strikes and the customer can upload again',unblocked.contentStrikes===0&&!unblocked.blocked&&(await request('/api/uploads',{method:'POST',cookie:rc,data:again,expected:201})).body.id);
+ await request('/api/admin/templates/'+traveler.id,{method:'PATCH',cookie:adminCookie,data:travelerAdmin});
  await request('/api/account',{method:'PATCH',cookie:userCookie,data:{name:'Updated QA'}});ok('Account changes persist',(await request('/api/me',{cookie:userCookie})).body.user.name==='Updated QA');
  await request('/api/account',{method:'PATCH',cookie:userCookie,headers:{origin:'https://evil.test','sec-fetch-site':'cross-site'},data:{name:'Evil'},expected:403});ok('Cross-site mutation blocked',true);
- await request('/api/webhooks/stripe',{method:'POST',data:{id:'forged'},expected:400});ok('Unsigned Stripe webhook rejected',true);
- // Exercise real HMAC verification and replay handling without contacting Stripe.
- const sp=await db.prepare('SELECT * FROM payments WHERE order_id=?').bind(unpaid.body.orderId).first();await db.prepare("UPDATE payments SET provider='stripe' WHERE id=?").bind(sp.id).run();
- const e={id:'evt_fixture_1',type:'checkout.session.completed',data:{object:{id:sp.provider_session_id,payment_status:'paid',payment_intent:'pi_fixture',amount_total:sp.amount,currency:sp.currency.toLowerCase(),metadata:{order_id:unpaid.body.orderId}}}};const timestamp=Math.floor(Date.now()/1000);const signature=createHmac('sha256',config.STRIPE_WEBHOOK_SECRET).update(timestamp+'.'+JSON.stringify(e)).digest('hex');
- for(let i=0;i<2;i++)await request('/api/webhooks/stripe',{method:'POST',data:e,headers:{'stripe-signature':`t=${timestamp},v1=${signature}`}});ok('Signed Stripe webhook confirms payment and tolerates replay',(await request('/api/orders/'+unpaid.body.orderId,{cookie:userCookie})).body.order.status==='paid');ok('Webhook event persisted once',(await db.prepare("SELECT COUNT(*) AS n FROM webhook_events WHERE id='evt_fixture_1'").first()).n===1);
+ await request('/api/webhooks/pok?purchase=cp_forged&sig=00',{method:'POST',data:{id:'forged'},expected:400});ok('POK webhook without the studio signature rejected',true);
+ // Credit pack bought through the demo checkout; a signed POK webhook for a non-POK purchase changes nothing.
+ const pack=(await request('/api/admin/credit-packages',{method:'POST',cookie:adminCookie,data:{name:'QA pack',credits:300,prices:{EUR:299},active:true},expected:201})).body.package;
+ const purchase=(await request('/api/credits/checkout',{method:'POST',cookie:userCookie,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;
+ const beforePack=(await balance(userCookie)).available;
+ const sig=createHmac('sha256',config.APP_SECRET).update('pok-webhook:'+purchase.purchaseId).digest('hex');
+ await request(`/api/webhooks/pok?purchase=${purchase.purchaseId}&sig=${sig}`,{method:'POST',data:{data:{sdkOrder:{id:'ord_fake',capturedAmount:2.99}}}});
+ ok('A signed POK webhook cannot pay a purchase by itself',(await balance(userCookie)).available===beforePack);
+ for(let i=0;i<2;i++)await request(`/api/credits/purchases/${purchase.purchaseId}/pay`,{method:'POST',cookie:userCookie,data:{result:'success'}});
+ ok('Test checkout grants pack credits once and tolerates replay',(await balance(userCookie)).available===beforePack+300);
+ // V38: a creator/campaign link tags the sign-ups made through it and counts those who go on to buy.
+ const clink=(await request('/api/admin/creator-links',{method:'POST',cookie:adminCookie,data:{code:'anisa',name:'Anisa (IG)',note:'May campaign'},expected:201})).body;ok('Admin creates a creator link',!!clink.id);
+ await request('/api/admin/creator-links',{method:'POST',cookie:adminCookie,data:{code:'anisa',name:'Dup'},expected:409});ok('Creator link codes are unique',true);
+ const fan=await request('/api/auth/register',{method:'POST',data:{name:'Fan','email':'fan@studio.test',password:'Fan-password-123',acceptTerms:true,confirmAge:true,ref:'ANISA'},expected:201});
+ ok('Sign-up with a creator link is tagged',(await db.prepare('SELECT signup_source FROM users WHERE id=?').bind(fan.body.user.id).first()).signup_source==='ANISA');
+ const afterSignup=(await request('/api/admin/creator-links',{cookie:adminCookie})).body.links.find(l=>l.id===clink.id);ok('Creator link counts the sign-up, no purchase yet',afterSignup.signups===1&&afterSignup.buyers===0&&afterSignup.credits===0);
+ const fanBuy=(await request('/api/credits/checkout',{method:'POST',cookie:fan.cookie,data:{packageId:pack.id,currency:'EUR',idempotencyKey:randomUUID(),consent:true},expected:201})).body;await request(`/api/credits/purchases/${fanBuy.purchaseId}/pay`,{method:'POST',cookie:fan.cookie,data:{result:'success'}});
+ const afterBuy=(await request('/api/admin/creator-links',{cookie:adminCookie})).body.links.find(l=>l.id===clink.id);ok('Creator link counts a paying customer and the credits sold',afterBuy.buyers===1&&afterBuy.purchases===1&&afterBuy.credits===300);
  // Creation/file deletion proves bytes are removed, rather than merely hidden.
  const assetKey=outputs.results[0].storage_key;await request('/api/generations/'+generationId,{method:'DELETE',cookie:userCookie});ok('Delete creation removes the video from object storage',await bucket.get(assetKey)===null);await request('/api/media/'+result.g.assetId,{cookie:userCookie,expected:404});
  const orphan=await upload(userCookie);const orphanDb=await db.prepare('SELECT storage_key FROM user_uploads WHERE id=?').bind(orphan.body.id).first();await request('/api/uploads/'+orphan.body.id,{method:'DELETE',cookie:userCookie});ok('Delete upload removes stored bytes',await bucket.get(orphanDb.storage_key)===null);
- const dup=await request('/api/admin/templates/'+testTemplate.id+'/duplicate',{method:'POST',cookie:adminCookie,data:{},expected:201});ok('Admin duplicates a template as a draft',!dup.body.template.active&&dup.body.template.id!==testTemplate.id);await request('/api/admin/templates/'+dup.body.template.id,{method:'DELETE',cookie:adminCookie});ok('Admin removes a template',!(await request('/api/admin/templates',{cookie:adminCookie})).body.templates.some(t=>t.id===dup.body.template.id));
- const clean=await request('/api/auth/register',{method:'POST',data:{name:'Delete Test',email:'delete@studio.test',password:'Delete-password-123'},expected:201});const cleanUpload=await upload(clean.cookie);await request('/api/account',{method:'DELETE',cookie:clean.cookie,data:{password:'Delete-password-123'}});ok('Account deletion removes the user and uploads',!(await db.prepare('SELECT id FROM users WHERE id=?').bind(clean.body.user.id).first())&&!(await db.prepare('SELECT id FROM user_uploads WHERE id=?').bind(cleanUpload.body.id).first()));
+ const dup=await request('/api/admin/templates/'+testTemplate.id+'/duplicate',{method:'POST',cookie:adminCookie,data:{},expected:201});ok('Admin duplicates a template as a draft',!dup.body.template.active&&dup.body.template.id!==testTemplate.id);await request('/api/admin/templates/'+dup.body.template.id,{method:'DELETE',cookie:adminCookie});await request('/api/admin/templates/'+dup.body.template.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});ok('Admin removes a template',!(await request('/api/admin/templates',{cookie:adminCookie})).body.templates.some(t=>t.id===dup.body.template.id));
+ // Template preview media is studio-owned and kept apart from customer photos.
+ const webp=await readFile('public/media/formula-driver.webp'),mp4=await readFile('public/media/formula-driver.mp4');
+ const mediaForm=(name,type,bytes)=>{const form=new FormData();form.append('file',new File([bytes],name,{type}));return form};
+ const adminMedia=(name,type,bytes)=>request('/api/admin/media',{method:'POST',data:mediaForm(name,type,bytes),cookie:adminCookie,expected:201});
+ const keyOf=async id=>(await db.prepare('SELECT storage_key FROM template_media WHERE id=?').bind(id).first())?.storage_key;
+ await request('/api/admin/media',{method:'POST',data:mediaForm('x.webp','image/webp',webp),cookie:userCookie,expected:403});ok('Customers cannot upload template media',true);
+ await db.batch(Array.from({length:250},(_,i)=>db.prepare('INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,created_at) VALUES (?,?,?,?,?,?,?)').bind('up_quota_'+i,adm.body.user.id,'uploads/quota/'+i,'image/webp',100,'q.webp',Date.now())));
+ const ma=await adminMedia('thumb-a.webp','image/webp',webp);
+ ok('Admin preview uploads are stored as studio media, not customer photos',ma.body.url==='/api/media/'+ma.body.id&&!!await keyOf(ma.body.id)&&!await db.prepare('SELECT id FROM user_uploads WHERE id=?').bind(ma.body.id).first());
+ await grant(adm.body.user.id,10);
+ await request('/api/uploads',{method:'POST',data:mediaForm('photo.webp','image/webp',webp),cookie:adminCookie,expected:413});ok('Admin previews ignore the customer photo quota, which still applies to photos',true);
+ await db.prepare("DELETE FROM user_uploads WHERE id LIKE 'up_quota_%'").run();
+ const previewCache=(await request(ma.body.url)).response.headers.get('cache-control');
+ ok('Template previews are public and kept by browsers (their ID never changes)',previewCache.includes('public')&&previewCache.includes('immutable'));
+ const mb=await adminMedia('example-b.webp','image/webp',webp),mv=await adminMedia('preview.mp4','video/mp4',mp4),mc=await adminMedia('thumb-c.webp','image/webp',webp),md=await adminMedia('never-saved.webp','image/webp',webp),me=await adminMedia('poster.webp','image/webp',webp);
+ ok('Admin uploads MP4 preview videos',mv.body.mime==='video/mp4');
+ const mediaTemplate=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Media Test',slug:'qa-media-test',thumbnail:ma.body.url,previewVideo:mv.body.url,previewImages:[mb.body.url]},expected:201})).body.template;
+ const mediaCopy=(await request('/api/admin/templates/'+mediaTemplate.id+'/duplicate',{method:'POST',cookie:adminCookie,data:{},expected:201})).body.template;
+ const aKey=await keyOf(ma.body.id);
+ await request('/api/admin/templates/'+mediaTemplate.id,{method:'PATCH',cookie:adminCookie,data:{...mediaTemplate,thumbnail:mc.body.url}});
+ ok('A replaced preview still used by a duplicate is kept',!!await keyOf(ma.body.id));
+ await request('/api/admin/media/'+ma.body.id,{method:'DELETE',cookie:adminCookie,expected:409});ok('Media in use cannot be deleted from the library',true);
+ const library=(await request('/api/admin/media',{cookie:adminCookie})).body;const libA=library.media.find(m=>m.id===ma.body.id);
+ ok('Media library shows which templates use each file',libA.usedBy.length===1&&libA.usedBy[0].id===mediaCopy.id&&libA.removableAt===null&&library.usage.count>=6);
+ await request('/api/admin/templates/'+mediaCopy.id,{method:'DELETE',cookie:adminCookie});await request('/api/admin/templates/'+mediaCopy.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
+ ok('Deleting the last template using a preview removes the file and its bytes',!await keyOf(ma.body.id)&&!await bucket.get(aKey));
+ ok('Previews still used by another template are kept',!!await keyOf(mb.body.id)&&!!await keyOf(mv.body.id)&&!!await keyOf(mc.body.id));
+ await db.prepare('UPDATE generations SET thumbnail=? WHERE id=?').bind(me.body.url,generationId).run();
+ await db.prepare('UPDATE template_media SET created_at=? WHERE id IN (?,?,?)').bind(Date.now()-25*3600000,mb.body.id,md.body.id,me.body.id).run();
+ await db.prepare("INSERT OR REPLACE INTO app_settings (key,value) VALUES ('last_maintenance','0')").run();await request('/api/queue/dispatch',{method:'POST',headers:{authorization:'Bearer '+config.QUEUE_SECRET}});
+ ok('Hourly sweep removes old uploads that were never saved to a template',!await keyOf(md.body.id));
+ ok('Sweep keeps media used by a template or as a past creation poster',!!await keyOf(mb.body.id)&&!!await keyOf(me.body.id));
+ const mf2=await adminMedia('delete-me.webp','image/webp',webp);const fKey=await keyOf(mf2.body.id);await request('/api/admin/media/'+mf2.body.id,{method:'DELETE',cookie:adminCookie});
+ ok('Unused media can be deleted from the library',!await keyOf(mf2.body.id)&&!await bucket.get(fKey));
+ await request('/api/admin/templates/'+mediaTemplate.id,{method:'DELETE',cookie:adminCookie});await request('/api/admin/templates/'+mediaTemplate.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
+ // Migration 0002 moves existing previews out of customer uploads without changing their ids.
+ const migration=new Miniflare({modules:true,script:'export default {fetch(){return new Response(null)}}',d1Databases:{M:'migration-check'}});
+ try{const m=await migration.getD1Database('M');const files=(await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort();
+  const apply=async f=>{for(const s of (await readFile('drizzle/'+f,'utf8')).split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await m.prepare(s).run();};
+  for(const f of files.slice(0,2))await apply(f);
+  await m.prepare("INSERT INTO users (id,email,name,role,status,email_verified,created_at) VALUES ('usr_m','m@studio.test','M','admin','active',1,1)").run();
+  await m.prepare("INSERT INTO user_uploads (id,user_id,storage_key,mime,size,name,public,created_at) VALUES ('up_prev','usr_m','previews/usr_m/up_prev','video/mp4',10,'p.mp4',1,1),('up_photo','usr_m','uploads/usr_m/up_photo','image/webp',10,'f.webp',0,1)").run();
+  for(const f of files.slice(2))await apply(f);
+  const moved=await m.prepare("SELECT * FROM template_media WHERE id='up_prev'").first();const left=(await m.prepare('SELECT id FROM user_uploads').all()).results.map(r=>r.id);
+  ok('Migration moves existing previews with their ids and keeps customer photos',moved?.storage_key==='previews/usr_m/up_prev'&&moved.uploaded_by==='usr_m'&&left.length===1&&left[0]==='up_photo');
+ }finally{await migration.dispose();}
+ const clean=await request('/api/auth/register',{method:'POST',data:{name:'Delete Test',email:'delete@studio.test',password:'Delete-password-123',acceptTerms:true,confirmAge:true},expected:201});await grant(clean.body.user.id,10);const cleanUpload=await upload(clean.cookie);await request('/api/account',{method:'DELETE',cookie:clean.cookie,data:{password:'Delete-password-123'}});ok('Account deletion removes the user and uploads',!(await db.prepare('SELECT id FROM users WHERE id=?').bind(clean.body.user.id).first())&&!(await db.prepare('SELECT id FROM user_uploads WHERE id=?').bind(cleanUpload.body.id).first()));
+ // C27: the template page says what the customer receives and links related templates (same category first, never itself).
+ const detailPage=(await request('/template/formula-driver')).text;const sameCategory=templates.filter(t=>t.category===formula.category&&t.id!==formula.id);
+ ok('Template page shows what you receive and related templates',detailPage.includes('What you receive')&&detailPage.includes('MP4')&&detailPage.includes('You might also like')&&(sameCategory.length===0||detailPage.includes('/template/'+sameCategory[0].slug))&&(detailPage.match(/href="\/template\/formula-driver"/g)||[]).length===0);
+ // C31.4: a template can add its own photo tips, shown with the studio-wide guidelines on its page.
+ const tipsTpl=(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template;
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...tipsTpl,photoTips:'Helmet off, face visible\n  \nLook straight at the camera'}});
+ const tipsPage=(await request('/template/formula-driver')).text;
+ ok('Per-template photo tips are saved and shown on the template page',tipsPage.includes('Helmet off, face visible')&&tipsPage.includes('Look straight at the camera')&&(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template.photoTips.includes('Helmet off'));
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...tipsTpl,photoTips:''}});
+ // C29: every storefront page starts with a skip link to the main content.
+ const home=(await request('/')).text;ok('Pages have a skip link to the main content',home.includes('class="skip-link" href="#main"')&&home.includes('id="main"'));
+ // C10: Albanian is the default storefront language; English with the switcher cookie; the admin and its API stay English.
+ const sqHome=(await request('/',{lang:null})).text,enHome=(await request('/',{lang:'en'})).text;
+ ok('The storefront is in Albanian by default, with html lang="sq"',sqHome.includes('lang="sq"')&&sqHome.includes('Shfleto')&&sqHome.includes('Krijo një video')&&!sqHome.includes('>Create a video'));
+ ok('The language switch cookie shows English',enHome.includes('lang="en"')&&enHome.includes('Create a video')&&enHome.includes('Shqip'));
+ const sqError=await request('/api/auth/login',{method:'POST',lang:null,data:{email:'nobody@studio.test',password:'Wrong-password-1'},expected:401});
+ ok('Customer API errors follow the language',sqError.body.error==='Email-i ose fjalëkalimi është i pasaktë.');
+ const adminSq=await request('/api/admin/templates/missing-template',{cookie:adminCookie,lang:'sq',expected:404});ok('Admin API errors stay in English',adminSq.body.error==='Template not found.');
+ ok('Albanian legal pages and FAQ',(await request('/terms',{lang:null})).text.includes('Fotot dhe lejet e tua')&&(await request('/faq',{lang:null})).text.includes('A skadojnë kreditet?'));
+ await request('/account',{cookie:userCookie,lang:'en'});ok('A signed-in customer’s language is remembered for emails',(await db.prepare("SELECT locale FROM users WHERE email='qa@studio.test'").first()).locale==='en');
+ // V11/V31.2: an admin sends a reset link from the customer page (demo: the link is returned instead of emailed); the page lists reports.
+ const resetUser=await request('/api/auth/register',{method:'POST',data:{name:'Reset Me',email:'resetme@studio.test',password:'Reset-password-1',acceptTerms:true,confirmAge:true},expected:201});
+ await request('/api/admin/users/'+resetUser.body.user.id+'/reset-link',{method:'POST',cookie:userCookie,data:{},expected:403});
+ const resetLink=(await request('/api/admin/users/'+resetUser.body.user.id+'/reset-link',{method:'POST',cookie:adminCookie,data:{}})).body;
+ await request('/api/auth/reset',{method:'POST',data:{token:new URL(resetLink.url).searchParams.get('token'),password:'Brand-new-password-2'}});
+ const relogged=await request('/api/auth/login',{method:'POST',data:{email:'resetme@studio.test',password:'Brand-new-password-2'}});
+ const resetDetail=(await request('/api/admin/users/'+resetUser.body.user.id,{cookie:adminCookie})).body;
+ ok('Admin reset link lets the customer choose a new password and is logged',resetLink.sent===false&&!!relogged.cookie&&resetDetail.activity.some(a=>a.action==='user.reset-link')&&Array.isArray(resetDetail.reports)&&resetDetail.user.two_factor===false);
+ // V12: CSV exports for admins only, with formula injection neutralised.
+ await request('/api/admin/export/users',{cookie:userCookie,expected:403});await request('/api/admin/export/nope',{cookie:adminCookie,expected:404});
+ await request('/api/account',{method:'PATCH',cookie:userCookie,data:{name:'=HYPERLINK("x")'}});
+ const usersCsv=await request('/api/admin/export/users',{cookie:adminCookie}),ledgerCsv=await request('/api/admin/export/ledger',{cookie:adminCookie}),purchasesCsv=await request('/api/admin/export/purchases',{cookie:adminCookie});
+ ok('Admin CSV exports for users, ledger and purchases',usersCsv.response.headers.get('content-type').startsWith('text/csv')&&usersCsv.response.headers.get('content-disposition').includes('studio-users-')&&usersCsv.text.includes('qa@studio.test')&&ledgerCsv.text.split('\r\n')[0].includes('Transaction ID')&&purchasesCsv.text.split('\r\n')[0].includes('Purchase ID'));
+ ok('CSV cells cannot run as spreadsheet formulas',usersCsv.text.includes(`"'=HYPERLINK(""x"")"`)&&!/(^|,)=HYPERLINK/m.test(usersCsv.text));
+ await request('/api/account',{method:'PATCH',cookie:userCookie,data:{name:'Disposable QA User'}});
+ // V13/V14: archive instead of delete, restore, permanent delete only from the archive, manual order, bulk actions, scheduled publishing.
+ const arch=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Archive Test',slug:'qa-archive-test',active:true,creditCost:300},expected:201})).body.template;
+ await request('/api/admin/templates/'+arch.id+'?permanent=1',{method:'DELETE',cookie:adminCookie,expected:409});
+ await request('/api/admin/templates/'+arch.id,{method:'DELETE',cookie:adminCookie});
+ const archList=(await request('/api/admin/templates',{cookie:adminCookie})).body;const archivedRow=archList.templates.find(t=>t.id===arch.id);
+ ok('Deleting archives the template and hides it from the catalog',archivedRow.archivedAt&&!archivedRow.active&&!(await request('/api/templates?limit=100')).body.templates.some(t=>t.id===arch.id)&&(await request('/template/qa-archive-test',{expected:404})));
+ await request('/api/admin/templates/'+arch.id,{method:'PATCH',cookie:adminCookie,data:{...arch,active:true},expected:409});
+ await request('/api/admin/templates/'+arch.id+'/restore',{method:'POST',cookie:adminCookie,data:{}});
+ const bulkResult=(await request('/api/admin/templates/bulk',{method:'POST',cookie:adminCookie,data:{ids:[arch.id],action:'publish'}})).body;
+ ok('Restore brings it back as a draft and bulk publish puts it live',bulkResult.done===1&&(await request('/api/templates?limit=100')).body.templates.some(t=>t.id===arch.id));
+ const catalogIds=(await request('/api/admin/templates',{cookie:adminCookie})).body.templates.filter(t=>!t.archivedAt).map(t=>t.id);
+ await request('/api/admin/templates/order',{method:'POST',cookie:adminCookie,data:{ids:[arch.id,...catalogIds.filter(id=>id!==arch.id)]}});
+ ok('Manual order puts a template first under Recommended',(await request('/api/templates?limit=5')).body.templates[0].id===arch.id);
+ const scheduled={...arch,active:false,publishAt:Date.now()+1500};
+ await request('/api/admin/templates/'+arch.id,{method:'PATCH',cookie:adminCookie,data:{...arch,active:false,publishAt:Date.now()-3600000},expected:400});
+ await request('/api/admin/templates/'+arch.id,{method:'PATCH',cookie:adminCookie,data:scheduled});
+ const hiddenBefore=!(await request('/api/templates?limit=100')).body.templates.some(t=>t.id===arch.id);
+ await new Promise(r=>setTimeout(r,1700));await request('/api/admin/operations/dispatch',{method:'POST',cookie:adminCookie,data:{}});
+ ok('A scheduled template goes live at its time',hiddenBefore&&(await request('/api/templates?limit=100')).body.templates.some(t=>t.id===arch.id));
+ await request('/api/admin/templates/bulk',{method:'POST',cookie:adminCookie,data:{ids:[arch.id],action:'archive'}});await request('/api/admin/templates/'+arch.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
+ ok('A template is deleted for good only from the archive',!(await request('/api/admin/templates',{cookie:adminCookie})).body.templates.some(t=>t.id===arch.id));
+ // V20: make a finished video again with the same photo, charged at the template's current cost.
+ await grant(reg.body.user.id,1000);
+ const finished=(await request('/api/generations?status=completed&limit=24',{cookie:userCookie})).body.generations.find(g=>g.repeatCost!==null);
+ await request('/api/generations/'+finished.id+'/again',{method:'POST',cookie:userCookie,data:{idempotencyKey:randomUUID(),expectedCost:finished.repeatCost+1},expected:409});
+ const beforeAgain=await balance(userCookie);const remade=(await request('/api/generations/'+finished.id+'/again',{method:'POST',cookie:userCookie,data:{idempotencyKey:randomUUID(),expectedCost:finished.repeatCost},expected:201})).body;
+ await request('/api/generations/'+finished.id+'/again',{method:'POST',cookie:relogged.cookie,data:{idempotencyKey:randomUUID(),expectedCost:finished.repeatCost},expected:404});
+ ok('Make it again starts a new creation from the same photo and reserves its credits',remade.generationId!==finished.id&&remade.balance.held-beforeAgain.held===finished.repeatCost&&(await db.prepare('SELECT input_ids FROM generations WHERE id=?').bind(remade.generationId).first()).input_ids===(await db.prepare('SELECT input_ids FROM generations WHERE id=?').bind(finished.id).first()).input_ids);
+ await waitDone(userCookie,remade.generationId);
+ // V3: a share page with its own link, an Open Graph preview, a view count, and the owner can stop sharing.
+ const toShare=(await request('/api/generations?status=completed&limit=24',{cookie:userCookie})).body.generations.find(g=>g.assetId);
+ await request('/api/generations/'+toShare.id+'/share',{method:'POST',cookie:relogged.cookie,data:{},expected:404});
+ const shareInfo=(await request('/api/generations/'+toShare.id+'/share',{method:'POST',cookie:userCookie,data:{}})).body;const sharedAgain=(await request('/api/generations/'+toShare.id+'/share',{method:'POST',cookie:userCookie,data:{}})).body;
+ const sharePath=new URL(shareInfo.url).pathname;const sharePage=(await request(sharePath)).text;
+ const sharedVid=await mf.dispatchFetch(config.APP_ORIGIN+'/api/share/'+shareInfo.id+'/video',{redirect:'manual'});
+ ok('Sharing creates one stable page with a video preview card',sharedAgain.id===shareInfo.id&&sharePage.includes('og:video')&&sharePage.includes('og:image')&&sharePage.includes('Make your own')&&sharedVid.status===302&&sharedVid.headers.get('location').includes('signature='));
+ ok('My creations shows the share link',(await request('/api/generations/'+toShare.id,{cookie:userCookie})).body.generations[0].shareUrl===shareInfo.url);
+ await request('/api/generations/'+toShare.id+'/share',{method:'DELETE',cookie:userCookie});
+ ok('Stopping sharing takes the page and video offline but keeps the creation',(await request(sharePath,{expected:404}))&&(await mf.dispatchFetch(config.APP_ORIGIN+'/api/share/'+shareInfo.id+'/video',{redirect:'manual'})).status===404&&(await request('/api/generations/'+toShare.id,{cookie:userCookie})).body.generations[0].status==='completed');
+ // V27: a customer who can't afford the cheapest video sees a reminder with a way to buy credits; one who can, doesn't.
+ const lowPage=(await request('/creations',{cookie:relogged.cookie})).text,richPage=(await request('/creations',{cookie:userCookie})).text;
+ ok('Low balance reminder shows only when credits can’t pay for a video',lowPage.includes('class="low-balance"')&&lowPage.includes('not enough for a video')&&!richPage.includes('class="low-balance"'));
+ // V7: installable app: manifest, theme colour and home-screen icon on every page; the manifest, worker and offline page exist.
+ const appHome=(await request('/')).text;const {readFile:rf}=await import('node:fs/promises');const manifest=JSON.parse(await rf('public/manifest.webmanifest','utf8'));
+ ok('Pages link the app manifest and home-screen icon',appHome.includes('rel="manifest"')&&appHome.includes('apple-touch-icon')&&appHome.includes('theme-color')&&manifest.display==='standalone'&&manifest.icons.some(i=>i.purpose==='maskable')&&(await rf('public/sw.js','utf8')).includes('offline.html'));
+ // V18: change the email address (demo studio without email: changes at once; password required; addresses stay unique).
+ await request('/api/account/email',{method:'POST',cookie:relogged.cookie,data:{email:'qa@studio.test',password:'Brand-new-password-2'},expected:409});
+ await request('/api/account/email',{method:'POST',cookie:relogged.cookie,data:{email:'moved@studio.test',password:'wrong-password-9'},expected:403});
+ const moved=(await request('/api/account/email',{method:'POST',cookie:relogged.cookie,data:{email:'Moved@Studio.test',password:'Brand-new-password-2'}})).body;
+ ok('A customer changes their email with their password',moved.changed===true&&!!(await request('/api/auth/login',{method:'POST',data:{email:'moved@studio.test',password:'Brand-new-password-2'}})).cookie);
+ // V30: a removal request for a shared video hides it at once; staff then remove it (the owner's video is deleted) or keep it.
+ const rrGen=(await request('/api/generations?status=completed&limit=24',{cookie:userCookie})).body.generations.find(g=>g.assetId);
+ const rrShare=(await request('/api/generations/'+rrGen.id+'/share',{method:'POST',cookie:userCookie,data:{}})).body;
+ await request('/api/removal-requests',{method:'POST',data:{video:rrShare.url,name:'X',email:'nope',relation:'self',details:'short',confirm:false},expected:400});
+ const rr=(await request('/api/removal-requests',{method:'POST',data:{video:rrShare.url,name:'Ana Person',email:'ana@example.test',relation:'self',details:'This is me and I never agreed to this video.',confirm:true},expected:201})).body;
+ ok('A removal request hides the shared video immediately',rr.hidden===true&&(await request(new URL(rrShare.url).pathname,{expected:404})));
+ const rrQueue=(await request('/api/admin/removals',{cookie:adminCookie})).body;const rrItem=rrQueue.requests.find(x=>x.video?.generationId===rrGen.id);
+ await request('/api/admin/removals',{cookie:userCookie,expected:403});
+ await request('/api/admin/removals/'+rrItem.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'remove'}});
+ ok('Staff remove the video from the removal queue',rrItem.status==='open'&&(await request('/api/generations/'+rrGen.id,{cookie:userCookie,expected:404}))&&(await request('/api/admin/removals?status=removed',{cookie:adminCookie})).body.requests.some(x=>x.id===rrItem.id));
+ await request('/api/admin/removals/'+rrItem.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'keep'},expected:409});
+ const described=(await request('/api/removal-requests',{method:'POST',data:{video:'A video of me on Instagram',name:'Ben Person',email:'ben@example.test',relation:'other',details:'Someone posted a video of my friend.',confirm:true},expected:201})).body;
+ const benItem=(await request('/api/admin/removals',{cookie:adminCookie})).body.requests.find(x=>x.email==='ben@example.test');
+ await request('/api/admin/removals/'+benItem.id+'/resolve',{method:'POST',cookie:adminCookie,data:{decision:'keep',note:'We could not find this video.'}});
+ ok('A request without a link is reviewed by hand and can be closed',described.hidden===false&&(await request('/api/admin/removals?status=kept',{cookie:adminCookie})).body.requests.some(x=>x.id===benItem.id&&x.adminNote));
+ // V33: each save keeps a version; restore brings back the old prompt and keeps the history.
+ const hist=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA History',slug:'qa-history',hiddenPrompt:'First prompt',active:false},expected:201})).body.template;
+ await request('/api/admin/templates/'+hist.id,{method:'PATCH',cookie:adminCookie,data:{...hist,hiddenPrompt:'Second prompt'}});
+ await request('/api/admin/templates/'+hist.id,{method:'PATCH',cookie:adminCookie,data:{...hist,hiddenPrompt:'Second prompt'}});
+ const versions=(await request('/api/admin/templates/'+hist.id+'/versions',{cookie:adminCookie})).body.versions;
+ ok('Template saves keep a history of changes (unchanged saves add nothing)',versions.length===2&&versions[0].changes.includes('hidden prompt')&&versions[1].snapshot.hiddenPrompt==='First prompt');
+ const restored=(await request('/api/admin/templates/'+hist.id+'/versions/'+versions[1].id+'/restore',{method:'POST',cookie:adminCookie,data:{}})).body.template;
+ ok('Restoring a version brings back its prompt and adds to the history',restored.hiddenPrompt==='First prompt'&&(await request('/api/admin/templates/'+hist.id,{cookie:adminCookie})).body.template.hiddenPrompt==='First prompt'&&(await request('/api/admin/templates/'+hist.id+'/versions',{cookie:adminCookie})).body.versions.length===3);
+ await request('/api/admin/templates/'+hist.id,{method:'DELETE',cookie:adminCookie});await request('/api/admin/templates/'+hist.id+'?permanent=1',{method:'DELETE',cookie:adminCookie});
+ // V34: per-template statistics.
+ await request('/api/analytics',{method:'POST',data:{name:'template_view',templateId:formula.id}});
+ const st=(await request('/api/admin/template-stats?days=all',{cookie:adminCookie})).body.stats[formula.id];
+ await request('/api/admin/template-stats?days=5',{cookie:adminCookie,expected:400});await request('/api/admin/template-stats',{cookie:userCookie,expected:403});
+ ok('Template statistics count views, creations, success, time and credits',st.views>=1&&st.creations>=1&&st.completed>=1&&st.successRate>0&&st.successRate<=1&&st.avgSeconds!==null&&st.credits>0);
+ // V36: customers switch news emails on and off in Account; sending needs email to be configured.
+ await request('/api/account',{method:'PATCH',cookie:userCookie,data:{marketingOptIn:true}});const onAt=(await db.prepare("SELECT marketing_opt_in,marketing_opt_in_at FROM users WHERE email='qa@studio.test'").first());
+ await request('/api/account',{method:'PATCH',cookie:userCookie,data:{marketingOptIn:false}});
+ ok('Customers turn news emails on and off, with the consent time recorded',onAt.marketing_opt_in===1&&onAt.marketing_opt_in_at>0&&(await db.prepare("SELECT marketing_opt_in FROM users WHERE email='qa@studio.test'").first()).marketing_opt_in===0);
+ await request('/api/admin/announcements',{method:'POST',cookie:adminCookie,data:{subjectSq:'Lajm',bodySq:'Një lajm i ri për ju.',subjectEn:'News',bodyEn:'Some news for you.'},expected:503});
+ // V43: customers suggest templates and vote; the admin plans or declines them (declined ideas are hidden).
+ await request('/api/ideas',{method:'POST',data:{title:'Space'},expected:401});
+ const idea=(await request('/api/ideas',{method:'POST',cookie:userCookie,data:{title:'Bollywood dance',details:'Colourful wedding dance'},expected:201})).body;
+ await request('/api/ideas/'+idea.id+'/vote',{method:'POST',cookie:relogged.cookie,data:{}});
+ const ideas=(await request('/api/ideas',{cookie:relogged.cookie})).body.ideas;const mineIdea=ideas.find(i=>i.id===idea.id);
+ await request('/api/ideas/'+idea.id+'/vote',{method:'POST',cookie:relogged.cookie,data:{}});
+ ok('Customers suggest template ideas and vote once each',mineIdea.votes===2&&mineIdea.voted&&(await request('/api/ideas')).body.ideas.find(i=>i.id===idea.id).votes===1);
+ await request('/api/admin/ideas/'+idea.id,{method:'PATCH',cookie:adminCookie,data:{status:'declined'}});
+ ok('Declined ideas are hidden from customers',!(await request('/api/ideas')).body.ideas.some(i=>i.id===idea.id)&&(await request('/api/admin/ideas',{cookie:adminCookie})).body.ideas.some(i=>i.id===idea.id&&i.status==='declined')&&(await request('/ideas')).text.includes('What should we make next?'));
+ // V6/V40: ratings, opt-in community gallery and feed with likes; stopping sharing or staff hiding takes a video out.
+ const pub=(await request('/api/generations?status=completed&limit=24',{cookie:userCookie})).body.generations.find(g=>g.assetId&&!g.isPublic);
+ await request('/api/generations/'+pub.id+'/rating',{method:'POST',cookie:userCookie,data:{stars:6},expected:400});
+ await request('/api/generations/'+pub.id+'/rating',{method:'POST',cookie:relogged.cookie,data:{stars:5},expected:404});
+ await request('/api/generations/'+pub.id+'/rating',{method:'POST',cookie:userCookie,data:{stars:5}});
+ ok('Customers rate their finished videos',(await request('/api/generations/'+pub.id,{cookie:userCookie})).body.generations[0].rating===5);
+ ok('Videos are not public until the owner chooses',!(await request('/api/feed')).body.items.some(i=>i.id===pub.id));
+ await request('/api/generations/'+pub.id+'/public',{method:'POST',cookie:userCookie,data:{public:true}});
+ const feedItem=(await request('/api/feed')).body.items.find(i=>i.id===pub.id);const pubTpl=(await request('/api/generations/'+pub.id,{cookie:userCookie})).body.generations[0].templateSlug;
+ ok('A public video shows in the feed and on its template page',feedItem&&feedItem.video.includes('signature=')&&(await request('/template/'+pubTpl)).text.includes('See what others made'));
+ const liked=(await request('/api/generations/'+pub.id+'/like',{method:'POST',cookie:relogged.cookie,data:{}})).body;await request('/api/generations/'+pub.id+'/like',{method:'POST',data:{},expected:401});
+ ok('Signed-in customers like public videos',liked.liked&&liked.likes===1&&(await request('/api/feed?sort=popular',{cookie:relogged.cookie})).body.items.find(i=>i.id===pub.id).liked);
+ await request('/api/generations/'+pub.id+'/share',{method:'DELETE',cookie:userCookie});
+ ok('Stopping sharing also takes the video out of the community',!(await request('/api/feed')).body.items.some(i=>i.id===pub.id)&&!(await request('/api/generations/'+pub.id,{cookie:userCookie})).body.generations[0].isPublic);
+ await request('/api/generations/'+pub.id+'/public',{method:'POST',cookie:userCookie,data:{public:true}});await request('/api/admin/feed/'+pub.id+'/hide',{method:'POST',cookie:adminCookie,data:{}});
+ ok('Staff can hide a video from the community',!(await request('/api/feed')).body.items.some(i=>i.id===pub.id));
+ // V17: saved photos survive the 24-hour cleanup, have a name and a default, and deleting one keeps past videos.
+ const keepUp=await upload(userCookie),dropUp=await upload(userCookie);
+ await request('/api/uploads/'+keepUp.body.id,{method:'PATCH',cookie:userCookie,data:{saved:true,label:'Me',isDefault:true}});
+ await request('/api/uploads/'+keepUp.body.id,{method:'PATCH',cookie:relogged.cookie,data:{saved:true},expected:404});
+ await db.prepare('UPDATE user_uploads SET created_at=? WHERE id IN (?,?)').bind(Date.now()-25*3600000,keepUp.body.id,dropUp.body.id).run();
+ await db.prepare("UPDATE app_settings SET value='0' WHERE key='last_maintenance'").run();await request('/api/queue/tick',{method:'POST',cookie:userCookie,data:{}});
+ const lib=(await request('/api/uploads',{cookie:userCookie})).body.uploads;const kept=lib.find(u=>u.id===keepUp.body.id);
+ ok('Saved photos are kept past the 24-hour cleanup with their name and default',kept&&kept.saved&&kept.isDefault&&kept.label==='Me'&&!lib.some(u=>u.id===dropUp.body.id));
+ await request('/api/uploads/'+keepUp.body.id,{method:'PATCH',cookie:userCookie,data:{label:'Me again'}});
+ ok('Renaming keeps the default photo',(await request('/api/uploads',{cookie:userCookie})).body.uploads.find(u=>u.id===keepUp.body.id).isDefault);
+ const savedGen=await generate(userCookie,formula,[keepUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost,expected:201});await waitDone(userCookie,savedGen.body.generationId);
+ await request('/api/uploads/'+keepUp.body.id,{method:'DELETE',cookie:userCookie});
+ ok('Deleting a saved photo keeps the videos made with it',(await request('/api/generations/'+savedGen.body.generationId,{cookie:userCookie})).body.generations[0].status==='completed');
+ // D11 (changed 2026-11-08): videos and the photos used for them are kept until the customer deletes them, however old.
+ const oldUp=await upload(userCookie);const oldGen=await generate(userCookie,formula,[oldUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost});await waitDone(userCookie,oldGen.body.generationId);
+ await db.prepare('UPDATE user_uploads SET created_at=? WHERE id=?').bind(Date.now()-400*24*3600000,oldUp.body.id).run();
+ await db.prepare('UPDATE generations SET started_at=?,completed_at=? WHERE id=?').bind(Date.now()-400*24*3600000,Date.now()-400*24*3600000,oldGen.body.generationId).run();
+ await db.prepare("UPDATE app_settings SET value='0' WHERE key='last_maintenance'").run();await request('/api/queue/tick',{method:'POST',cookie:userCookie,data:{}});
+ const expiredGen=await db.prepare('SELECT deleted_at FROM generations WHERE id=?').bind(oldGen.body.generationId).first();
+ const expiredAssets=(await db.prepare('SELECT COUNT(*) AS n FROM generated_assets WHERE generation_id=?').bind(oldGen.body.generationId).first()).n;
+ const expiredUp=await db.prepare('SELECT id FROM user_uploads WHERE id=?').bind(oldUp.body.id).first();
+ ok('A video from over a year ago is still in My creations with its files, and the photo used for it is kept',!expiredGen.deleted_at&&expiredAssets>0&&!!expiredUp);
+ // V5: running creations carry a time estimate from the template's recent videos.
+ const etaUp=await upload(userCookie);const etaGen=await generate(userCookie,formula,[etaUp.body.id],{cost:(await request('/api/templates/formula-driver')).body.template.creditCost});
+ const etaRow=(await request('/api/generations/'+etaGen.body.generationId,{cookie:userCookie})).body.generations[0];
+ ok('Running creations include a typical duration for the progress estimate',typeof etaRow.typicalSeconds==='number'&&etaRow.typicalSeconds>0);await waitDone(userCookie,etaGen.body.generationId);
+ // V32: admins run a free test of a template (even a draft) with real AI; no credits move and it is marked as a test run.
+ const adminBefore=await balance(adminCookie);const adminPhoto=await upload(adminCookie);
+ const draftTpl=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Test Run',slug:'qa-test-run',active:false},expected:201})).body.template;
+ await request('/api/admin/templates/'+draftTpl.id+'/test-run',{method:'POST',cookie:userCookie,data:{uploadIds:[adminPhoto.body.id]},expected:403});
+ const testRun=(await request('/api/admin/templates/'+draftTpl.id+'/test-run',{method:'POST',cookie:adminCookie,data:{uploadIds:[adminPhoto.body.id]},expected:201})).body;
+ const doneRun=await waitDone(adminCookie,testRun.generationId);const adminAfter=await balance(adminCookie);const runRow=await db.prepare('SELECT test_run,credit_cost,hold_id FROM generations WHERE id=?').bind(testRun.generationId).first();
+ ok('A free admin test run completes without reserving or charging credits',doneRun.g.status==='completed'&&runRow.test_run===1&&runRow.credit_cost===0&&!runRow.hold_id&&adminAfter.available===adminBefore.available&&adminAfter.held===adminBefore.held);
+ await request('/api/admin/templates/'+draftTpl.id,{method:'DELETE',cookie:adminCookie});
+ // Admin test runs may use a real provider in demo mode, but only once it is connected; customers never reach it.
+ const hfTpl=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Higgsfield Run',slug:'qa-higgsfield-run',active:false,workflow:clone.workflow.map(s=>({...s,provider:'higgsfield',model:'higgsfield/genjutsu-light/motion-transfer/v1.0'}))},expected:201})).body.template;
+ const hfRun=await request('/api/admin/templates/'+hfTpl.id+'/test-run',{method:'POST',cookie:adminCookie,data:{uploadIds:[adminPhoto.body.id]},expected:409});
+ ok('A Higgsfield test run in demo mode asks to connect Higgsfield first',/Connect Higgsfield/.test(hfRun.body.error));
+ await request('/api/admin/templates/'+hfTpl.id,{method:'DELETE',cookie:adminCookie});
+ // V22/V23/V37: template options change the prompt (style), format and model/price (quality); prompts and models stay private.
+ const optTpl=(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template;
+ const optGroups=[{id:'mood',kind:'style',label:'Mood',labelSq:'Atmosfera',choices:[{id:'day',label:'Day',prompt:'sunny afternoon'},{id:'night',label:'Night',prompt:'neon night lights'}]},{id:'format',kind:'format',label:'Format',choices:[{id:'vertical',label:'Vertical',aspectRatio:'9:16'},{id:'square',label:'Square',aspectRatio:'1:1'}]},{id:'quality',kind:'quality',label:'Quality',choices:[{id:'standard',label:'Standard'},{id:'premium',label:'Premium',credits:100,model:'studio-demo-premium'}]}];
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...optTpl,optionGroups:[{id:'format',kind:'format',label:'Format',choices:[{id:'a',label:'A'},{id:'b',label:'B'}]}]},expected:400});
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...optTpl,optionGroups:optGroups}});
+ const pubOpt=(await request('/api/templates/formula-driver')).body;
+ ok('Template options are public without their prompts or models',pubOpt.template.options.length===3&&!JSON.stringify(pubOpt).includes('neon night')&&!JSON.stringify(pubOpt).includes('studio-demo-premium'));
+ const optPhoto=await upload(userCookie);const optBase=optTpl.creditCost;const optPicks={mood:'night',format:'square',quality:'premium'};
+ await request('/api/generations',{method:'POST',cookie:userCookie,data:{templateId:formula.id,uploadIds:[optPhoto.body.id],idempotencyKey:randomUUID(),expectedCost:optBase,consent:true,options:optPicks},expected:409});
+ const optGen=(await request('/api/generations',{method:'POST',cookie:userCookie,data:{templateId:formula.id,uploadIds:[optPhoto.body.id],idempotencyKey:randomUUID(),expectedCost:optBase+100,consent:true,options:optPicks},expected:201})).body;
+ const optGenRow=await db.prepare('SELECT credit_cost,workflow_snapshot,options FROM generations WHERE id=?').bind(optGen.generationId).first();const optSnap=JSON.parse(optGenRow.workflow_snapshot);const optVid=optSnap.steps.at(-1);
+ ok('Picked options set the price, format, prompt and main model of that video',optGenRow.credit_cost===optBase+100&&optSnap.aspectRatio==='1:1'&&optVid.aspectRatio==='1:1'&&optVid.prompt.includes('neon night lights')&&optVid.model==='studio-demo-premium'&&JSON.parse(optGenRow.options).quality==='premium');
+ await waitDone(userCookie,optGen.generationId);
+ ok('Make it again keeps the options and their price',(await request('/api/generations/'+optGen.generationId,{cookie:userCookie})).body.generations[0].repeatCost===optBase+100);
+ await request('/api/admin/templates/'+formula.id,{method:'PATCH',cookie:adminCookie,data:{...optTpl,optionGroups:[]}});
+ // V39: product templates show product photo rules instead of face rules; the Albanian count line works for several photos.
+ const prodTpl=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Product Ad',slug:'qa-product-ad',category:'Products',subject:'product',active:true,creditCost:300},expected:201})).body.template;
+ const prodPage=(await request('/template/qa-product-ad')).text,prodSq=(await request('/template/qa-product-ad',{lang:null})).text;
+ ok('Product templates use product photo rules (EN and SQ)',prodTpl.subject==='product'&&prodPage.includes('One product, clearly visible')&&prodPage.includes('Plain, uncluttered background')&&!prodPage.includes('Face clearly visible')&&prodSq.includes('Një produkt, qartë i dukshëm'));
+ ok('Two-photo templates show the Albanian photo count',(await request('/template/wedding-cinematic',{lang:null})).text.includes('Ngarko 2 foto — një fytyrë e qartë në secilën'));
+ await request('/api/admin/templates/'+prodTpl.id,{method:'DELETE',cookie:adminCookie});
+ // V21: one photo, several templates in one step; the total must be covered and a repeat of the same request starts nothing new.
+ const batchPhoto=await upload(userCookie);const tpls=(await request('/api/templates?limit=50')).body.templates.filter(t=>t.requiredImageCount===1).slice(0,3);
+ const items=tpls.map(t=>({templateId:t.id,expectedCost:t.creditCost}));const batchKey=randomUUID();const beforeBatch=await balance(userCookie);
+ await request('/api/generations/batch',{method:'POST',cookie:relogged.cookie,data:{uploadIds:[batchPhoto.body.id],idempotencyKey:randomUUID(),consent:true,items},expected:402});
+ const batch1=(await request('/api/generations/batch',{method:'POST',cookie:userCookie,data:{uploadIds:[batchPhoto.body.id],idempotencyKey:batchKey,consent:true,items},expected:201})).body;
+ const batch2=(await request('/api/generations/batch',{method:'POST',cookie:userCookie,data:{uploadIds:[batchPhoto.body.id],idempotencyKey:batchKey,consent:true,items},expected:201})).body;
+ const totalBatch=items.reduce((n,i)=>n+i.expectedCost,0);
+ ok('One photo starts several templates at once, and repeating the request starts nothing new',batch1.generationIds.length===3&&JSON.stringify(batch1.generationIds)===JSON.stringify(batch2.generationIds)&&beforeBatch.available-batch2.balance.available===totalBatch);
+ for(const id of batch1.generationIds)await waitDone(userCookie,id);
+ // V8/V9: photo templates can be published and deliver an image; an upscale step after an image step stays an image.
+ const imgStep={id:'img1',type:'image',provider:'mock',model:'studio-demo',prompt:'',negativePrompt:'',inputs:{image:'{{user_image_1}}'},output:'prepared',settings:{},duration:5,resolution:'1080p',aspectRatio:'4:5',cost:3};
+ const upStep={...imgStep,id:'up1',type:'upscale',inputs:{image:'{{previous_output}}'},output:'upscaled'};
+ await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Bad Photo',slug:'qa-bad-photo',generationType:'image',active:true,creditCost:50,workflow:[imgStep,{...imgStep,id:'v',type:'video'}]},expected:400});
+ const photoTpl=(await request('/api/admin/templates',{method:'POST',cookie:adminCookie,data:{...clone,name:'QA Portrait',slug:'qa-portrait',generationType:'image',active:true,creditCost:50,workflow:[imgStep,upStep]},expected:201})).body.template;
+ const photoCard=(await request('/api/templates/qa-portrait')).body.template;const portraitUp=await upload(userCookie);
+ const portraitGen=(await request('/api/generations',{method:'POST',cookie:userCookie,data:{templateId:photoTpl.id,uploadIds:[portraitUp.body.id],idempotencyKey:randomUUID(),expectedCost:50,consent:true},expected:201})).body;
+ const portraitDone=(await waitDone(userCookie,portraitGen.generationId)).g;
+ ok('A photo template delivers an image, through an image upscale step',photoCard.kind==='image'&&portraitDone.status==='completed'&&portraitDone.assetMime.startsWith('image/')&&(await db.prepare("SELECT COUNT(*) AS n FROM generated_assets WHERE generation_id=? AND mime LIKE 'image/%'").bind(portraitGen.generationId).first()).n===2);
+ await request('/api/admin/templates/'+photoTpl.id,{method:'DELETE',cookie:adminCookie});
+ // V15: finished steps record their AI cost; the admin compares it with estimates and enters the provider's invoice.
+ const month=new Date().toISOString().slice(0,7);const costs=(await request('/api/admin/ai-costs?month='+month,{cookie:adminCookie})).body;
+ await request('/api/admin/ai-costs/invoices',{method:'POST',cookie:adminCookie,data:{provider:'higgsfield',month,amount:12.5,note:'October bill'}});
+ const withInvoice=(await request('/api/admin/ai-costs?month='+month,{cookie:adminCookie})).body.providers.find(p=>p.provider==='higgsfield');
+ await request('/api/admin/ai-costs',{cookie:userCookie,expected:403});
+ ok('Finished steps record their AI cost, compared per template and with the provider invoice',costs.providers.some(p=>p.provider==='mock'&&p.recorded>0)&&costs.templates.some(t=>t.recorded>0)&&withInvoice.invoice===1250&&withInvoice.difference===1250);
+ // V16: a price A/B test splits signed-in customers by account; guests see A; results are counted per version.
+ const abFnv=t=>{let h=0x811c9dc5;for(let i=0;i<t.length;i++){h^=t.charCodeAt(i);h=Math.imul(h,0x01000193);}return h>>>0;};
+ const abBase=(await request('/api/admin/templates/'+formula.id,{cookie:adminCookie})).body.template.creditCost;
+ const abExp=(await request('/api/admin/templates/'+formula.id+'/experiments',{method:'POST',cookie:adminCookie,data:{kind:'price',creditCostB:abBase-50},expected:201})).body;
+ await request('/api/admin/templates/'+formula.id+'/experiments',{method:'POST',cookie:adminCookie,data:{kind:'price',creditCostB:abBase-10},expected:409});
+ const abPeople=[{cookie:userCookie,id:reg.body.user.id},{cookie:relogged.cookie,id:resetUser.body.user.id}].map(u=>({...u,v:abFnv(u.id+':'+abExp.id)%2===1?'B':'A'}));
+ const abSeen=await Promise.all(abPeople.map(async u=>(await request('/api/templates/formula-driver',{cookie:u.cookie})).body.template.creditCost));
+ const abGuest=(await request('/api/templates/formula-driver')).body.template.creditCost;
+ ok('Each customer sees the price of their version; guests see version A',abPeople.every((u,i)=>abSeen[i]===(u.v==='B'?abBase-50:abBase))&&abGuest===abBase);
+ const abBuyer=abPeople.find(u=>u.v==='B')||abPeople[0];const buyerCost=abBuyer.v==='B'?abBase-50:abBase;
+ await grant(abBuyer.id,2000);const abPhoto=await upload(abBuyer.cookie);
+ await request('/api/analytics',{method:'POST',cookie:abBuyer.cookie,data:{name:'template_view',templateId:formula.id}});
+ await request('/api/generations',{method:'POST',cookie:abBuyer.cookie,data:{templateId:formula.id,uploadIds:[abPhoto.body.id],idempotencyKey:randomUUID(),expectedCost:abBuyer.v==='B'?abBase:abBase-50,consent:true},expected:409});
+ const abGen=(await request('/api/generations',{method:'POST',cookie:abBuyer.cookie,data:{templateId:formula.id,uploadIds:[abPhoto.body.id],idempotencyKey:randomUUID(),expectedCost:buyerCost,consent:true},expected:201})).body;await waitDone(abBuyer.cookie,abGen.generationId);
+ const abRes=(await request('/api/admin/templates/'+formula.id+'/experiments',{cookie:adminCookie})).body.experiments[0];
+ ok('A/B results count views, creations and credits per version',abRes[abBuyer.v].views>=1&&abRes[abBuyer.v].creations===1&&abRes[abBuyer.v].credits===buyerCost);
+ await request('/api/admin/experiments/'+abExp.id+'/stop',{method:'POST',cookie:adminCookie,data:{}});
+ ok('Stopping the test shows everyone version A again',(await request('/api/templates/formula-driver',{cookie:abBuyer.cookie})).body.template.creditCost===abBase);
+ // C26: support details and social links from Admin → Settings appear on the Contact page and footer.
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'nope',phone:'',responseTime:'',instagram:'',tiktok:'',facebook:''}},expected:400});
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'',phone:'',responseTime:'',instagram:'http://insecure.example',tiktok:'',facebook:''}},expected:400});
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{support:{email:'help@studio.test',phone:'+355 69 000 0000',responseTime:'Within 1 business day',instagram:'https://instagram.com/studio',tiktok:'',facebook:''}}});
+ const contact=(await request('/contact')).text,faq=(await request('/faq')).text;
+ ok('Support details from settings show on the Contact page and footer',contact.includes('help@studio.test')&&contact.includes('Within 1 business day')&&contact.includes('https://instagram.com/studio')&&!contact.includes('tiktok.com')&&(await request('/api/admin/settings',{cookie:adminCookie})).body.support.email==='help@studio.test');
+ ok('FAQ covers credits, failed videos, privacy and deleting data',['Do credits expire?','My video failed','How do I delete my data?','Why was my video refused?'].every(q=>faq.includes(q.replace("'",'&#x27;'))||faq.includes(q))&&faq.includes('href="/faq"'));
+ // C14: the export carries signed download links to the customer's photos and videos, plus consents and reports.
+ const exp=(await request('/api/account/export',{cookie:userCookie})).body;const done=exp.generations.find(g=>g.status==='completed'&&g.files.length);
+ ok('Account export lists photos and videos with download links',exp.uploads.length>0&&exp.uploads.every(u=>u.downloadUrl.includes('signature='))&&done&&done.files.some(f=>f.kind==='output'&&f.downloadUrl.includes('download=1'))&&exp.consents.termsVersion&&Array.isArray(exp.reports));
+ const link=new URL(done.files.find(f=>f.kind==='output').downloadUrl);const fetched=await mf.dispatchFetch(config.APP_ORIGIN+link.pathname+link.search);
+ ok('Export download links work without signing in, as attachments',fetched.status===200&&fetched.headers.get('content-disposition')?.includes('attachment'));await fetched.arrayBuffer();
  await request('/api/auth/logout',{method:'POST',cookie:userCookie,data:{}});await request('/api/favorites',{cookie:userCookie,expected:401});ok('Sign-out invalidates the session',true);
+ // V47: one free video per account, rendered at 480p, using no credits.
+ // Only templates marked "Free trial" (5 seconds or less) offer the free video.
+ const unmarkedReg=await request('/api/auth/register',{method:'POST',data:{name:'Unmarked Tester',email:'unmarked@studio.test',password:'Trial-password-123',acceptTerms:true,confirmAge:true},expected:201});
+ ok('A template not marked as a free trial does not offer the free video',!(await request('/template/formula-driver',{cookie:unmarkedReg.cookie})).text.includes('Your first video is free'));
+ await db.prepare("UPDATE templates SET free_trial=1 WHERE slug IN ('formula-driver','astronaut')").run();
+ const trialReg=await request('/api/auth/register',{method:'POST',data:{name:'Trial Tester',email:'trial@studio.test',password:'Trial-password-123',acceptTerms:true,confirmAge:true},expected:201});const trialCookie=trialReg.cookie,trialUser=trialReg.body.user.id;
+ const trialPage=(await request('/template/formula-driver',{cookie:trialCookie})).text;
+ ok('A new account with no credits is offered its free video and may upload a photo',trialPage.includes('Your first video is free')&&(await balance(trialCookie)).available===0);
+ const trialPhoto=(await upload(trialCookie)).body.id;
+ const fresh=(await request('/api/templates?limit=50',{cookie:trialCookie})).body.templates,trialTpl=fresh.find(t=>t.slug==='formula-driver'),astronautTpl=fresh.find(t=>t.slug==='astronaut');
+ const trialStart=await request('/api/generations',{method:'POST',cookie:trialCookie,data:{templateId:trialTpl.id,uploadIds:[trialPhoto],idempotencyKey:randomUUID(),expectedCost:trialTpl.creditCost,consent:true,trial:true},expected:201});
+ const trialRow=await db.prepare('SELECT trial,credit_cost,hold_id,workflow_snapshot FROM generations WHERE id=?').bind(trialStart.body.generationId).first();
+ const trialSteps=JSON.parse(trialRow.workflow_snapshot).steps.filter(s=>s.type==='video');
+ ok('The free video uses no credits and asks the AI for 480p',trialRow.trial===1&&trialRow.credit_cost===0&&!trialRow.hold_id&&trialSteps.length>0&&trialSteps.every(s=>s.resolution==='480p'&&s.settings.resolution==='480p')&&(await balance(trialCookie)).available===0);
+ const trialAgain=await request('/api/generations',{method:'POST',cookie:trialCookie,data:{templateId:trialTpl.id,uploadIds:[trialPhoto],idempotencyKey:randomUUID(),expectedCost:trialTpl.creditCost,consent:true,trial:true},expected:201});
+ ok('Sending the same free video twice returns the same video, not a second one',trialAgain.body.generationId===trialStart.body.generationId);
+ const trialDone=await waitDone(trialCookie,trialStart.body.generationId);
+ const trialList=(await request('/api/generations',{cookie:trialCookie})).body.generations;
+ ok('The free video completes without credits and is marked as the free 480p video',trialDone.g.status==='completed'&&trialList.find(g=>g.id===trialStart.body.generationId)?.trial===true&&(await balance(trialCookie)).available===0);
+ const secondTrial=await request('/api/generations',{method:'POST',cookie:trialCookie,data:{templateId:astronautTpl.id,uploadIds:[trialPhoto],idempotencyKey:randomUUID(),expectedCost:astronautTpl.creditCost,consent:true,trial:true},expected:409});
+ await request('/api/uploads',{method:'POST',data:(()=>{const f=new FormData();f.append('file',new File([new Uint8Array(10)],'x.webp',{type:'image/webp'}));return f})(),cookie:trialCookie,expected:402});
+ ok('Only one free video per account; after it, uploads need credits again',/already been used/.test(secondTrial.body.error)&&!(await request('/template/formula-driver',{cookie:trialCookie})).text.includes('Your first video is free'));
+ await db.prepare("UPDATE generations SET status='failed' WHERE id=?").bind(trialStart.body.generationId).run();
+ ok('A failed free video gives the free video back',(await request('/template/formula-driver',{cookie:trialCookie})).text.includes('Your first video is free'));
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{freeTrial:false}});
+ const off=await request('/api/generations',{method:'POST',cookie:trialCookie,data:{templateId:trialTpl.id,uploadIds:[trialPhoto],idempotencyKey:randomUUID(),expectedCost:trialTpl.creditCost,consent:true,trial:true},expected:409});
+ ok('The admin can turn the free trial off',/paused/.test(off.body.error)&&(await request('/api/admin/settings',{cookie:adminCookie})).body.freeTrial===false);
+ await request('/api/admin/settings',{method:'PATCH',cookie:adminCookie,data:{freeTrial:true}});
+ void trialUser;
+ // V1: social sign-in. A separate instance carries Google/Apple keys and mocks the providers' token/identity endpoints.
+ const {Response:MFResponse}=require('miniflare');
+ const {generateKeyPairSync}=require('node:crypto');
+ const applePem=generateKeyPairSync('ec',{namedCurve:'P-256'}).privateKey.export({type:'pkcs8',format:'pem'}).toString();
+ const oauthEnv={...config,GOOGLE_CLIENT_ID:'test.apps.googleusercontent.com',GOOGLE_CLIENT_SECRET:'google-secret-abcdef123456',APPLE_CLIENT_ID:'com.studio.signin',APPLE_TEAM_ID:'ABCDE12345',APPLE_KEY_ID:'KEY1234567',APPLE_PRIVATE_KEY:applePem};
+ let googleUser={sub:'google-1',email:'google-new@studio.test',email_verified:true,name:'Google Newcomer'};
+ let appleUser={sub:'apple-1',email:'apple-user@privaterelay.appleid.com',email_verified:'true'};
+ const b64u=o=>Buffer.from(JSON.stringify(o)).toString('base64url');
+ const oauthMf=new Miniflare({...options,d1Databases:{DB:'studio-oauth'},bindings:oauthEnv,outboundService:async req=>{const u=new URL(req.url);
+  if(u.hostname==='oauth2.googleapis.com')return MFResponse.json({access_token:'ya29.fake',token_type:'Bearer'});
+  if(u.hostname==='openidconnect.googleapis.com')return MFResponse.json({sub:googleUser.sub,email:googleUser.email,email_verified:googleUser.email_verified,name:googleUser.name});
+  if(u.hostname==='appleid.apple.com')return MFResponse.json({id_token:b64u({alg:'ES256'})+'.'+b64u({iss:'https://appleid.apple.com',aud:oauthEnv.APPLE_CLIENT_ID,exp:Math.floor(Date.now()/1000)+3600,sub:appleUser.sub,email:appleUser.email,email_verified:appleUser.email_verified})+'.sig'});
+  throw new Error('Unexpected OAuth call: '+u.hostname);}});
+ try{
+  const odb=await oauthMf.getD1Database('DB');
+  for(const f of (await readdir('drizzle')).filter(f=>f.endsWith('.sql')).sort()){for(const s of (await readFile('drizzle/'+f,'utf8')).split('--> statement-breakpoint').map(s=>s.trim()).filter(Boolean))await odb.prepare(s).run();}
+  const odispatch=(route,{method='GET',headers={}}={})=>oauthMf.dispatchFetch(oauthEnv.APP_ORIGIN+route,{method,redirect:'manual',headers:{origin:oauthEnv.APP_ORIGIN,cookie:['studio_lang=en',headers.cookie].filter(Boolean).join('; '),...headers}});
+  const setCookies=r=>r.headers.getSetCookie?r.headers.getSetCookie():[r.headers.get('set-cookie')].filter(Boolean);
+  const session=r=>setCookies(r).map(c=>c.split(';')[0]).find(c=>c.startsWith('studio_session='));
+  async function flow(provider,{tamperNonce,code='testcode'}={}){
+   const start=await odispatch('/api/auth/oauth/'+provider+'?next=/account');
+   const state=new URL(start.headers.get('location')).searchParams.get('state');
+   let nonce=setCookies(start).map(c=>c.split(';')[0]).find(c=>c.startsWith('oauth_state='))?.split('=')[1];
+   if(tamperNonce)nonce='wrong-nonce';
+   const cb=await odispatch('/api/auth/oauth/'+provider+'/callback?code='+code+'&state='+encodeURIComponent(state),{headers:{cookie:'oauth_state='+nonce}});
+   return {start,cb,location:cb.headers.get('location'),session:session(cb)};
+  }
+  const start=await odispatch('/api/auth/oauth/google?next=/account');
+  ok('Social sign-in starts a Google flow with a signed state and nonce cookie',start.status===302&&start.headers.get('location').startsWith('https://accounts.google.com/')&&new URL(start.headers.get('location')).searchParams.get('state')&&setCookies(start).some(c=>c.startsWith('oauth_state=')));
+  const g1=await flow('google');
+  const me1=await (await odispatch('/api/me',{headers:{cookie:g1.session}})).json();
+  ok('A new Google account is created, verified and signed in',g1.cb.status===302&&g1.location.endsWith('/account')&&!!g1.session&&me1.user?.email==='google-new@studio.test'&&me1.user.emailVerified&&me1.user.name==='Google Newcomer');
+  const g2=await flow('google');const me2=await (await odispatch('/api/me',{headers:{cookie:g2.session}})).json();
+  ok('The same Google identity signs into the same account, not a duplicate',me2.user?.id===me1.user.id&&Number((await odb.prepare("SELECT COUNT(*) AS n FROM users WHERE email='google-new@studio.test'").first()).n)===1);
+  await oauthMf.dispatchFetch(oauthEnv.APP_ORIGIN+'/api/auth/register',{method:'POST',headers:{origin:oauthEnv.APP_ORIGIN,'content-type':'application/json',cookie:'studio_lang=en'},body:JSON.stringify({name:'Email First',email:'both@studio.test',password:'Email-password-123',acceptTerms:true,confirmAge:true})});
+  const emailUser=await odb.prepare("SELECT id FROM users WHERE email='both@studio.test'").first();
+  googleUser={sub:'google-link',email:'both@studio.test',email_verified:true,name:'Linked'};
+  const gLink=await flow('google');const meLink=await (await odispatch('/api/me',{headers:{cookie:gLink.session}})).json();
+  ok('A Google identity whose email matches an existing account links to it',meLink.user?.id===emailUser.id&&(await odb.prepare("SELECT COUNT(*) AS n FROM accounts WHERE user_id=? AND provider='google'").bind(emailUser.id).first()).n===1);
+  await odb.prepare('UPDATE users SET totp_enabled_at=? WHERE id=?').bind(Date.now(),emailUser.id).run();
+  const gMfa=await flow('google');
+  ok('Google sign-in into an account with two-step sign-in asks for the code and gives no session',gMfa.cb.status===302&&gMfa.location.includes('/login?mfa=')&&!gMfa.session);
+  await odb.prepare('UPDATE users SET totp_enabled_at=NULL WHERE id=?').bind(emailUser.id).run();
+  googleUser={sub:'google-csrf',email:'csrf@studio.test',email_verified:true,name:'CSRF'};
+  const csrf=await flow('google',{tamperNonce:true});
+  ok('A callback with a mismatched nonce is rejected with no session (CSRF)',csrf.cb.status===302&&csrf.location.includes('/login?error=')&&!csrf.session&&!(await odb.prepare("SELECT id FROM users WHERE email='csrf@studio.test'").first()));
+  googleUser={sub:'google-noemail',email:'unverified@studio.test',email_verified:false,name:'Unverified'};
+  const noEmail=await flow('google');
+  ok('An unverified Google email is refused and creates no account',noEmail.location.includes('error=no_email')&&!noEmail.session&&!(await odb.prepare("SELECT id FROM users WHERE email='unverified@studio.test'").first()));
+  const a1=await flow('apple');const meApple=await (await odispatch('/api/me',{headers:{cookie:a1.session}})).json();
+  ok('Apple sign-in creates a verified account from the id_token',a1.cb.status===302&&!!a1.session&&meApple.user?.email==='apple-user@privaterelay.appleid.com'&&meApple.user.emailVerified);
+  // V49: password and Google/Apple on the same account, both ways.
+  const oapi=async(route,{method='GET',cookie='',data}={})=>{const r=await oauthMf.dispatchFetch(oauthEnv.APP_ORIGIN+'/api/'+route,{method,redirect:'manual',headers:{origin:oauthEnv.APP_ORIGIN,'content-type':'application/json',cookie:['studio_lang=en',cookie].filter(Boolean).join('; ')},body:data===undefined?undefined:JSON.stringify(data)});let body;try{body=await r.json()}catch{body=null}return {status:r.status,body,r};};
+  const tokenOf=c=>c.split('=')[1];const sessionHash=async c=>require('node:crypto').createHash('sha256').update(tokenOf(c)).digest('hex');
+  const age=async(c,minutes)=>odb.prepare('UPDATE sessions SET expires_at=? WHERE token_hash=?').bind(Date.now()+7*86400000-minutes*60000,await sessionHash(c)).run();
+  const social=me1.user.id,socialCookie=g1.session;
+  const m1=(await oapi('account/sign-in-methods',{cookie:socialCookie})).body;
+  ok('A Google-only account shows no password, Google connected and a recent sign-in',m1.hasPassword===false&&m1.recentSignIn===true&&m1.providers.some(p=>p.provider==='google'&&p.connected)&&m1.providers.some(p=>p.provider==='apple'&&!p.connected));
+  const lastOnly=await oapi('account/sign-in-methods/google',{method:'DELETE',cookie:socialCookie,data:{}});
+  ok('The only way into an account cannot be disconnected',lastOnly.status===409&&!!(await odb.prepare("SELECT id FROM accounts WHERE user_id=? AND provider='google'").bind(social).first()));
+  await age(socialCookie,30);
+  const stale=await oapi('account/password',{method:'POST',cookie:socialCookie,data:{newPassword:'Social-password-123'}});
+  const staleDelete=await oapi('account',{method:'DELETE',cookie:socialCookie,data:{}});
+  ok('Without a password, setting one or deleting the account needs a sign-in in the last 10 minutes',stale.status===403&&/sign in again/.test(stale.body.error)&&staleDelete.status===403&&!!(await odb.prepare('SELECT id FROM users WHERE id=?').bind(social).first()));
+  await age(socialCookie,1);
+  const mfaSetup=await oapi('account/mfa/setup',{method:'POST',cookie:socialCookie,data:{}});
+  ok('A Google-only account can start two-step setup after a recent sign-in',mfaSetup.status===200&&!!mfaSetup.body.secret);
+  const setPw=await oapi('account/password',{method:'POST',cookie:socialCookie,data:{newPassword:'Social-password-123'}});
+  const pwLogin=await oapi('auth/login',{method:'POST',data:{email:'google-new@studio.test',password:'Social-password-123'}});
+  ok('A Google-only account sets a password and can then sign in with email and password',setPw.status===200&&pwLogin.status===200&&pwLogin.body.user?.id===social&&(await oapi('account/sign-in-methods',{cookie:pwLogin.r.headers.get('set-cookie').split(';')[0]})).body.hasPassword===true);
+  const socialPw=pwLogin.r.headers.get('set-cookie').split(';')[0];
+  const noCurrent=await oapi('account/password',{method:'POST',cookie:socialPw,data:{newPassword:'Another-password-123'}});
+  ok('Once a password exists, changing it needs the current one again',noCurrent.status===403);
+  // An email account connects Google with a different email address, then disconnects it.
+  const regC=await oauthMf.dispatchFetch(oauthEnv.APP_ORIGIN+'/api/auth/register',{method:'POST',headers:{origin:oauthEnv.APP_ORIGIN,'content-type':'application/json',cookie:'studio_lang=en'},body:JSON.stringify({name:'Connect Me',email:'connect@studio.test',password:'Connect-password-123',acceptTerms:true,confirmAge:true})});
+  const connectCookie=regC.headers.get('set-cookie').split(';')[0],connectUser=(await regC.json()).user.id;
+  async function connectFlow(cookie,provider,password){
+   const start=await oapi('account/sign-in-methods/'+provider+'/connect',{method:'POST',cookie,data:{password}});
+   if(start.status!==200)return {start};
+   const state=new URL(start.body.url).searchParams.get('state'),nonce=setCookies(start.r).map(c=>c.split(';')[0]).find(c=>c.startsWith('oauth_state=')).split('=')[1];
+   const cb=await odispatch('/api/auth/oauth/'+provider+'/callback?code=testcode&state='+encodeURIComponent(state),{headers:{cookie:'oauth_state='+nonce+'; '+cookie}});
+   return {start,cb,location:cb.headers.get('location'),session:session(cb)};
+  }
+  const noPw=await connectFlow(connectCookie,'google','');
+  ok('Connecting Google to an email account needs the account password',noPw.start.status===403);
+  googleUser={sub:'google-connect',email:'someone-else@gmail.com',email_verified:true,name:'Other Name'};
+  const linked=await connectFlow(connectCookie,'google','Connect-password-123');
+  ok('An email account connects a Google account with a different email and returns to Account, without a new session',linked.location.endsWith('/account?connected=google')&&!linked.session&&!!(await odb.prepare("SELECT id FROM accounts WHERE user_id=? AND provider='google' AND provider_account_id='google-connect'").bind(connectUser).first()));
+  const viaGoogle=await flow('google');
+  ok('The connected Google account signs into that email account',viaGoogle.session&&(await (await odispatch('/api/me',{headers:{cookie:viaGoogle.session}})).json()).user?.id===connectUser);
+  const taken=await connectFlow(socialPw,'apple','Social-password-123');
+  ok('A Google or Apple account already used by another account cannot be connected',taken.location?.includes('/account?connect_error=in_use'));
+  const gone=await oapi('account/sign-in-methods/google',{method:'DELETE',cookie:connectCookie,data:{password:'Connect-password-123'}});
+  ok('An account with a password can disconnect Google',gone.status===200&&!gone.body.providers.find(p=>p.provider==='google').connected&&!(await odb.prepare("SELECT id FROM accounts WHERE user_id=? AND provider='google'").bind(connectUser).first()));
+  const loginHtml=await (await odispatch('/login')).text();
+  ok('The login page offers the configured social sign-ins',loginHtml.includes('Continue with Google')&&loginHtml.includes('Continue with Apple')&&loginHtml.includes('/api/auth/oauth/google'));
+ }finally{await oauthMf.dispose();}
  await writeFile('test-results/integration.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,checks},null,2));console.log('\n'+checks.length+' integration checks passed.');
 }catch(e){console.error('FAIL',e);await mkdir('test-results',{recursive:true});await writeFile('test-results/integration.json',JSON.stringify({date:new Date().toISOString(),passed:checks.length,error:String(e),checks},null,2));process.exitCode=1}finally{await mf.dispose()}
