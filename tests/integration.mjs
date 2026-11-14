@@ -267,6 +267,26 @@ await request('/api/admin/templates',{cookie:userCookie,expected:403});ok('Regul
  const pricingHtml=await request('/pricing');ok('Indexable pages declare a canonical URL',typeof pricingHtml.body==='string'&&pricingHtml.body.includes('rel="canonical"'));
  const homeLd=await request('/');ok('Homepage has Organization/WebSite structured data',typeof homeLd.body==='string'&&homeLd.body.includes('application/ld+json')&&homeLd.body.includes('"Organization"')&&homeLd.body.includes('"WebSite"'));
  const tplLd=await request('/template/formula-driver');ok('Template pages have VideoObject structured data',typeof tplLd.body==='string'&&tplLd.body.includes('application/ld+json')&&tplLd.body.includes('"VideoObject"'));
+ // X1 (enhanced SEO): media crawlable, video sitemap, one description per page, social cards, crawlable categories, one host.
+ ok('robots.txt lets search engines fetch studio preview media but keeps the rest of the API private',robots.body.indexOf('Allow: /api/media/med_')>-1&&robots.body.indexOf('Allow: /api/media/med_')<robots.body.indexOf('Disallow: /api/'));
+ const tplEntry=sitemap.body.match(/<url><loc>[^<]*\/template\/formula-driver<\/loc>.*?<\/url>/)?.[0]||'';
+ ok('sitemap.xml has a video and an image entry for every template',sitemap.body.includes('xmlns:video=')&&tplEntry.includes('<video:content_loc>http://studio.test/media/formula-driver.mp4</video:content_loc>')&&tplEntry.includes('<video:thumbnail_loc>')&&tplEntry.includes('<image:loc>')&&(sitemap.body.match(/<video:video>/g)||[]).length===(sitemap.body.match(/\/template\//g)||[]).length);
+ ok('Static pages in the sitemap carry no made-up lastmod',/<url><loc>http:\/\/studio\.test\/faq<\/loc><changefreq>/.test(sitemap.body));
+ const metaOf=html=>({desc:html.match(/<meta name="description" content="([^"]*)"/)?.[1],og:html.includes('property="og:title"')&&html.includes('property="og:image"')&&html.includes('property="og:site_name"')&&html.includes('name="twitter:card"'),robots:html.match(/<meta name="robots" content="([^"]*)"/)?.[1]||''});
+ const pages={};for(const r of ['/','/explore','/pricing','/faq','/contact','/feed','/terms','/privacy'])pages[r]=metaOf((await request(r,{lang:'sq'})).text);
+ ok('Every public page has its own meta description',new Set(Object.values(pages).map(m=>m.desc)).size===Object.keys(pages).length&&Object.values(pages).every(m=>m.desc&&m.desc.length>=60&&m.desc.length<=160));
+ ok('Every public page has Open Graph and Twitter card tags',Object.values(pages).every(m=>m.og)&&Object.values(pages).every(m=>!m.robots.includes('noindex')));
+ const homeSq=(await request('/',{lang:'sq'})).text;ok('The homepage title leads with what people search for',/<title>Krijo video me AI nga një foto \| NgaZero<\/title>/.test(homeSq));
+ ok('Sign-in pages are kept out of the index but their links are followed',metaOf((await request('/login')).text).robots==='noindex, follow'&&metaOf((await request('/register')).text).robots==='noindex, follow');
+ const exploreSq=(await request('/explore',{lang:'sq'})).text;ok('/explore has one H1',(exploreSq.match(/<h1[\s>]/g)||[]).length===1);
+ ok('Category chips are links to the category pages, never to empty categories',homeSq.includes('href="/category/couples"')&&exploreSq.includes('href="/category/sports"')&&!exploreSq.includes('href="/category/funny"'));
+ const tplSq=(await request('/template/formula-driver',{lang:'sq'})).text;
+ ok('A template page has a keyword title, breadcrumbs, a video duration and a video social card',/<title>Formula Driver — AI video nga një foto \| NgaZero<\/title>/.test(tplSq)&&tplSq.includes('"@type":"BreadcrumbList"')&&/"duration":"PT\d+S"/.test(tplSq)&&tplSq.includes('property="og:video"'));
+ ok('FAQ structured data is in the language the page shows',(await request('/faq',{lang:'sq'})).text.includes('"name":"Si bëj një video?"'));
+ const couplesDesc=metaOf((await request('/category/couples',{lang:'sq'})).text).desc||'';ok('A category description names its own templates',couplesDesc.includes('Wedding Cinematic'));
+ const hostMove=await mf.dispatchFetch('https://ngazero.ngazero.workers.dev/explore?category=Couples',{redirect:'manual'});
+ ok('Pages opened on the workers.dev address move permanently to the real domain',hostMove.status===301&&hostMove.headers.get('location')==='http://studio.test/explore?category=Couples');await hostMove.arrayBuffer();
+ const apiStays=await mf.dispatchFetch('https://ngazero.ngazero.workers.dev/api/templates',{redirect:'manual'});ok('API calls on the workers.dev address are never redirected',apiStays.status!==301);await apiStays.arrayBuffer();
  ok('Pricing page has Product/Offer structured data',pricingHtml.body.includes('"Product"')&&pricingHtml.body.includes('"Offer"'));
 
  await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'suspended'}});await request('/api/favorites',{cookie:second.cookie,expected:401});ok('Suspending a user revokes sessions',true);await request('/api/admin/users/'+second.body.user.id,{method:'PATCH',cookie:adminCookie,data:{status:'active'}});ok('Admin can reactivate users',true);

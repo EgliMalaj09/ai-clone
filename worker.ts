@@ -1,14 +1,26 @@
 import handler from 'vinext/server/fetch-handler';
 import {tickQueue} from './lib/server/queue';
-import {ensureSeed,one} from './lib/server/data';
+import {config,ensureSeed,one} from './lib/server/data';
 import {recordDispatch} from './lib/server/dispatcher';
 import {reportError} from './lib/server/errors';
 
 // Best-effort immediate delivery. Durable state remains in D1 if the Worker stops.
 // The every-minute cron trigger (triggers.crons in vite.config.ts) is the production dispatcher.
 async function drainWindow(){const deadline=Date.now()+22000;while(Date.now()<deadline){await tickQueue();const pending=await one("SELECT id FROM generations WHERE status IN ('queued','preparing','generating','finalizing') AND deleted_at IS NULL LIMIT 1");if(!pending)break;await new Promise(r=>setTimeout(r,1000));}}
+/** One address per page for Google (X1): once APP_ORIGIN is the real domain, pages opened on the *.workers.dev address or on
+ * www. are sent there with a permanent redirect, so search engines never index two copies of the site. API calls (webhooks,
+ * sign-in callbacks, the app itself) are never redirected, and nothing changes while APP_ORIGIN is still the workers.dev one. */
+function canonicalRedirect(request:Request){
+ if(request.method!=='GET'&&request.method!=='HEAD')return null;
+ const url=new URL(request.url);if(url.pathname.startsWith('/api/'))return null;
+ let origin:URL;try{origin=new URL(config().origin)}catch{return null}
+ if(origin.hostname.endsWith('.workers.dev')||url.hostname===origin.hostname)return null;
+ if(!url.hostname.endsWith('.workers.dev')&&url.hostname!=='www.'+origin.hostname)return null;
+ return Response.redirect(origin.origin+url.pathname+url.search,301);
+}
 const worker={
  async fetch(request:Request,env:Cloudflare.Env,ctx:ExecutionContext){
+  const moved=canonicalRedirect(request);if(moved)return moved;
   if(request.method==='GET'){
    const p=new URL(request.url).pathname;
    if(p==='/robots.txt'||p==='/sitemap.xml'){
